@@ -126,6 +126,22 @@ listen on that one only. It uses a self-signed certificate that it creates in `~
 time — choose “Advanced” and proceed. The LAN side uses HTTPS so the
 token is not sent in clear text and the paste button works.
 
+### Run as a service
+
+palmterm comes with a systemd user service ([contrib/systemd/palmterm.service](contrib/systemd/palmterm.service)):
+
+```sh
+make install                                   # ~/.local/bin/palmterm and ~/.config/systemd/user/palmterm.service
+echo 'PALMTERM_ARGS="-lan :7682"' > ~/.config/palmterm/env   # optional: extra options
+systemctl --user enable --now palmterm
+journalctl --user -u palmterm                  # shows the login URL
+```
+
+- To start it at boot without logging in, run `loginctl enable-linger $USER` once.
+- If no tmux server is running, palmterm starts it outside the service (`systemd-run --user --scope`),
+  so stopping or restarting the service keeps your tmux sessions.
+- After updating, run `make install && systemctl --user restart palmterm`. `make uninstall` removes both files.
+
 ### Options
 
 | Flag | Default | |

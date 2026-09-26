@@ -123,6 +123,22 @@ tailscale serve --bg 7681
 ブラウザは最初に警告を出す。「詳細設定」から先へ進む。LAN 側を HTTPS にしているのは、トークンを平文で流さないためと、貼り付け
 ボタンを使えるようにするため。
 
+### サービスとして動かす
+
+systemd のユーザーサービスのファイル（[contrib/systemd/palmterm.service](contrib/systemd/palmterm.service)）がある。
+
+```sh
+make install                                   # ~/.local/bin/palmterm と ~/.config/systemd/user/palmterm.service を置く
+echo 'PALMTERM_ARGS="-lan :7682"' > ~/.config/palmterm/env   # 任意：オプションを足す
+systemctl --user enable --now palmterm
+journalctl --user -u palmterm                  # ログイン用の URL が出ている
+```
+
+- ログインしなくても PC の起動時に動かすには、一度 `loginctl enable-linger $USER` を実行する。
+- tmux のサーバーがまだ動いていなければ、palmterm はそれをサービスの外（`systemd-run --user --scope`）で起動する
+  ので、サービスを止めても再起動しても tmux のセッションは残る。
+- 更新したら `make install && systemctl --user restart palmterm`。`make uninstall` で2つとも取り除く。
+
 ### オプション
 
 | オプション | 既定 | |

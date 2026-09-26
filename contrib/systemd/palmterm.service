@@ -1,0 +1,26 @@
+# palmterm を systemd のユーザーサービスとして動かす。
+#   make install
+#   systemctl --user enable --now palmterm
+# オプション（-lan など）は ~/.config/palmterm/env に書く。例：PALMTERM_ARGS="-lan :7682"
+# ログイン用の URL は journalctl --user -u palmterm で見られる。
+#
+# Run palmterm as a systemd user service. Put options such as -lan in ~/.config/palmterm/env,
+# e.g. PALMTERM_ARGS="-lan :7682". The login URL is printed to journalctl --user -u palmterm.
+
+[Unit]
+Description=palmterm, a web terminal for driving tmux from your phone
+Documentation=https://github.com/MoomA-0750/palmterm
+
+[Service]
+EnvironmentFile=-%h/.config/palmterm/env
+ExecStart=%h/.local/bin/palmterm $PALMTERM_ARGS
+WorkingDirectory=%h
+Restart=on-failure
+RestartSec=2
+# tmux のサーバーがまだ無ければ、palmterm はそれをこのサービスの外（systemd-run --user --scope）で起動するので、
+# サービスを止めたり再起動したりしても tmux のセッションは残る。
+# If no tmux server is running, palmterm starts it outside this service (systemd-run --user --scope), so
+# stopping or restarting the service keeps your tmux sessions.
+
+[Install]
+WantedBy=default.target

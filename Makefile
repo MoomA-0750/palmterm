@@ -18,3 +18,20 @@ dev: palmterm
 test: palmterm
 	go test ./...
 	cd web && npm test && npm run test:e2e
+
+BINDIR ?= $(HOME)/.local/bin
+UNITDIR ?= $(HOME)/.config/systemd/user
+
+.PHONY: install uninstall
+# ~/.local/bin に実行ファイルを、~/.config/systemd/user にユーザーサービスを置く（有効化・起動はしない）。
+install: palmterm
+	install -Dm755 palmterm $(BINDIR)/palmterm
+	install -Dm644 contrib/systemd/palmterm.service $(UNITDIR)/palmterm.service
+	-systemctl --user daemon-reload
+	@echo "Installed. Start it with:  systemctl --user enable --now palmterm"
+	@echo "(If it was already running:  systemctl --user restart palmterm)"
+
+uninstall:
+	-systemctl --user disable --now palmterm
+	rm -f $(BINDIR)/palmterm $(UNITDIR)/palmterm.service
+	-systemctl --user daemon-reload
