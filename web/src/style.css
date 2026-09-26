@@ -3,8 +3,9 @@
   --bar-bg: #2a2a2a;
   --btn-bg: #3a3a3a;
   --btn-fg: #e6e6e6;
-  --accent: #569cd6;
-  --lock: #d7ba7d;
+  /* ボタンの色は緑にそろえる。枠だけ＝使える・一時的、塗りつぶし＝開いている・固定。 */
+  --accent: #3fb950;
+  --accent-dim: #1f3325;
   --app-h: 100dvh;
   color-scheme: dark;
 }
@@ -118,21 +119,20 @@ button:active {
 
 /* tmux のボタン：キーバーを横にスクロールしても右端に残る。 */
 #tmux-btn {
-  --tmux: #3fb950;
   flex: none;
   width: 48px;
   height: 36px;
   margin: 4px 4px 4px 0;
   display: grid;
   place-items: center;
-  color: var(--tmux);
-  background: #1f3325;
-  box-shadow: inset 0 0 0 1.5px var(--tmux), -8px 0 8px -4px var(--bar-bg);
+  color: var(--accent);
+  background: var(--accent-dim);
+  box-shadow: inset 0 0 0 1.5px var(--accent), -8px 0 8px -4px var(--bar-bg);
 }
 
 #tmux-btn[aria-expanded="true"] {
   color: #000;
-  background: var(--tmux);
+  background: var(--accent);
 }
 
 #tmuxpanel {
@@ -146,7 +146,7 @@ button:active {
   gap: 4px;
   padding: 6px 4px;
   background: rgba(30, 36, 32, 0.97);
-  border-top: 2px solid #3fb950;
+  border-top: 2px solid var(--accent);
 }
 
 #tmuxpanel[hidden] {
@@ -235,7 +235,7 @@ button:active {
   box-sizing: border-box;
   padding: 0 6px;
   border: 0;
-  outline: 2px solid #3fb950;
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
   color: var(--btn-fg);
   background: #111;
@@ -249,7 +249,7 @@ button:active {
 }
 
 .tmux-tab.active {
-  background: #3fb950;
+  background: var(--accent);
 }
 
 .tmux-tab.active button {
@@ -261,13 +261,13 @@ button:active {
   width: 48px; /* 下の tmux ボタンと同じ幅にして縦にそろえる */
   height: 36px;
   font-weight: bold;
-  color: #3fb950;
-  box-shadow: inset 0 0 0 1px #3fb950;
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 #tmuxpanel button.on {
   color: #000;
-  background: #3fb950;
+  background: var(--accent);
 }
 
 #tmuxpanel button.armed,
@@ -277,12 +277,13 @@ button:active {
 }
 
 #keybar button.mod[data-state="once"] {
-  background: var(--accent);
-  color: #000;
+  color: var(--accent);
+  background: var(--accent-dim);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
 }
 
 #keybar button.mod[data-state="lock"] {
-  background: var(--lock);
+  background: var(--accent);
   color: #000;
   text-decoration: underline;
 }
