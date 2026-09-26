@@ -286,7 +286,6 @@ button:active {
 #keybar button.mod[data-state="lock"] {
   background: var(--accent);
   color: #000;
-  text-decoration: underline;
 }
 
 #inputbar {
