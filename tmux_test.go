@@ -263,6 +263,18 @@ func TestTerminalRelay(t *testing.T) {
 	waitFor(t, "コピーモードに入る", func() bool {
 		return runTmux(t, "display-message", "-p", "-t", "t1", "#{pane_in_mode}") == "1"
 	})
+
+	// 切れたら、つないでいた tmux のクライアントは残らない（セッションは残る）。
+	if got := runTmux(t, "list-clients", "-F", "#{client_name}"); got == "" {
+		t.Fatal("クライアントがいません")
+	}
+	c.Close(websocket.StatusNormalClosure, "")
+	waitFor(t, "クライアントが消える", func() bool {
+		return runTmux(t, "list-clients", "-F", "#{client_name}") == ""
+	})
+	if got := runTmux(t, "list-sessions", "-F", "#{session_name}"); got != "t1" {
+		t.Fatalf("セッションが残っていません: %q", got)
+	}
 }
 
 // tmux に渡す環境：入れ子の扱いにならないよう TMUX を外し、端末の種類を決め、

@@ -48,8 +48,10 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() {
-		ptmx.Close()
+		// 先に tmux のクライアントに切断を知らせてから閉じる。閉じれば読み込みが止まるのは Linux の実装に
+		// 頼っていて（ほかの OS では Close が読み込みの終わりを待つことがある）、そうなると SIGHUP が送られない。
 		cmd.Process.Signal(syscall.SIGHUP)
+		ptmx.Close()
 		cmd.Wait()
 	}()
 
