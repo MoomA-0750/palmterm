@@ -5,6 +5,7 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/tls"
 	"embed"
 	"encoding/hex"
 	"errors"
@@ -22,10 +23,10 @@ import (
 var webDist embed.FS
 
 type server struct {
-	token          string
-	session        string // つなぐ tmux のセッション
-	origins        []string
-	uploadDir      string
+	token     string
+	session   string // つなぐ tmux のセッション
+	origins   []string
+	uploadDir string
 }
 
 var sessionNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -37,6 +38,7 @@ func main() {
 	allowOrigin := flag.String("allow-origin", "", "WebSocket を許す別の Origin（カンマ区切り。開発時の Vite 用など）")
 	uploadDir := flag.String("upload-dir", "", "アップロードしたファイルの保存先（省略時は ~/.cache/palmterm/uploads）")
 	configPath := flag.String("config", "", "設定ファイル（省略時は ~/.config/palmterm/config.toml）")
+	lan := flag.String("lan", "", "LAN から HTTPS でつなぐときに待ち受けるアドレス（例 :7682。自分で署名した証明書を ~/.config/palmterm に作る）")
 	flag.Parse()
 
 	if *configPath == "" {
@@ -74,6 +76,34 @@ func main() {
 		s.origins = strings.Split(*allowOrigin, ",")
 	}
 
+	handler := s.routes()
+	if *lan != "" {
+		go serveLAN(*lan, handler, tok)
+	}
+	log.Printf("palmterm: http://%s/auth?token=%s を開いてください", *listen, tok)
+	log.Fatal(http.ListenAndServe(*listen, handler))
+}
+
+// LAN 向けに HTTPS で待ち受ける（証明書は自分で署名したもの）。
+func serveLAN(addr string, handler http.Handler, token string) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+	host, _ := os.Hostname()
+	ips := lanAddresses()
+	cert, err := lanCertificate(filepath.Join(dir, "palmterm"), ips, host)
+	if err != nil {
+		log.Fatalf("LAN 用の証明書を用意できませんでした: %v", err)
+	}
+	srv := &http.Server{Addr: addr, Handler: handler, TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}}}
+	for _, u := range lanURLs(addr, ips, token) {
+		log.Printf("palmterm（LAN）: %s を開いてください（最初は証明書の警告が出るので、先へ進む）", u)
+	}
+	log.Fatal(srv.ListenAndServeTLS("", ""))
+}
+
+func (s *server) routes() http.Handler {
 	dist, err := fs.Sub(webDist, "web/dist")
 	if err != nil {
 		log.Fatal(err)
@@ -89,9 +119,7 @@ func main() {
 	mux.Handle("POST /api/upload", s.requireAuth(http.HandlerFunc(s.handleUpload)))
 	mux.Handle("GET /api/upload/{name}", s.requireAuth(http.HandlerFunc(s.handleUploadFile)))
 	mux.Handle("GET /", s.requireAuth(cacheAssets(http.FileServerFS(dist))))
-
-	log.Printf("palmterm: http://%s/auth?token=%s を開いてください", *listen, tok)
-	log.Fatal(http.ListenAndServe(*listen, mux))
+	return mux
 }
 
 func loadOrCreateToken() (string, error) {

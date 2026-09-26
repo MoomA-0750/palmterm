@@ -43,11 +43,22 @@ make            # web をビルドして ./palmterm を作る（Go と Node が�
 ./palmterm      # 127.0.0.1:7681 で待ち受け。表示される /auth?token=… の URL を開く
 ```
 
-オプション：`-listen`（待ち受けるアドレス）、`-session`（tmux のセッション名、既定 `main`）、`-token`（省略時は `~/.config/palmterm/token` を使い、なければ作る）、`-upload-dir`（アップロードの保存先）、`-config`（設定ファイル）。
+オプション：`-listen`（待ち受けるアドレス）、`-session`（tmux のセッション名、既定 `main`）、`-token`（省略時は `~/.config/palmterm/token` を使い、なければ作る）、`-upload-dir`（アップロードの保存先）、`-config`（設定ファイル）、`-lan`（LAN から HTTPS でつなぐときのアドレス。下記）。
 
 スマホからは、Tailscale の中だけで公開するのがおすすめ。
 `tailscale serve --bg 7681` にすると HTTPS になり、貼り付けボタン（クリップボードのアイコン、clipboard API）も使える。
 HTTP のままだと貼り付けボタンは使えないので、入力欄を長押しして貼り付ける。
+
+### LAN から直接つなぐ
+
+```sh
+./palmterm -lan :7682   # 127.0.0.1:7681 に加えて、LAN 向けに 7682 番で HTTPS も待ち受ける
+```
+
+- 起動時に、この PC の LAN のアドレスごとに `https://192.168.x.x:7682/auth?token=…` を表示するので、スマホで開く。
+- 証明書は自分で署名したもの（`~/.config/palmterm/lan-cert.pem`・`lan-key.pem`）を自動で作る。ブラウザは最初に警告を出すので、「詳細設定」から先へ進む。PC の IP アドレスが変わったら作り直す（そのときはまた警告が出る）。
+- LAN 側を HTTPS にしているのは、平文の HTTP だと LAN の中でトークンが見えてしまうのと、貼り付けボタンが使えないため。
+- Tailscale の中継（7681）はそのまま使える。
 
 tmux の `mouse` 設定は off のままでよい（タップでのペインの切り替えも、スワイプでのスクロールも palmterm が行う）。
 

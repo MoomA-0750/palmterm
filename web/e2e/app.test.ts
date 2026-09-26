@@ -20,12 +20,14 @@ const dir = mkdtempSync(join(tmpdir(), "palmterm-e2e-"));
 const tmuxDir = mkdtempSync("/tmp/pt-e2e-"); // tmux のソケットのパスは短くないといけない
 const configPath = join(dir, "config.toml");
 const uploadDir = join(dir, "uploads");
-const env = { ...process.env, TMUX_TMPDIR: tmuxDir, TMUX: "", SHELL: "/bin/sh", ENV: "", PS1: "$ " };
+// XDG_CONFIG_HOME も一時ディレクトリにする（LAN 用の証明書をふだんの ~/.config に作らない）。
+const env = { ...process.env, TMUX_TMPDIR: tmuxDir, TMUX: "", SHELL: "/bin/sh", ENV: "", PS1: "$ ", XDG_CONFIG_HOME: dir };
 
 let server: ChildProcess;
 let browser: Browser;
 let page: Page;
 let base = "";
+let lanBase = "";
 
 function tmux(...args: string[]): string {
   return execFileSync("tmux", args, { env, encoding: "utf8" }).trimEnd();
@@ -81,8 +83,14 @@ beforeAll(async () => {
   if (!existsSync(BINARY)) throw new Error(`${BINARY} がありません。先に make してください`);
   tmux("-f", "/dev/null", "new-session", "-d", "-s", SESSION, "-x", "100", "-y", "30");
   const port = await freePort();
+  const lanPort = await freePort();
   base = `http://127.0.0.1:${port}`;
-  server = spawn(BINARY, ["-listen", `127.0.0.1:${port}`, "-token", TOKEN, "-session", SESSION, "-config", configPath, "-upload-dir", uploadDir], { env, stdio: "ignore" });
+  lanBase = `https://127.0.0.1:${lanPort}`;
+  server = spawn(
+    BINARY,
+    ["-listen", `127.0.0.1:${port}`, "-lan", `127.0.0.1:${lanPort}`, "-token", TOKEN, "-session", SESSION, "-config", configPath, "-upload-dir", uploadDir],
+    { env, stdio: "ignore" },
+  );
   await waitUntil("サーバーが立ち上がる", async () => fetch(`${base}/auth?token=${TOKEN}`, { redirect: "manual" }).then((r) => r.status === 303, () => false));
 
   browser = await chromium.launch({ executablePath: CHROMIUM, headless: true });
@@ -351,6 +359,49 @@ describe("タッチ操作", () => {
       return mode === "1" && Number(pos) > 5;
     });
     tmux("send-keys", "-t", SESSION, "-X", "cancel");
+  });
+});
+
+describe("LAN（HTTPS）", () => {
+  it("自分で署名した証明書の HTTPS でログインでき、端末につながり、貼り付けも使える", async () => {
+    const context = await browser.newContext({ viewport: { width: 400, height: 760 }, ignoreHTTPSErrors: true });
+    try {
+      const lan = await context.newPage();
+      await lan.goto(`${lanBase}/auth?token=${TOKEN}`);
+      expect(lan.url()).toBe(`${lanBase}/`);
+      const cookie = (await context.cookies()).find((c) => c.name === "palmterm_token");
+      expect(cookie?.secure).toBe(true);
+      await lan.waitForFunction(() => document.querySelector(".term-row") !== null);
+      await waitUntil("つながる", async () => lan.locator("#status").isHidden());
+      // HTTPS なので、貼り付けボタンが使うクリップボードの読み取りがある
+      expect(await lan.evaluate(() => window.isSecureContext && typeof navigator.clipboard?.readText === "function")).toBe(true);
+
+      await lan.locator("#line").fill("echo lan$((1+2))");
+      await lan.locator("#send").click();
+      await waitUntil("lan3 が出る", () => paneText().includes("\nlan3\n"));
+    } finally {
+      await context.close();
+    }
+  });
+});
+
+describe("別のサイトから", () => {
+  it("ログイン済みでも、別のサイトのページからは tmux を操作できない", async () => {
+    const before = tmux("list-windows", "-t", SESSION).split("\n").length;
+    // localhost は 127.0.0.1 とは別のサイト。そこから Cookie 付きで POST させる。
+    const other = await page.context().newPage();
+    await other.goto(base.replace("127.0.0.1", "localhost") + "/nothing");
+    const status = await other.evaluate(async (target) => {
+      try {
+        const r = await fetch(`${target}/api/tmux`, { method: "POST", credentials: "include", body: '{"action":"new-window"}' });
+        return r.status;
+      } catch {
+        return "blocked";
+      }
+    }, base);
+    await other.close();
+    expect(status === 401 || status === "blocked").toBe(true);
+    expect(tmux("list-windows", "-t", SESSION).split("\n")).toHaveLength(before);
   });
 });
 
