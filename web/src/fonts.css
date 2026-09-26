@@ -1,0 +1,27 @@
+/* 本文は JetBrains Mono。Nerd Font のアイコンは、Symbols Nerd Font Mono を JetBrains Mono の
+   マスに合わせて作り直したもので補う（tools/fit-nerd-symbols.py）。
+   - Nerd Symbols: 1マスに収めたもの（普段はこちら）
+   - Nerd Symbols Wide: 2マスの大きさ。次のマスが空白のときだけ使う（nerd.ts と style.css の .nf-wide）
+   スマホには入っていないので、どれもこのサーバーから配る。 */
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/400-italic.css";
+@import "@fontsource/jetbrains-mono/700.css";
+
+@font-face {
+  font-family: "Nerd Symbols";
+  src: url("./fonts/NerdSymbols-narrow.woff2") format("woff2");
+  font-display: block;
+  unicode-range: U+E000-F8FF, U+F0000-FFFFD;
+}
+
+@font-face {
+  font-family: "Nerd Symbols Wide";
+  src: url("./fonts/NerdSymbols-wide.woff2") format("woff2");
+  font-display: block;
+  unicode-range: U+E000-F8FF, U+F0000-FFFFD;
+}
+
+:root {
+  --mono-font: "JetBrains Mono", "Nerd Symbols", "Noto Sans Mono CJK JP", "Noto Sans CJK JP", "Hiragino Sans",
+    ui-monospace, monospace;
+}

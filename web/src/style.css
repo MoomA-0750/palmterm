@@ -1,0 +1,209 @@
+:root {
+  --bg: #1e1e1e;
+  --bar-bg: #2a2a2a;
+  --btn-bg: #3a3a3a;
+  --btn-fg: #e6e6e6;
+  --accent: #569cd6;
+  --lock: #d7ba7d;
+  --app-h: 100dvh;
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--btn-fg);
+  font-family: system-ui, sans-serif;
+  overscroll-behavior: none;
+}
+
+#app {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--app-h);
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  box-sizing: border-box;
+}
+
+#status {
+  background: #6b3a00;
+  font-size: 13px;
+  padding: 4px 12px;
+}
+
+#term-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+#term {
+  position: absolute;
+  inset: 0;
+  --term-font-family: var(--mono-font);
+}
+
+button {
+  font: inherit;
+  color: var(--btn-fg);
+  background: var(--btn-bg);
+  border: 0;
+  border-radius: 6px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button:active {
+  background: #555;
+}
+
+#keybar {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  overflow-x: auto;
+  background: var(--bar-bg);
+  scrollbar-width: none;
+  touch-action: pan-x;
+}
+
+#keybar button {
+  flex: none;
+  min-width: 40px;
+  height: 36px;
+  padding: 0 8px;
+  font-size: 14px;
+}
+
+#keybar button.mod[data-state="once"] {
+  background: var(--accent);
+  color: #000;
+}
+
+#keybar button.mod[data-state="lock"] {
+  background: var(--lock);
+  color: #000;
+  text-decoration: underline;
+}
+
+#inputbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+  background: var(--bar-bg);
+}
+
+#inputbar button {
+  flex: none;
+  height: 36px;
+  padding: 0 10px;
+  font-size: 14px;
+}
+
+#mode {
+  min-width: 40px;
+  font-weight: bold;
+}
+
+#line {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  box-sizing: border-box;
+  min-height: 36px;
+  padding: 7px 8px;
+  font: 16px var(--mono-font); /* 16px 未満だと iOS が拡大する */
+  color: var(--btn-fg);
+  background: #111;
+  border: 1px solid #555;
+  border-radius: 6px;
+}
+
+body[data-mode="direct"] #line,
+body[data-mode="direct"] #send {
+  display: none;
+}
+
+body[data-mode="direct"] #inputbar::before {
+  content: "直接入力：端末をタップしてキーボードを出す";
+  flex: 1;
+  align-self: center;
+  font-size: 12px;
+  color: #999;
+}
+
+#copymode {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--app-h);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  z-index: 10;
+  padding-top: env(safe-area-inset-top);
+  box-sizing: border-box;
+}
+
+#copymode[hidden],
+#status[hidden],
+#toast[hidden] {
+  display: none;
+}
+
+.copy-bar {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bar-bg);
+}
+
+.copy-bar button {
+  height: 36px;
+  padding: 0 10px;
+}
+
+.copy-bar .spacer {
+  flex: 1;
+}
+
+#copy-text {
+  flex: 1;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  font: 13px/1.35 var(--mono-font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+#toast {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  z-index: 20;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #444;
+  font-size: 14px;
+  text-align: center;
+}
+
+/* 次のマスが空白のアイコンは、2マス分の大きさの字形で空白のマスまではみ出して描く（nerd.ts）。
+   次のマスの背景に隠れないよう前に出す。 */
+.term-row span.nf-wide {
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+  font-family: "Nerd Symbols Wide", var(--mono-font);
+}

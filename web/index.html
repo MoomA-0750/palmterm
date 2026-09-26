@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta name="theme-color" content="#1e1e1e" />
+    <title>palmterm</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="status" hidden></div>
+      <div id="term-wrap"><div id="term" aria-label="端末"></div></div>
+      <div id="keybar" role="toolbar" aria-label="特殊キー"></div>
+      <div id="inputbar">
+        <button id="mode" type="button"></button>
+        <textarea id="line" rows="1" placeholder="コマンドを入力" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="send"></textarea>
+        <button id="send" type="button">送信</button>
+        <button id="copy" type="button">コピー</button>
+        <button id="paste" type="button">貼付</button>
+      </div>
+    </div>
+
+    <div id="copymode" hidden>
+      <div class="copy-bar">
+        <button id="copy-close" type="button">閉じる</button>
+        <button id="copy-refresh" type="button">更新</button>
+        <span class="spacer"></span>
+        <button id="copy-to-line" type="button">入力欄へ</button>
+        <button id="copy-selection" type="button">選択をコピー</button>
+      </div>
+      <pre id="copy-text"></pre>
+    </div>
+
+    <div id="toast" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
