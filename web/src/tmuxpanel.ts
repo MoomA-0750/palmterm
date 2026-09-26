@@ -1,6 +1,8 @@
 // tmux のウィンドウのタブバー（常に出す）と、キーバーの右端の tmux ボタンで開くペインの操作パネル。
 // 操作はサーバーが tmux のコマンドで直接行うので、プレフィックスキーの割り当てに左右されない。
 
+import { icon, type IconName } from "./icons";
+
 interface TmuxWindow {
   index: number;
   name: string;
@@ -42,10 +44,24 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
   let lastJson = "";
   let lastActive = -1;
 
-  const makeBtn = (label: string, title: string, fire: () => void, cls = "") => {
+  /** label は文字だけ、またはアイコン（と横に添える文字）。 */
+  type Label = string | { icon: IconName; text?: string; size?: number };
+  const setLabel = (b: HTMLButtonElement, label: Label) => {
+    if (typeof label === "string") {
+      b.textContent = label;
+      return;
+    }
+    b.replaceChildren(icon(label.icon, label.size ?? 18));
+    if (label.text) {
+      const t = document.createElement("span");
+      t.textContent = label.text;
+      b.append(t);
+    }
+  };
+  const makeBtn = (label: Label, title: string, fire: () => void, cls = "") => {
     const b = document.createElement("button");
     b.type = "button";
-    b.textContent = label;
+    setLabel(b, label);
     b.title = title;
     b.setAttribute("aria-label", title);
     if (cls) b.className = cls;
@@ -62,13 +78,13 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
       return;
     }
     disarm?.();
-    const label = btn.textContent;
+    const label = [...btn.childNodes];
     const timer = window.setTimeout(() => disarm?.(), ARM_MS);
     btn.textContent = armedLabel;
     btn.classList.add("armed");
     disarm = () => {
       window.clearTimeout(timer);
-      btn.textContent = label;
+      btn.replaceChildren(...label);
       btn.classList.remove("armed");
       disarm = null;
     };
@@ -85,14 +101,21 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
         const tab = document.createElement("div");
         tab.className = w.active ? "tmux-tab active" : "tmux-tab";
         const name = makeBtn(
-          `${w.index}:${w.name}${w.panes > 1 ? ` ⊞${w.panes}` : ""}`,
+          `${w.index}:${w.name}`,
           w.active ? `ウィンドウ ${w.index}（${w.name}）の名前を変える` : `ウィンドウ ${w.index}（${w.name}）へ`,
           // 今いるタブをもう一度押したら名前を変える。
           () => (w.active ? startRename(w, name) : run("select-window", w.index)),
           "tmux-tab-name",
         );
+        if (w.panes > 1) {
+          // ペインが複数あるウィンドウには、分割のアイコンと数を添える。
+          const count = document.createElement("span");
+          count.className = "tmux-tab-panes";
+          count.append(icon("panes", 14), String(w.panes));
+          name.append(count);
+        }
         const x = makeBtn(
-          "×",
+          { icon: "close", size: 14 },
           `ウィンドウ ${w.index}（${w.name}）を閉じる`,
           () => armOrFire(x, "閉じる?", () => run("kill-window", w.index)),
           "tmux-tab-close",
@@ -195,10 +218,10 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
     r.append(l, ...children);
     return r;
   };
-  const act = (label: string, title: string, action: string) => makeBtn(label, title, () => run(action));
+  const act = (label: Label, title: string, action: string) => makeBtn(label, title, () => run(action));
 
-  const zoomBtn = act("⛶ 拡大", "ペインを拡大 / 戻す", "zoom");
-  const killBtn = makeBtn("✕ 閉じる", "ペインを閉じる", () =>
+  const zoomBtn = act({ icon: "maximize", text: "拡大" }, "ペインを拡大 / 戻す", "zoom");
+  const killBtn = makeBtn({ icon: "close", text: "閉じる" }, "ペインを閉じる", () =>
     armOrFire(killBtn, "もう一度で閉じる", () => run("kill-pane")),
   );
 
@@ -206,21 +229,27 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
   const sizeLabel = document.createElement("span");
   sizeLabel.className = "tmux-size";
   const showSize = () => (sizeLabel.textContent = `${opts.fontSize.get()}px`);
-  const sizeBtn = (label: string, title: string, delta: number) =>
+  const sizeBtn = (label: Label, title: string, delta: number) =>
     makeBtn(label, title, () => {
       opts.fontSize.change(delta);
       showSize();
     });
 
   panel.append(
-    row("分割", act("◫ 左右", "左右に分割", "split-h"), act("⊟ 上下", "上下に分割", "split-v"), zoomBtn, killBtn),
+    row(
+      "分割",
+      act({ icon: "splitH", text: "左右" }, "左右に分割", "split-h"),
+      act({ icon: "splitV", text: "上下" }, "上下に分割", "split-v"),
+      zoomBtn,
+      killBtn,
+    ),
     row(
       "ペイン",
-      act("←", "左のペインへ", "pane-left"),
-      act("↓", "下のペインへ", "pane-down"),
-      act("↑", "上のペインへ", "pane-up"),
-      act("→", "右のペインへ", "pane-right"),
-      act("⟳ 次", "次のペインへ", "pane-next"),
+      act({ icon: "left" }, "左のペインへ", "pane-left"),
+      act({ icon: "down" }, "下のペインへ", "pane-down"),
+      act({ icon: "up" }, "上のペインへ", "pane-up"),
+      act({ icon: "right" }, "右のペインへ", "pane-right"),
+      act({ icon: "cycle", text: "次" }, "次のペインへ", "pane-next"),
     ),
     row(
       "その他",
@@ -230,7 +259,7 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
         opts.sendPrefix();
       }),
     ),
-    row("文字", sizeBtn("A−", "文字を小さく", -1), sizeLabel, sizeBtn("A+", "文字を大きく", 1)),
+    row("文字", sizeBtn({ icon: "textSmaller" }, "文字を小さく", -1), sizeLabel, sizeBtn({ icon: "textLarger" }, "文字を大きく", 1)),
   );
 
   async function run(action: string, window?: number, extra: Record<string, string | number> = {}) {

@@ -60,6 +60,31 @@ button {
   -webkit-user-select: none;
 }
 
+/* アイコン（と添える文字）を並べるボタン。 */
+#keybar button,
+#tmuxpanel button,
+.tmux-tab-close,
+#new-window {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.icon {
+  flex: none;
+}
+
+/* タブの名前の後ろの、ペインの数。 */
+.tmux-tab-panes {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  vertical-align: middle;
+  font-size: 12px;
+}
+
 button:active {
   background: #555;
 }
@@ -457,6 +482,6 @@ body[data-mode="direct"] #attachments {
   padding: 0;
   border-radius: 11px;
   background: rgba(0, 0, 0, 0.7);
-  font-size: 14px;
-  line-height: 22px;
+  display: grid;
+  place-items: center;
 }

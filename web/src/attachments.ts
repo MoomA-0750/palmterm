@@ -1,6 +1,8 @@
 // 入力欄モードの添付欄。選んだ画像をすぐアップロードし、サムネイルと × を並べる。
 // 送信のときに、アップロードが終わるのを待ってから、保存したパスを渡す。
 
+import { icon } from "./icons";
+
 export interface UploadedFile {
   path: string; // 端末に入れるパス（HEIC などは変換後の JPEG）
   name: string; // GET /api/upload/{name} で取るときの名前
@@ -62,7 +64,7 @@ export class Attachments {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "att-remove";
-    remove.textContent = "×";
+    remove.append(icon("close", 14));
     remove.setAttribute("aria-label", `${file.name} を外す`);
     const badge = document.createElement("span");
     badge.className = "att-badge";

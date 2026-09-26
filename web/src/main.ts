@@ -4,6 +4,7 @@ import "./fonts.css";
 import "./style.css";
 import { Attachments, uploadFile } from "./attachments";
 import { Connection } from "./connection";
+import { icon, type IconName } from "./icons";
 import { applyToChar, isSingleChar, Modifiers, type ModName, specialKey, type SpecialKey } from "./keys";
 import { setupNerdIcons } from "./nerd";
 import { setupTmuxPanel } from "./tmuxpanel";
@@ -259,7 +260,7 @@ modeBtn.addEventListener("click", () => setMode(mode === "line" ? "direct" : "li
 
 type KeyDef =
   | { label: string; mod: ModName }
-  | { label: string; key: SpecialKey; repeat?: boolean }
+  | { label: string; key: SpecialKey; repeat?: boolean; icon?: IconName }
   | { label: string; text: string };
 
 const keyDefs: KeyDef[] = [
@@ -268,14 +269,14 @@ const keyDefs: KeyDef[] = [
   { label: "Ctrl", mod: "ctrl" },
   { label: "Alt", mod: "alt" },
   { label: "Shift", mod: "shift" },
-  { label: "←", key: "left", repeat: true },
-  { label: "↓", key: "down", repeat: true },
-  { label: "↑", key: "up", repeat: true },
-  { label: "→", key: "right", repeat: true },
+  { label: "左", key: "left", repeat: true, icon: "left" },
+  { label: "下", key: "down", repeat: true, icon: "down" },
+  { label: "上", key: "up", repeat: true, icon: "up" },
+  { label: "右", key: "right", repeat: true, icon: "right" },
   { label: "^C", text: "\x03" },
   { label: "^D", text: "\x04" },
-  { label: "⌫", key: "backspace", repeat: true },
-  { label: "⏎", key: "enter" },
+  { label: "Backspace", key: "backspace", repeat: true, icon: "backspace" },
+  { label: "Enter", key: "enter", icon: "enter" },
   { label: "Home", key: "home" },
   { label: "End", key: "end" },
   { label: "PgUp", key: "pageup", repeat: true },
@@ -311,7 +312,13 @@ function pressKey(def: KeyDef) {
 for (const def of keyDefs) {
   const btn = document.createElement("button");
   btn.type = "button";
-  btn.textContent = def.label;
+  if ("icon" in def && def.icon) {
+    btn.append(icon(def.icon));
+    btn.setAttribute("aria-label", def.label);
+    btn.title = def.label;
+  } else {
+    btn.textContent = def.label;
+  }
   if ("mod" in def) {
     btn.classList.add("mod");
     modButtons.set(def.mod, btn);
