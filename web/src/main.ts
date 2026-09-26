@@ -209,6 +209,11 @@ const PASTE_SETTLE_MS = 400;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function flushLine(withEnter: boolean): Promise<boolean> {
+  // つながっていないと送った文字は届かないので、消さずに知らせる（つなぎ直したら送り直せる）。
+  if (!conn.isOpen()) {
+    toast(t("notConnected"));
+    return false;
+  }
   if (withEnter && attachments.count > 0) {
     if (sending) return false;
     sending = true;
@@ -219,11 +224,16 @@ async function flushLine(withEnter: boolean): Promise<boolean> {
         toast(t("uploadFailedNotSent", { count: result.failed, error: result.error }));
         return false;
       }
-      for (const path of result.paths) {
-        conn.send(bracketedPaste(path));
+      for (const entry of result.entries) {
+        if (!entry.present()) continue; // 待っている間に × で外された
+        if (!conn.isOpen()) {
+          toast(t("notConnected")); // 残りの画像と文章はそのまま残す
+          return false;
+        }
+        conn.send(bracketedPaste(entry.path));
+        entry.remove();
         await sleep(PASTE_SETTLE_MS);
       }
-      attachments.clear();
     } finally {
       sending = false;
     }

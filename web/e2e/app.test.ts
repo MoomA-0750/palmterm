@@ -96,8 +96,16 @@ beforeAll(async () => {
   browser = await chromium.launch({ executablePath: CHROMIUM, headless: true });
   const context = await browser.newContext({ viewport: { width: 400, height: 760 } });
   await context.addInitScript(() => {
-    const w = window as unknown as { __sent: string[] };
+    const w = window as unknown as { __sent: string[]; __sockets: WebSocket[] };
     w.__sent = [];
+    w.__sockets = [];
+    const Orig = WebSocket;
+    window.WebSocket = class extends Orig {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        w.__sockets.push(this);
+      }
+    } as typeof WebSocket;
     const decoder = new TextDecoder();
     const orig = WebSocket.prototype.send;
     WebSocket.prototype.send = function (data) {
@@ -121,7 +129,18 @@ afterAll(async () => {
   rmSync(tmuxDir, { recursive: true, force: true });
 });
 
+/** tmux を決まった状態に戻す：ウィンドウとペインを1つずつにし、コピーモードを抜け、入力行と履歴を消す。 */
+function resetTmux() {
+  tmux("kill-window", "-a", "-t", `${SESSION}:0`);
+  tmux("kill-pane", "-a", "-t", `${SESSION}:0`);
+  if (tmux("display-message", "-p", "-t", SESSION, "#{pane_in_mode}") === "1") tmux("send-keys", "-t", SESSION, "-X", "cancel");
+  tmux("send-keys", "-t", SESSION, "C-c");
+  tmux("send-keys", "-t", SESSION, "clear", "Enter");
+  tmux("clear-history", "-t", SESSION);
+}
+
 beforeEach(async () => {
+  resetTmux();
   rmSync(configPath, { force: true });
   await openPage();
   await clearSent();
@@ -180,6 +199,19 @@ describe("入力", () => {
     expect(await sent()).toEqual(["echo one", "\r"]);
     expect(await page.inputValue("#line")).toBe("");
     await waitUntil("one が出る", () => paneText().includes("\none\n"));
+  });
+
+  it("つながっていないときに送っても、文章を消さずに知らせる", async () => {
+    await page.locator("#line").fill("keep me");
+    await page.evaluate(() => (window as unknown as { __sockets: WebSocket[] }).__sockets.at(-1)!.close());
+    await page.locator("#send").click();
+    expect(await page.inputValue("#line")).toBe("keep me");
+    expect(await page.locator("#toast").textContent()).toContain("Not connected");
+    expect(await sent()).toEqual([]);
+    // つなぎ直したら送れる
+    await waitUntil("つなぎ直す", async () => page.locator("#status").isHidden());
+    await page.locator("#send").click();
+    expect(await sent()).toEqual(["keep me", "\r"]);
   });
 
   it("送信ボタンで送り、空のときの Backspace は端末の文字を消す", async () => {

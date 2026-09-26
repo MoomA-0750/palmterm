@@ -34,7 +34,14 @@ interface Item {
   needServerPreview: boolean;
 }
 
-export type WaitResult = { ok: true; paths: string[] } | { ok: false; failed: number; error: string };
+/** 送る画像1枚。present は、待っている間に × で外されていないか。remove で添付欄から外す。 */
+export interface BatchEntry {
+  path: string;
+  present: () => boolean;
+  remove: () => void;
+}
+
+export type WaitResult = { ok: true; entries: BatchEntry[] } | { ok: false; failed: number; error: string };
 
 export class Attachments {
   private items: Item[] = [];
@@ -117,18 +124,24 @@ export class Attachments {
     this.render();
   }
 
-  /** アップロードが全部終わるのを待つ。失敗したものが残っていたら ok: false。 */
+  /**
+   * 今並んでいる画像のアップロードが終わるのを待つ。失敗したものが残っていたら ok: false。
+   * 待っている間に足された画像は含めない（次に送る）。送った画像は、呼んだ側が1枚ずつ remove する。
+   */
   async waitAll(): Promise<WaitResult> {
-    await Promise.all(this.items.map((i) => i.done));
-    const failed = this.items.filter((i) => i.status !== "done");
+    const batch = [...this.items];
+    await Promise.all(batch.map((i) => i.done));
+    const present = (i: Item) => this.items.includes(i);
+    const failed = batch.filter((i) => present(i) && i.status !== "done");
     if (failed.length > 0) return { ok: false, failed: failed.length, error: failed[0].error ?? "" };
-    return { ok: true, paths: this.items.map((i) => i.uploaded!.path) };
-  }
-
-  clear() {
-    for (const i of this.items) URL.revokeObjectURL(i.objectUrl);
-    this.items = [];
-    this.render();
+    return {
+      ok: true,
+      entries: batch.filter(present).map((i) => ({
+        path: i.uploaded!.path,
+        present: () => present(i),
+        remove: () => present(i) && this.remove(i),
+      })),
+    };
   }
 
   private render() {
