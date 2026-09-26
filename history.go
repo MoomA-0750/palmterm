@@ -28,7 +28,7 @@ func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	// -J は折り返された行をつなぐ。代わりに行末の空白が残るので後で落とす。
 	out, err := exec.Command("tmux", "capture-pane", "-p", "-J", "-S", "-"+strconv.Itoa(lines), "-t", session).Output()
 	if err != nil {
-		http.Error(w, "tmux の履歴を取れませんでした: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, tr("tmux の履歴を取れませんでした: ", "Could not read the tmux history: ")+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -62,12 +62,12 @@ func (s *server) handlePane(w http.ResponseWriter, r *http.Request) {
 	out, err := exec.Command("tmux", "display-message", "-p", "-t", session,
 		"#{alternate_on} #{mouse_any_flag} #{pane_in_mode} #{pane_width}").Output()
 	if err != nil {
-		http.Error(w, "tmux の状態を取れませんでした: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, tr("tmux の状態を取れませんでした: ", "Could not get the tmux state: ")+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	f := strings.Fields(string(out))
 	if len(f) != 4 {
-		http.Error(w, "tmux の状態を読めませんでした: "+string(out), http.StatusInternalServerError)
+		http.Error(w, tr("tmux の状態を読めませんでした: ", "Could not parse the tmux state: ")+string(out), http.StatusInternalServerError)
 		return
 	}
 	width, _ := strconv.Atoi(f[3])

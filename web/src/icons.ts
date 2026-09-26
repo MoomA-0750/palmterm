@@ -24,6 +24,10 @@ const PATHS = {
 
 export type IconName = keyof typeof PATHS;
 
+export function isIconName(name: string): name is IconName {
+  return Object.hasOwn(PATHS, name);
+}
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 export function icon(name: IconName, size = 20): SVGSVGElement {

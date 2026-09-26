@@ -110,9 +110,10 @@ button:active {
 /* キーはどれも同じ幅（一番長い「Shift」が収まる幅）にそろえる。 */
 #keybar button {
   flex: none;
-  width: 48px;
+  min-width: 48px; /* 設定で長い名前を付けたキーだけ広がる */
   height: 36px;
-  padding: 0;
+  padding: 0 6px;
+  box-sizing: border-box;
   font-size: 14px;
   white-space: nowrap;
 }
@@ -410,6 +411,7 @@ body[data-mode="direct"] #send {
   background: #444;
   font-size: 14px;
   text-align: center;
+  white-space: pre-line;
 }
 
 /* 次のマスが空白のアイコンは、2マス分の大きさの字形で空白のマスまではみ出して描く（nerd.ts）。

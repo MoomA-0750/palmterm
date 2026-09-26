@@ -43,13 +43,39 @@ make            # web をビルドして ./palmterm を作る（Go と Node が�
 ./palmterm      # 127.0.0.1:7681 で待ち受け。表示される /auth?token=… の URL を開く
 ```
 
-オプション：`-listen`（待ち受けるアドレス）、`-session`（tmux のセッション名、既定 `main`）、`-token`（省略時は `~/.config/palmterm/token` を使い、なければ作る）、`-upload-dir`（アップロードの保存先）。
+オプション：`-listen`（待ち受けるアドレス）、`-session`（tmux のセッション名、既定 `main`）、`-token`（省略時は `~/.config/palmterm/token` を使い、なければ作る）、`-upload-dir`（アップロードの保存先）、`-config`（設定ファイル）。
 
 スマホからは、Tailscale の中だけで公開するのがおすすめ。
 `tailscale serve --bg 7681` にすると HTTPS になり、貼り付けボタン（クリップボードのアイコン、clipboard API）も使える。
 HTTP のままだと貼り付けボタンは使えないので、入力欄を長押しして貼り付ける。
 
 tmux の `mouse` 設定は off のままでよい（タップでのペインの切り替えも、スワイプでのスクロールも palmterm が行う）。
+
+## 設定ファイル
+
+`~/.config/palmterm/config.toml`（TOML）で、画面の言語とキーバーのキーを決められる。書き換えたら、ブラウザでページを読み込み直せば反映される（サーバーの再起動は要らない）。書き方は [config.example.toml](config.example.toml) を参照（既定の並びがそのまま書いてあるので、コピーして編集するとよい）。
+
+```toml
+language = "en"   # "ja"（既定）か "en"
+
+[[keys]]
+key = "esc"
+
+[[keys]]
+mod = "ctrl"          # 修飾キー（押すたびに 1回 → 固定 → 切）
+
+[[keys]]
+key = "shift+tab"     # 組み合わせ（ctrl / alt / shift を + でつなぐ）
+label = "S-Tab"
+
+[[keys]]
+text = ":wq\r"        # 文字をそのまま送る
+label = ":wq"
+```
+
+- `[[keys]]` は書いた順に左から並ぶ。1つでも書くと既定の並びを丸ごと置き換える。
+- 書き間違い（知らない項目・キー・アイコン）は、画面を開いたときに知らせる。おかしいキーだけ飛ばし、ファイル全体が読めないときは既定の設定を使う。
+- 言語は画面の文言と、サーバーから画面に届くエラーに効く（サーバーのログは日本語のまま）。
 
 ## 開発
 

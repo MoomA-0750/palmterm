@@ -48,7 +48,7 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	ptmx, err := pty.StartWithSize(cmd, size)
 	if err != nil {
 		log.Printf("tmux を起動できませんでした: %v", err)
-		conn.Close(websocket.StatusInternalError, "tmux を起動できませんでした")
+		conn.Close(websocket.StatusInternalError, tr("tmux を起動できませんでした", "Could not start tmux"))
 		return
 	}
 	defer func() {
@@ -71,7 +71,7 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if err != nil {
-				conn.Close(websocket.StatusNormalClosure, "tmux が終了しました")
+				conn.Close(websocket.StatusNormalClosure, tr("tmux が終了しました", "tmux exited"))
 				return
 			}
 		}

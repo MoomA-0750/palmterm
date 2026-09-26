@@ -26,7 +26,7 @@ func (s *server) handleWindows(w http.ResponseWriter, r *http.Request) {
 	}
 	windows, err := listWindows(session)
 	if err != nil {
-		http.Error(w, "tmux のウィンドウを取れませんでした: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, tr("tmux のウィンドウを取れませんでした: ", "Could not list the tmux windows: ")+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -69,13 +69,13 @@ func (s *server) handleTmuxAction(w http.ResponseWriter, r *http.Request) {
 		Row    int    `json:"row"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
-		http.Error(w, "操作を読めませんでした: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, tr("操作を読めませんでした: ", "Could not read the request: ")+err.Error(), http.StatusBadRequest)
 		return
 	}
 	var args []string
 	if req.Action == "select-pane-at" {
 		if args, err = selectPaneAtArgs(session, req.Col, req.Row); err != nil {
-			http.Error(w, "tmux のペインを取れませんでした: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, tr("tmux のペインを取れませんでした: ", "Could not list the tmux panes: ")+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if args == nil { // ペインの境目や、すでに選ばれているペイン
@@ -88,7 +88,7 @@ func (s *server) handleTmuxAction(w http.ResponseWriter, r *http.Request) {
 		args = tmuxActionArgs(session, req.Action, req.Window)
 	}
 	if args == nil {
-		http.Error(w, "知らない操作です: "+req.Action, http.StatusBadRequest)
+		http.Error(w, tr("知らない操作です: ", "Unknown action: ")+req.Action, http.StatusBadRequest)
 		return
 	}
 	if out, err := exec.Command("tmux", args...).CombinedOutput(); err != nil {

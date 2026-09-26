@@ -1,0 +1,109 @@
+# palmterm の設定ファイルの見本 / Example palmterm config
+#
+# ~/.config/palmterm/config.toml に置く（-config で場所を変えられる）。
+# 書き換えたら、ブラウザでページを読み込み直せば反映される（サーバーの再起動は要らない）。
+# Put this at ~/.config/palmterm/config.toml (or pass -config). Reload the page to apply changes.
+
+# 画面の言語 / UI language: "ja" or "en"
+language = "ja"
+
+# キーバーのキー。書いた順に左から並ぶ。[[keys]] を1つでも書くと、既定の並びを丸ごと置き換える。
+# Keys on the key bar, left to right. Any [[keys]] entry replaces the whole default set.
+#
+# 1つのキーに、次のどれか1つを書く / Each key has exactly one of:
+#   key  = 特殊キーか1文字に、修飾キーを + でつないだもの / a special key or a character, with modifiers joined by +
+#          例 / e.g. "esc", "tab", "ctrl+c", "alt+b", "ctrl+shift+tab", "alt+left", "ctrl+space", "ctrl++"
+#          特殊キー / special keys: esc tab enter backspace delete insert up down left right
+#                                   home end pageup pagedown f1 … f12 space
+#          修飾キー / modifiers: ctrl alt shift（meta は alt と同じ / meta = alt）
+#   mod  = "ctrl" / "alt" / "shift"
+#          押すたびに 1回 → 固定 → 切。次に押したキー（キーボードの文字も）に効く。
+#          Sticky modifier: each tap cycles once → locked → off, and applies to the next key.
+#   text = そのまま送る文字 / text sent as is（"\u001b" のようなエスケープも書ける / escapes allowed）
+#
+# 省略できるもの / Optional:
+#   label  = ボタンの表示 / button label（省略時はキーから決める / derived from the key）
+#   icon   = アイコン / icon: left right up down backspace enter close plus splitH splitV
+#            maximize cycle panes textSmaller textLarger
+#   repeat = 押し続けたら繰り返すか / auto-repeat while held（矢印・backspace・delete・pageup・pagedown は既定で true）
+
+# 以下は既定の並び / The default set:
+
+[[keys]]
+key = "esc"
+
+[[keys]]
+key = "tab"
+
+[[keys]]
+mod = "ctrl"
+
+[[keys]]
+mod = "alt"
+
+[[keys]]
+mod = "shift"
+
+[[keys]]
+key = "left"
+
+[[keys]]
+key = "down"
+
+[[keys]]
+key = "up"
+
+[[keys]]
+key = "right"
+
+[[keys]]
+key = "ctrl+c"
+
+[[keys]]
+key = "ctrl+d"
+
+[[keys]]
+key = "backspace"
+
+[[keys]]
+key = "enter"
+
+[[keys]]
+key = "home"
+
+[[keys]]
+key = "end"
+
+[[keys]]
+key = "pageup"
+
+[[keys]]
+key = "pagedown"
+
+[[keys]]
+text = "|"
+
+[[keys]]
+text = "~"
+
+[[keys]]
+text = "/"
+
+[[keys]]
+text = "-"
+
+[[keys]]
+text = "`"
+
+# 足すときの例 / More examples:
+#
+# [[keys]]
+# key = "ctrl+r"          # シェルの履歴検索 / shell history search
+#
+# [[keys]]
+# key = "shift+tab"       # Claude Code のモード切り替え / Claude Code mode cycling
+# label = "S-Tab"
+#
+# [[keys]]
+# text = ":wq\r"          # vim で保存して閉じる / save and quit in vim
+# label = ":wq"

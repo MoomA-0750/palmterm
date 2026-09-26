@@ -4,7 +4,24 @@ export type ModName = "ctrl" | "alt" | "shift";
 // once: 次の1キーだけ効く。lock: 解除するまで効き続ける。
 export type ModState = "off" | "once" | "lock";
 
-export class Modifiers {
+/** 効いている修飾キー。画面の Ctrl/Alt/Shift の状態のほか、設定の組み合わせ（ctrl+c など）にも使う。 */
+export interface ModSet {
+  has(name: ModName): boolean;
+  param(): number;
+}
+
+/** xterm の修飾パラメータ（1 + Shift 1 + Alt 2 + Ctrl 4）。 */
+function modParam(m: Pick<ModSet, "has">): number {
+  return 1 + (m.has("shift") ? 1 : 0) + (m.has("alt") ? 2 : 0) + (m.has("ctrl") ? 4 : 0);
+}
+
+/** base（画面の修飾キーの状態）に、extra の修飾キーを足したもの。 */
+export function withMods(base: ModSet, extra: readonly ModName[]): ModSet {
+  const has = (name: ModName) => extra.includes(name) || base.has(name);
+  return { has, param: () => modParam({ has }) };
+}
+
+export class Modifiers implements ModSet {
   private state: Record<ModName, ModState> = { ctrl: "off", alt: "off", shift: "off" };
   onChange: () => void = () => {};
 
@@ -39,9 +56,8 @@ export class Modifiers {
     if (changed) this.onChange();
   }
 
-  /** xterm の修飾パラメータ（1 + Shift 1 + Alt 2 + Ctrl 4）。 */
   param(): number {
-    return 1 + (this.has("shift") ? 1 : 0) + (this.has("alt") ? 2 : 0) + (this.has("ctrl") ? 4 : 0);
+    return modParam(this);
   }
 }
 
@@ -56,7 +72,7 @@ const ctrlSymbols: Record<string, string> = {
 };
 
 /** 1文字に修飾キーを効かせる。変換できない組み合わせは修飾なしの文字として送る。 */
-export function applyToChar(ch: string, mods: Modifiers): string {
+export function applyToChar(ch: string, mods: ModSet): string {
   let c = ch;
   if (mods.has("shift")) c = c.toUpperCase();
   if (mods.has("ctrl")) {
@@ -72,10 +88,21 @@ export function isSingleChar(data: string): boolean {
   return [...data].length === 1 && data >= " " && data !== "\x7f";
 }
 
-export type SpecialKey =
-  | "esc" | "tab" | "enter" | "backspace"
-  | "up" | "down" | "left" | "right"
-  | "home" | "end" | "pageup" | "pagedown";
+export const SPECIAL_KEYS = [
+  "esc", "tab", "enter", "backspace", "delete", "insert",
+  "up", "down", "left", "right",
+  "home", "end", "pageup", "pagedown",
+  "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
+] as const;
+export type SpecialKey = (typeof SPECIAL_KEYS)[number];
+
+// F5〜F12 と Insert・Delete・PageUp・PageDown は ESC [ 番号 ~ の形。
+const tildeCode: Partial<Record<SpecialKey, number>> = {
+  insert: 2, delete: 3, pageup: 5, pagedown: 6,
+  f5: 15, f6: 17, f7: 18, f8: 19, f9: 20, f10: 21, f11: 23, f12: 24,
+};
+// F1〜F4 は ESC O P〜S（修飾つきは ESC [ 1 ; 修飾 P〜S）。
+const ss3Final: Partial<Record<SpecialKey, string>> = { f1: "P", f2: "Q", f3: "R", f4: "S" };
 
 const cursorFinal: Partial<Record<SpecialKey, string>> = {
   up: "A", down: "B", right: "C", left: "D", home: "H", end: "F",
@@ -85,19 +112,19 @@ const cursorFinal: Partial<Record<SpecialKey, string>> = {
  * 特殊キーのバイト列。appCursor はアプリがカーソルキーのモード（DECCKM）を
  * 有効にしているときで、修飾なしの矢印キーは ESC O A の形になる。
  */
-export function specialKey(key: SpecialKey, mods: Modifiers, appCursor: boolean): string {
+export function specialKey(key: SpecialKey, mods: ModSet, appCursor: boolean): string {
   const m = mods.param();
   const final = cursorFinal[key];
   if (final) {
     if (m > 1) return `\x1b[1;${m}${final}`;
     return appCursor ? `\x1bO${final}` : `\x1b[${final}`;
   }
+  const tilde = tildeCode[key];
+  if (tilde) return m > 1 ? `\x1b[${tilde};${m}~` : `\x1b[${tilde}~`;
+  const ss3 = ss3Final[key];
+  if (ss3) return m > 1 ? `\x1b[1;${m}${ss3}` : `\x1bO${ss3}`;
   const alt = mods.has("alt") ? "\x1b" : "";
   switch (key) {
-    case "pageup":
-      return m > 1 ? `\x1b[5;${m}~` : "\x1b[5~";
-    case "pagedown":
-      return m > 1 ? `\x1b[6;${m}~` : "\x1b[6~";
     case "tab":
       return mods.has("shift") ? "\x1b[Z" : alt + "\t";
     case "esc":

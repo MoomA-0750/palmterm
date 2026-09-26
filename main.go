@@ -37,7 +37,17 @@ func main() {
 	token := flag.String("token", "", "ログイン用のトークン（省略時は ~/.config/palmterm/token を使い、なければ作る）")
 	allowOrigin := flag.String("allow-origin", "", "WebSocket を許す別の Origin（カンマ区切り。開発時の Vite 用など）")
 	uploadDir := flag.String("upload-dir", "", "アップロードしたファイルの保存先（省略時は ~/.cache/palmterm/uploads）")
+	configPath := flag.String("config", "", "設定ファイル（省略時は ~/.config/palmterm/config.toml）")
 	flag.Parse()
+
+	if *configPath == "" {
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			log.Fatal(err)
+		}
+		*configPath = filepath.Join(dir, "palmterm", "config.toml")
+	}
+	settings = newConfigStore(*configPath)
 
 	if !sessionNamePattern.MatchString(*session) {
 		log.Fatalf("セッション名に使えない文字があります: %q", *session)
@@ -72,6 +82,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /auth", s.handleAuth)
 	mux.Handle("GET /ws", s.requireAuth(http.HandlerFunc(s.handleTerminal)))
+	mux.Handle("GET /api/config", s.requireAuth(http.HandlerFunc(s.handleConfig)))
 	mux.Handle("GET /api/history", s.requireAuth(http.HandlerFunc(s.handleHistory)))
 	mux.Handle("GET /api/pane", s.requireAuth(http.HandlerFunc(s.handlePane)))
 	mux.Handle("GET /api/windows", s.requireAuth(http.HandlerFunc(s.handleWindows)))
@@ -118,7 +129,7 @@ func (s *server) sessionFrom(r *http.Request) (string, error) {
 		return s.defaultSession, nil
 	}
 	if !sessionNamePattern.MatchString(name) {
-		return "", fmt.Errorf("セッション名に使えない文字があります: %q", name)
+		return "", fmt.Errorf(tr("セッション名に使えない文字があります: %q", "Invalid session name: %q"), name)
 	}
 	return name, nil
 }

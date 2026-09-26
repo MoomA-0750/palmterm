@@ -4,8 +4,10 @@ import "./fonts.css";
 import "./style.css";
 import { Attachments, uploadFile } from "./attachments";
 import { Connection } from "./connection";
-import { icon, type IconName } from "./icons";
-import { applyToChar, isSingleChar, Modifiers, type ModName, specialKey, type SpecialKey } from "./keys";
+import { type Lang, setLang, t } from "./i18n";
+import { icon } from "./icons";
+import { DEFAULT_KEYS, type KeyButton, type KeyConfig, parseKey } from "./keyconfig";
+import { applyToChar, isSingleChar, Modifiers, type ModName, specialKey, withMods } from "./keys";
 import { setupNerdIcons } from "./nerd";
 import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
@@ -19,6 +21,47 @@ const modeBtn = $<HTMLButtonElement>("mode");
 const sendBtn = $<HTMLButtonElement>("send");
 const statusEl = $<HTMLDivElement>("status");
 const toastEl = $<HTMLDivElement>("toast");
+
+// ---- 設定ファイル（サーバーの ~/.config/palmterm/config.toml：言語とキーバー） ----
+
+interface ServerConfig {
+  language: Lang;
+  keys?: KeyConfig[];
+  path: string;
+  error?: string;
+}
+const serverConfig: ServerConfig = (await fetch("/api/config", { cache: "no-store" })
+  .then((r) => (r.ok ? r.json() : null))
+  .catch(() => null)) ?? { language: "ja", path: "" };
+setLang(serverConfig.language);
+applyStaticTexts();
+
+/** index.html に書いてある文言を、設定の言語に置き換える。 */
+function applyStaticTexts() {
+  const label = (id: string, text: string, title = true) => {
+    const el = $(id);
+    el.setAttribute("aria-label", text);
+    if (title) el.title = text;
+  };
+  label("term", t("term"), false);
+  label("tmuxpanel", t("tmuxButton"), false);
+  label("tabs", t("tabs"), false);
+  label("new-window", t("newWindow"));
+  label("keybar", t("keybar"), false);
+  label("tmux-btn", t("tmuxButton"));
+  $("tmux-btn").title = t("tmuxButtonTitle");
+  label("attachments", t("attachments"), false);
+  $("direct-hint").textContent = t("directHint");
+  $<HTMLTextAreaElement>("line").placeholder = t("linePlaceholder");
+  label("send", t("send"));
+  label("copy", t("copy"));
+  label("paste", t("paste"));
+  label("upload", t("upload"));
+  $("copy-close").textContent = t("copyClose");
+  $("copy-refresh").textContent = t("copyRefresh");
+  $("copy-to-line").textContent = t("copyToLine");
+  $("copy-selection").textContent = t("copySelection");
+}
 
 // ---- 設定（この端末のブラウザにだけ保存） ----
 
@@ -121,7 +164,7 @@ conn.onOpen = () => {
 };
 conn.onStatus = (status) => {
   statusEl.hidden = status === "open";
-  statusEl.textContent = status === "connecting" ? "接続中…" : "切断されました。つなぎ直しています…";
+  statusEl.textContent = status === "connecting" ? t("connecting") : t("disconnected");
 };
 
 function appCursor(): boolean {
@@ -148,7 +191,7 @@ function setMode(next: InputMode, focus = true) {
   document.body.dataset.mode = next;
   // テキストボックスを出しているときは押された見た目にする。
   modeBtn.setAttribute("aria-pressed", String(next === "line"));
-  const label = next === "line" ? "テキストボックスを閉じる（端末に直接入力）" : "テキストボックスを出す";
+  const label = next === "line" ? t("modeClose") : t("modeOpen");
   modeBtn.setAttribute("aria-label", label);
   modeBtn.title = label;
   if (!focus) return;
@@ -191,10 +234,10 @@ async function flushLine(withEnter: boolean): Promise<boolean> {
     if (sending) return false;
     sending = true;
     try {
-      if (attachments.uploading) toast("画像のアップロードを待っています…");
+      if (attachments.uploading) toast(t("waitingUpload"));
       const result = await attachments.waitAll();
       if (!result.ok) {
-        toast(`アップロードできなかった画像が${result.failed}枚あるので、送っていません。× で外すか選び直してください（${result.error}）`);
+        toast(t("uploadFailedNotSent", { count: result.failed, error: result.error }));
         return false;
       }
       for (const path of result.paths) {
@@ -258,72 +301,60 @@ modeBtn.addEventListener("click", () => setMode(mode === "line" ? "direct" : "li
 
 // ---- キーバー ----
 
-type KeyDef =
-  | { label: string; mod: ModName }
-  | { label: string; key: SpecialKey; repeat?: boolean; icon?: IconName }
-  | { label: string; text: string };
-
-const keyDefs: KeyDef[] = [
-  { label: "Esc", key: "esc" },
-  { label: "Tab", key: "tab" },
-  { label: "Ctrl", mod: "ctrl" },
-  { label: "Alt", mod: "alt" },
-  { label: "Shift", mod: "shift" },
-  { label: "左", key: "left", repeat: true, icon: "left" },
-  { label: "下", key: "down", repeat: true, icon: "down" },
-  { label: "上", key: "up", repeat: true, icon: "up" },
-  { label: "右", key: "right", repeat: true, icon: "right" },
-  { label: "^C", text: "\x03" },
-  { label: "^D", text: "\x04" },
-  { label: "Backspace", key: "backspace", repeat: true, icon: "backspace" },
-  { label: "Enter", key: "enter", icon: "enter" },
-  { label: "Home", key: "home" },
-  { label: "End", key: "end" },
-  { label: "PgUp", key: "pageup", repeat: true },
-  { label: "PgDn", key: "pagedown", repeat: true },
-  { label: "|", text: "|" },
-  { label: "~", text: "~" },
-  { label: "/", text: "/" },
-  { label: "-", text: "-" },
-  { label: "`", text: "`" },
-];
-
-const modButtons = new Map<ModName, HTMLButtonElement>();
-
-function pressKey(def: KeyDef) {
-  if ("mod" in def) {
-    mods.tap(def.mod);
-    return;
+// 並びは設定ファイルの [[keys]]（書いていなければ既定の並び）。書き方がおかしいキーは飛ばして知らせる。
+const keyErrors: string[] = [];
+const keyButtons: KeyButton[] = [];
+(serverConfig.keys?.length ? serverConfig.keys : DEFAULT_KEYS).forEach((k, i) => {
+  try {
+    keyButtons.push(parseKey(k));
+  } catch (e) {
+    keyErrors.push(t("keyConfigError", { index: i + 1, error: e instanceof Error ? e.message : String(e) }));
   }
-  if ("key" in def) {
-    // Tab 補完は、入力欄に書きかけの文字を先に送ってから。
-    if (def.key === "tab" && usingLine() && !mods.active()) {
-      const seq = specialKey(def.key, mods, appCursor());
-      flushLine(false).then(() => conn.send(seq));
+});
+
+const modButtons: [ModName, HTMLButtonElement][] = [];
+
+function pressKey(def: KeyButton) {
+  const a = def.action;
+  switch (a.type) {
+    case "mod":
+      mods.tap(a.mod);
       return;
+    case "text":
+      conn.send(isSingleChar(a.text) ? applyToChar(a.text, mods) : a.text);
+      break;
+    case "char":
+      conn.send(applyToChar(a.char, withMods(mods, a.mods)));
+      break;
+    case "key": {
+      const seq = specialKey(a.key, withMods(mods, a.mods), appCursor());
+      // Tab 補完は、入力欄に書きかけの文字を先に送ってから。
+      if (a.key === "tab" && a.mods.length === 0 && usingLine() && !mods.active()) {
+        flushLine(false).then(() => conn.send(seq));
+        return;
+      }
+      conn.send(seq);
+      break;
     }
-    conn.send(specialKey(def.key, mods, appCursor()));
-  } else {
-    conn.send(isSingleChar(def.text) ? applyToChar(def.text, mods) : def.text);
   }
   mods.consume();
 }
 
-for (const def of keyDefs) {
+for (const def of keyButtons) {
   const btn = document.createElement("button");
   btn.type = "button";
-  if ("icon" in def && def.icon) {
+  if (def.icon) {
     btn.append(icon(def.icon));
     btn.setAttribute("aria-label", def.label);
     btn.title = def.label;
   } else {
     btn.textContent = def.label;
   }
-  if ("mod" in def) {
+  if (def.action.type === "mod") {
     btn.classList.add("mod");
-    modButtons.set(def.mod, btn);
+    modButtons.push([def.action.mod, btn]);
   }
-  bindKeyButton(btn, () => pressKey(def), "repeat" in def && !!def.repeat);
+  bindKeyButton(btn, () => pressKey(def), def.repeat);
   keybar.appendChild(btn);
 }
 
@@ -442,11 +473,11 @@ function changeFontSize(delta: number) {
 
 // ---- コピー・貼り付け ----
 
-function toast(message: string) {
+function toast(message: string, ms = 2500) {
   toastEl.textContent = message;
   toastEl.hidden = false;
   window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => (toastEl.hidden = true), 2500);
+  toastTimer = window.setTimeout(() => (toastEl.hidden = true), ms);
 }
 let toastTimer: number | undefined;
 
@@ -474,7 +505,7 @@ async function copyText(text: string): Promise<boolean> {
  */
 async function readClipboard(): Promise<string | null> {
   if (!window.isSecureContext || !navigator.clipboard?.readText) {
-    toast("この接続では貼付ボタンを使えません（HTTPS が必要）。入力欄を長押しして貼り付けてください");
+    toast(t("pasteNeedsHttps"));
     return null;
   }
   let error: unknown;
@@ -492,12 +523,12 @@ async function readClipboard(): Promise<string | null> {
     }
   }
   if (state === "denied") {
-    toast("クリップボードの読み取りが許可されていません。ブラウザのサイトの設定で許可してください");
+    toast(t("clipboardDenied"));
   } else if (error instanceof DOMException && error.name === "NotAllowedError") {
-    toast("クリップボードを読めませんでした（許可の確認が済んでいないか、取り消されました）。もう一度押してください");
+    toast(t("clipboardRetry"));
   } else {
     const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-    toast(`クリップボードを読めませんでした（${detail}）`);
+    toast(t("clipboardError", { detail }));
   }
   return null;
 }
@@ -514,7 +545,7 @@ $("paste").addEventListener("click", async () => {
   const text = await readClipboard();
   if (text === null) return;
   if (!text) {
-    toast("クリップボードに文字がありません");
+    toast(t("clipboardEmpty"));
     return;
   }
   if (usingLine()) {
@@ -540,18 +571,18 @@ async function addImages(files: File[]) {
     attachments.add(files);
     return;
   }
-  toast(`アップロード中…（${files.length}件）`);
+  toast(t("uploading", { count: files.length }));
   for (const file of files) {
     try {
       const { path } = await uploadFile(file);
       conn.send(bracketedPaste(path));
       await sleep(PASTE_SETTLE_MS);
     } catch (e) {
-      toast(`${file.name} をアップロードできませんでした: ${e instanceof Error ? e.message : e}`);
+      toast(t("uploadFailed", { name: file.name, error: e instanceof Error ? e.message : String(e) }));
       return;
     }
   }
-  toast(`アップロードしました（${files.length}件）`);
+  toast(t("uploaded", { count: files.length }));
 }
 
 $("upload").addEventListener("click", () => uploadInput.click());
@@ -595,13 +626,13 @@ async function loadHistory(): Promise<string> {
   } catch {
     // 下で画面の内容に切り替える
   }
-  toast("tmux の履歴を取れなかったので、今の画面の内容を表示します");
+  toast(t("historyFallback"));
   return term.readText();
 }
 
 async function openCopyMode() {
   copyMode.hidden = false;
-  copyTextEl.textContent = "読み込み中…";
+  copyTextEl.textContent = t("loading");
   const text = await loadHistory();
   copyTextEl.textContent = text;
   copyTextEl.scrollTop = copyTextEl.scrollHeight;
@@ -625,15 +656,15 @@ $("copy-refresh").addEventListener("click", openCopyMode);
 $("copy-selection").addEventListener("click", async () => {
   const text = selectedCopyText();
   if (!text) {
-    toast("先に長押しで範囲を選んでください");
+    toast(t("selectFirst"));
     return;
   }
-  toast((await copyText(text)) ? "コピーしました" : "コピーできませんでした");
+  toast((await copyText(text)) ? t("copied") : t("copyFailed"));
 });
 $("copy-to-line").addEventListener("click", () => {
   const text = selectedCopyText();
   if (!text) {
-    toast("先に長押しで範囲を選んでください");
+    toast(t("selectFirst"));
     return;
   }
   closeCopyMode();
@@ -647,6 +678,13 @@ $("copy-to-line").addEventListener("click", () => {
 
 await term.init();
 setMode(mode, false);
+
+// 設定ファイルの書き間違いは、読める所だけ使って知らせる（長めに出す）。
+const configProblems = [
+  ...(serverConfig.error ? [t("configError", { path: serverConfig.path, error: serverConfig.error })] : []),
+  ...keyErrors,
+];
+if (configProblems.length) toast(configProblems.join("\n"), 10000);
 
 setupNerdIcons(termEl);
 setupTouch({

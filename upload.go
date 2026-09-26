@@ -34,17 +34,17 @@ type uploadedFile struct {
 func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
-		http.Error(w, "ファイルを受け取れませんでした: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, tr("ファイルを受け取れませんでした: ", "Could not receive the file: ")+err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer r.MultipartForm.RemoveAll()
 	files := r.MultipartForm.File["file"]
 	if len(files) == 0 {
-		http.Error(w, "ファイルがありません", http.StatusBadRequest)
+		http.Error(w, tr("ファイルがありません", "No file"), http.StatusBadRequest)
 		return
 	}
 	if err := os.MkdirAll(s.uploadDir, 0o700); err != nil {
-		http.Error(w, "保存先を作れませんでした: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, tr("保存先を作れませんでした: ", "Could not create the upload directory: ")+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	saved := make([]uploadedFile, 0, len(files))
@@ -59,7 +59,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			log.Printf("アップロードを保存できませんでした（%s）: %v", fh.Filename, err)
-			http.Error(w, fh.Filename+" を保存できませんでした: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf(tr("%s を保存できませんでした: ", "Could not save %s: "), fh.Filename)+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		saved = append(saved, uploadedFile{Path: path, Name: filepath.Base(path)})
@@ -72,7 +72,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 // ImageMagick は HEIC を読めない環境があり、ffmpeg ならタイル分割された HEIC もつないで出せる。
 func convertToJPEG(src string) (string, error) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		return "", fmt.Errorf("%s は Claude Code が読めない形式で、変換に使う ffmpeg が見つかりません", filepath.Ext(src))
+		return "", fmt.Errorf(tr("%s は Claude Code が読めない形式で、変換に使う ffmpeg が見つかりません", "%s is not readable by Claude Code, and ffmpeg (used to convert it) was not found"), filepath.Ext(src))
 	}
 	dst := strings.TrimSuffix(src, filepath.Ext(src)) + ".jpg"
 	out, err := exec.Command("ffmpeg", "-v", "error", "-n", "-i", src, "-frames:v", "1", "-q:v", "2", dst).CombinedOutput()
@@ -81,7 +81,7 @@ func convertToJPEG(src string) (string, error) {
 		log.Printf("ffmpeg で %s を変換できませんでした: %v\n%s", src, err, out)
 		// 画面に出すのは最後の1行（原因の要約）だけにする。
 		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-		return "", fmt.Errorf("JPEG に変換できませんでした（%s）", lines[len(lines)-1])
+		return "", fmt.Errorf(tr("JPEG に変換できませんでした（%s）", "Could not convert to JPEG (%s)"), lines[len(lines)-1])
 	}
 	return dst, nil
 }
@@ -93,7 +93,7 @@ var uploadNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 func (s *server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if !uploadNamePattern.MatchString(name) || strings.Contains(name, "..") {
-		http.Error(w, "名前が正しくありません", http.StatusBadRequest)
+		http.Error(w, tr("名前が正しくありません", "Invalid name"), http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("Cache-Control", "private, max-age=3600")
@@ -130,7 +130,7 @@ func (s *server) saveUpload(fh *multipart.FileHeader) (string, error) {
 		}
 		return path, dst.Close()
 	}
-	return "", fmt.Errorf("同じ名前のファイルが多すぎます: %s", base)
+	return "", fmt.Errorf(tr("同じ名前のファイルが多すぎます: %s", "Too many files with the same name: %s"), base)
 }
 
 // 端末にそのまま打てる名前にする（英数字と . _ - 以外は _ に）。拡張子は残す。

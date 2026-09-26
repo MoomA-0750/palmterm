@@ -1,6 +1,7 @@
 // 入力欄モードの添付欄。選んだ画像をすぐアップロードし、サムネイルと × を並べる。
 // 送信のときに、アップロードが終わるのを待ってから、保存したパスを渡す。
 
+import { t } from "./i18n";
 import { icon } from "./icons";
 
 export interface UploadedFile {
@@ -15,7 +16,7 @@ export async function uploadFile(file: File): Promise<UploadedFile> {
   const res = await fetch("/api/upload", { method: "POST", body: form });
   if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
   const files: UploadedFile[] = (await res.json()).files;
-  if (!files?.[0]) throw new Error("サーバーの応答にファイルがありません");
+  if (!files?.[0]) throw new Error(t("noFileInResponse"));
   return files[0];
 }
 
@@ -65,7 +66,7 @@ export class Attachments {
     remove.type = "button";
     remove.className = "att-remove";
     remove.append(icon("close", 14));
-    remove.setAttribute("aria-label", `${file.name} を外す`);
+    remove.setAttribute("aria-label", t("removeAttachment", { name: file.name }));
     const badge = document.createElement("span");
     badge.className = "att-badge";
     el.append(img, badge, remove);
@@ -136,7 +137,7 @@ export class Attachments {
       item.el.dataset.status = item.status;
       const badge = item.el.querySelector(".att-badge")!;
       badge.textContent = item.status === "uploading" ? "…" : item.status === "error" ? "!" : "";
-      item.el.title = item.status === "error" ? `アップロードできませんでした: ${item.error}` : (item.uploaded?.path ?? "");
+      item.el.title = item.status === "error" ? t("attachmentError", { error: item.error ?? "" }) : (item.uploaded?.path ?? "");
     }
     this.bar.replaceChildren(...this.items.map((i) => i.el));
     this.onChange();

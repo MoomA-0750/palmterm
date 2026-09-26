@@ -1,6 +1,7 @@
 // tmux のウィンドウのタブバー（常に出す）と、キーバーの右端の tmux ボタンで開くペインの操作パネル。
 // 操作はサーバーが tmux のコマンドで直接行うので、プレフィックスキーの割り当てに左右されない。
 
+import { t } from "./i18n";
 import { icon, type IconName } from "./icons";
 
 interface TmuxWindow {
@@ -102,7 +103,7 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
         tab.className = w.active ? "tmux-tab active" : "tmux-tab";
         const name = makeBtn(
           `${w.index}:${w.name}`,
-          w.active ? `ウィンドウ ${w.index}（${w.name}）の名前を変える` : `ウィンドウ ${w.index}（${w.name}）へ`,
+          t(w.active ? "renameWindow" : "gotoWindow", { index: w.index, name: w.name }),
           // 今いるタブをもう一度押したら名前を変える。
           () => (w.active ? startRename(w, name) : run("select-window", w.index)),
           "tmux-tab-name",
@@ -116,8 +117,8 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
         }
         const x = makeBtn(
           { icon: "close", size: 14 },
-          `ウィンドウ ${w.index}（${w.name}）を閉じる`,
-          () => armOrFire(x, "閉じる?", () => run("kill-window", w.index)),
+          t("closeWindow", { index: w.index, name: w.name }),
+          () => armOrFire(x, t("closeConfirm"), () => run("kill-window", w.index)),
           "tmux-tab-close",
         );
         tab.append(name, x);
@@ -149,7 +150,7 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
     const input = document.createElement("input");
     input.className = "tmux-tab-input";
     input.value = w.name;
-    input.setAttribute("aria-label", `ウィンドウ ${w.index} の新しい名前（空なら自動の名前）`);
+    input.setAttribute("aria-label", t("newName", { index: w.index }));
     input.enterKeyHint = "done";
     input.autocapitalize = "off";
     input.autocomplete = "off";
@@ -220,9 +221,9 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
   };
   const act = (label: Label, title: string, action: string) => makeBtn(label, title, () => run(action));
 
-  const zoomBtn = act({ icon: "maximize", text: "拡大" }, "ペインを拡大 / 戻す", "zoom");
-  const killBtn = makeBtn({ icon: "close", text: "閉じる" }, "ペインを閉じる", () =>
-    armOrFire(killBtn, "もう一度で閉じる", () => run("kill-pane")),
+  const zoomBtn = act({ icon: "maximize", text: t("zoom") }, t("zoomTitle"), "zoom");
+  const killBtn = makeBtn({ icon: "close", text: t("close") }, t("closePane"), () =>
+    armOrFire(killBtn, t("closePaneConfirm"), () => run("kill-pane")),
   );
 
   // 文字サイズは押してもパネルを閉じない（続けて押して合わせる）。
@@ -237,29 +238,34 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
 
   panel.append(
     row(
-      "分割",
-      act({ icon: "splitH", text: "左右" }, "左右に分割", "split-h"),
-      act({ icon: "splitV", text: "上下" }, "上下に分割", "split-v"),
+      t("rowSplit"),
+      act({ icon: "splitH", text: t("splitH") }, t("splitHTitle"), "split-h"),
+      act({ icon: "splitV", text: t("splitV") }, t("splitVTitle"), "split-v"),
       zoomBtn,
       killBtn,
     ),
     row(
-      "ペイン",
-      act({ icon: "left" }, "左のペインへ", "pane-left"),
-      act({ icon: "down" }, "下のペインへ", "pane-down"),
-      act({ icon: "up" }, "上のペインへ", "pane-up"),
-      act({ icon: "right" }, "右のペインへ", "pane-right"),
-      act({ icon: "cycle", text: "次" }, "次のペインへ", "pane-next"),
+      t("rowPane"),
+      act({ icon: "left" }, t("paneLeft"), "pane-left"),
+      act({ icon: "down" }, t("paneDown"), "pane-down"),
+      act({ icon: "up" }, t("paneUp"), "pane-up"),
+      act({ icon: "right" }, t("paneRight"), "pane-right"),
+      act({ icon: "cycle", text: t("paneNext") }, t("paneNextTitle"), "pane-next"),
     ),
     row(
-      "その他",
-      act("コピーモード", "tmux のコピーモード", "copy-mode"),
-      makeBtn("Ctrl+B", "tmux のプレフィックスを送る（続けてキーを押す）", () => {
+      t("rowOther"),
+      act(t("copyMode"), t("copyModeTitle"), "copy-mode"),
+      makeBtn("Ctrl+B", t("prefixTitle"), () => {
         close();
         opts.sendPrefix();
       }),
     ),
-    row("文字", sizeBtn({ icon: "textSmaller" }, "文字を小さく", -1), sizeLabel, sizeBtn({ icon: "textLarger" }, "文字を大きく", 1)),
+    row(
+      t("rowText"),
+      sizeBtn({ icon: "textSmaller" }, t("textSmaller"), -1),
+      sizeLabel,
+      sizeBtn({ icon: "textLarger" }, t("textLarger"), 1),
+    ),
   );
 
   async function run(action: string, window?: number, extra: Record<string, string | number> = {}) {
@@ -273,7 +279,7 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
       if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
       setWindows((await res.json()).windows ?? []);
     } catch (e) {
-      opts.toast(`tmux の操作ができませんでした（${e instanceof Error ? e.message : e}）`);
+      opts.toast(t("tmuxFailed", { error: e instanceof Error ? e.message : String(e) }));
     }
   }
 
