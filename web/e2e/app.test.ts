@@ -284,6 +284,33 @@ text = ":wq"
   });
 });
 
+describe("貼り付けボタン", () => {
+  async function setClipboard(text: string) {
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
+    await page.evaluate((t) => navigator.clipboard.writeText(t), text);
+  }
+
+  it("端末に打っているときは端末へ。中に終わりの印を仕込まれても貼り付けから抜け出せない", async () => {
+    // 抜け出せてしまうと、続くコマンド（ここでは何もしない ":"）が実行される
+    await setClipboard("echo safe\x1b[201~\r: injected\r");
+    await page.mouse.click(200, 150); // 端末に入力している
+    await clearSent();
+    await page.locator("#paste").click();
+    await waitUntil("貼り付けを送る", async () => (await sent()).length === 1);
+    const [seq] = await sent();
+    // tmux はブラケットペーストを有効にしている。印は最初と最後の1組だけ
+    expect(seq).toBe("\x1b[200~echo safe[201~\r: injected\r\x1b[201~");
+  });
+
+  it("テキストボックスに入力しているときはテキストボックスへ", async () => {
+    await setClipboard("hello\nworld");
+    await page.locator("#line").click();
+    await page.locator("#paste").click();
+    await waitUntil("入る", async () => (await page.inputValue("#line")) === "hello\nworld");
+    expect(await sent()).toEqual([]);
+  });
+});
+
 describe("画像とコピー", () => {
   it("テキストボックスで添付した画像は、送信で先にパスを貼ってから文章と Enter を送る", async () => {
     await page.locator("#line").fill("look");
@@ -394,7 +421,7 @@ describe("タッチ操作", () => {
 });
 
 describe("LAN（HTTPS）", () => {
-  it("自分で署名した証明書の HTTPS でログインでき、端末につながり、貼り付けも使える", async () => {
+  it("自分で署名した証明書の HTTPS でログインでき、端末につながり、クリップボードを読める安全な接続になる", async () => {
     const context = await browser.newContext({ viewport: { width: 400, height: 760 }, ignoreHTTPSErrors: true });
     try {
       const lan = await context.newPage();

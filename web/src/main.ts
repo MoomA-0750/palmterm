@@ -9,6 +9,7 @@ import { icon } from "./icons";
 import { DEFAULT_KEYS, type KeyButton, type KeyConfig, parseKey } from "./keyconfig";
 import { applyToChar, isSingleChar, Modifiers, type ModName, specialKey, withMods } from "./keys";
 import { setupNerdIcons } from "./nerd";
+import { pasteSequence } from "./paste";
 import { SoftKeyboard } from "./softkeyboard";
 import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
@@ -160,8 +161,7 @@ function appCursor(): boolean {
 }
 
 function bracketedPaste(text: string): string {
-  const body = text.replace(/\r?\n/g, "\r");
-  return term.bridge?.bracketedPaste() ? `\x1b[200~${body}\x1b[201~` : body;
+  return pasteSequence(text, term.bridge?.bracketedPaste() ?? false);
 }
 
 // ---- 入力 ----
