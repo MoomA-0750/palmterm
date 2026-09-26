@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -150,5 +152,31 @@ func TestConfigErrorsFallBackToDefaults(t *testing.T) {
 	writeConfig(t, "langage = \"ja\"\n")
 	if c := getConfig(t, s); !strings.Contains(c.Error, "langage") {
 		t.Fatalf("間違えた項目名が知らせにありません: %q", c.Error)
+	}
+}
+
+// 手で作ったなどでほかの人が読める権限になっているトークンのファイルは、読むときに 0600 に直す。
+func TestLoadTokenFixesLoosePermissions(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	path := filepath.Join(dir, "palmterm", "token")
+	os.MkdirAll(filepath.Dir(path), 0o700)
+	os.WriteFile(path, []byte("handmade\n"), 0o644)
+	os.Chmod(path, 0o644)
+	tok, err := loadOrCreateToken()
+	if err != nil || tok != "handmade" {
+		t.Fatalf("tok=%q err=%v", tok, err)
+	}
+	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+		t.Fatalf("権限: %v", info.Mode().Perm())
+	}
+}
+
+func TestValidTokenAcceptsOnlyTheToken(t *testing.T) {
+	s := newTestServer(t)
+	for tok, want := range map[string]bool{testToken: true, "": false, "testtoke": false, testToken + "x": false, strings.ToUpper(testToken): false} {
+		if s.validToken(tok) != want {
+			t.Errorf("%q", tok)
+		}
 	}
 }

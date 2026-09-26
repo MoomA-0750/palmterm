@@ -44,8 +44,10 @@ func (s *server) requireAuth(next http.Handler) http.Handler {
 	})
 }
 
+// トークンが合っているか。長さの違いも時間から分からないよう、ハッシュにして同じ長さにしてから比べる。
 func (s *server) validToken(t string) bool {
-	return t != "" && subtle.ConstantTimeCompare([]byte(t), []byte(s.token)) == 1
+	got, want := sha256.Sum256([]byte(t)), sha256.Sum256([]byte(s.token))
+	return t != "" && subtle.ConstantTimeCompare(got[:], want[:]) == 1
 }
 
 // Cookie に入れる値（トークンから計算する。トークンを変えれば全端末の Cookie も無効になる）。

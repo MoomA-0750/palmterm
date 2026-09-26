@@ -157,6 +157,12 @@ func loadOrCreateToken() (string, error) {
 	path := filepath.Join(dir, "palmterm", "token")
 	if b, err := os.ReadFile(path); err == nil {
 		if t := strings.TrimSpace(string(b)); t != "" {
+			// 手で作ったなどで、ほかの人が読める権限になっていたら直す。
+			if info, err := os.Stat(path); err == nil && info.Mode().Perm()&0o077 != 0 {
+				if err := os.Chmod(path, 0o600); err != nil {
+					return "", err
+				}
+			}
 			return t, nil
 		}
 	} else if !errors.Is(err, fs.ErrNotExist) {
