@@ -149,13 +149,19 @@ describe("keySequenceWithMods（物理キーボードの特殊キーに画面の
     ["\r", ["alt"], false, "\x1b\r"],
     ["\x7f", ["ctrl"], false, "\b"],
     ["\x1b", ["alt"], false, "\x1b\x1b"],
+    // 物理キーボードで修飾済みのキーには、画面の修飾キーを足す
+    ["\x1b[1;2A", ["ctrl"], false, "\x1b[1;6A"],
+    ["\x1b[1;5A", ["ctrl"], false, "\x1b[1;5A"],
+    ["\x1b[1;3P", ["shift"], false, "\x1b[1;4P"],
+    ["\x1b[3;2~", ["ctrl"], false, "\x1b[3;6~"],
+    ["\x1b[Z", ["alt"], false, "\x1b\x1b[Z"],
   ] as [string, ModName[], boolean, string][])("%j + %j", (seq, mods, app, want) => {
     expect(keySequenceWithMods(seq, fixed(...mods), app)).toBe(want);
   });
 
   it.each([
-    "\x1b[1;5A", // 物理キーボードで修飾済み
     "\x1b[12;40R", // カーソル位置の答え
+    "\x1b[1;5R", // 1 行目のカーソル位置の答え（修飾つきの F3 と同じ形なので、F3 とはみなさない）
     "\x1b[?1;2c", // 端末の種類の答え
     "\x1b[4;542;376t", // 画面の大きさの答え
     "\x1b[<0;10;5M", // マウス

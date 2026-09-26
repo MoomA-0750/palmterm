@@ -158,11 +158,41 @@ const KEY_SEQUENCES: Record<string, SpecialKey> = {
 };
 for (const [key, code] of Object.entries(tildeCode)) KEY_SEQUENCES[`\x1b[${code}~`] = key as SpecialKey;
 
+// 修飾つきの形：ESC [ 1 ; 修飾 X（矢印・Home/End・F1〜F4）と ESC [ 番号 ; 修飾 ~。修飾は 1 + Shift 1 + Alt 2 + Ctrl 4。
+// F3 の ESC [ 1 ; 修飾 R は、端末が返すカーソル位置の答え（1 行目）と同じ形なので、キーとはみなさない。
+const CSI_FINAL: Record<string, SpecialKey> = {
+  A: "up", B: "down", C: "right", D: "left", H: "home", F: "end", P: "f1", Q: "f2", S: "f4",
+};
+
+/** キーの信号を、特殊キーと物理キーボード側の修飾キーに分ける。キーの信号でなければ null。 */
+function parseKeySequence(data: string): { key: SpecialKey; mods: ModName[] } | null {
+  const plain = KEY_SEQUENCES[data];
+  if (plain) return { key: plain, mods: [] };
+  if (data === "\x1b[Z") return { key: "tab", mods: ["shift"] };
+  let key: SpecialKey | undefined;
+  let param = 0;
+  let m = /^\x1b\[1;(\d+)([ABCDHFPQS])$/.exec(data);
+  if (m) {
+    key = CSI_FINAL[m[2]];
+    param = Number(m[1]);
+  } else if ((m = /^\x1b\[(\d+);(\d+)~$/.exec(data))) {
+    key = KEY_SEQUENCES[`\x1b[${m[1]}~`];
+    param = Number(m[2]);
+  }
+  if (!key || param < 1) return null;
+  const bits = param - 1;
+  const mods: ModName[] = [];
+  if (bits & 1) mods.push("shift");
+  if (bits & 2) mods.push("alt");
+  if (bits & 4) mods.push("ctrl");
+  return { key, mods };
+}
+
 /**
- * 物理キーボードの特殊キー（矢印など）の信号に、画面の修飾キーを効かせた信号。キーの信号でなければ null
- * （端末が自分で返す答えやマウスの信号には効かせない）。
+ * 物理キーボードの特殊キー（矢印など）の信号に、画面の修飾キーを足した信号。キーの信号でなければ null
+ * （端末が自分で返す答えやマウスの信号には効かせない）。物理キーボード側で修飾していれば、両方を合わせる。
  */
 export function keySequenceWithMods(data: string, mods: ModSet, appCursor: boolean): string | null {
-  const key = KEY_SEQUENCES[data];
-  return key ? specialKey(key, mods, appCursor) : null;
+  const parsed = parseKeySequence(data);
+  return parsed ? specialKey(parsed.key, withMods(mods, parsed.mods), appCursor) : null;
 }
