@@ -83,3 +83,10 @@ label = ":wq"
 make dev   # Go のサーバー（7681）と Vite（5173）を起動する。
            # 最初に http://localhost:5173/auth?token=… を開く
 ```
+
+```sh
+make test  # Go のテスト、画面の単体テスト（vitest）、ブラウザでの通しのテスト（playwright-core + chromium）
+```
+
+- tmux を使うテストは、テスト専用の tmux サーバー（`TMUX_TMPDIR` を分け、シェルは `/bin/sh`）で動かすので、ふだんのセッションには触れない。
+- 通しのテストは `/usr/bin/chromium` を使う（`CHROMIUM=…` で変えられる）。
