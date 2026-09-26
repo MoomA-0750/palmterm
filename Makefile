@@ -11,3 +11,10 @@ web/node_modules: web/package.json
 # 開発用：Go のサーバーを 7681 で動かし、Vite（5173）から中継する。
 dev: palmterm
 	./palmterm -allow-origin 'localhost:5173,*:5173' & cd web && npm run dev
+
+.PHONY: test
+# テスト：Go（tmux はテスト専用のサーバーを使う）、画面の単体テスト、実際のブラウザでの通しのテスト。
+# 通しのテストは chromium を使う（場所は CHROMIUM で変えられる。既定は /usr/bin/chromium）。
+test: palmterm
+	go test ./...
+	cd web && npm test && npm run test:e2e

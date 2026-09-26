@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 
 // 開発時は Go のサーバー（127.0.0.1:7681）へ /ws・/api・/auth を中継する。
 // Go 側は -allow-origin で Vite の Origin を許しておく。
@@ -13,4 +13,6 @@ export default defineConfig({
       "/auth": backend,
     },
   },
+  // ブラウザを動かす通しのテスト（e2e）は1つずつ時間がかかる。
+  test: { testTimeout: 20_000, hookTimeout: 30_000 },
 });
