@@ -9,6 +9,7 @@ import { icon } from "./icons";
 import { DEFAULT_KEYS, type KeyButton, type KeyConfig, parseKey } from "./keyconfig";
 import { applyToChar, isSingleChar, Modifiers, type ModName, specialKey, withMods } from "./keys";
 import { setupNerdIcons } from "./nerd";
+import { SoftKeyboard } from "./softkeyboard";
 import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
 
@@ -100,7 +101,16 @@ setFontSize(Number(loadSetting("fontSize", "13")) || 13, false);
 // 画面の端（ナビゲーションバーの裏）までは描かない（viewport-fit=cover にしない）。Android の Chromium 系では、
 // そうするとキーボードを出したときの高さがバーの分だけ大きく報告され、下の段がキーボードに潜る。
 // ブラウザが入力欄を見せるために見えている範囲をずらしたときも、その位置（offsetTop）に合わせる。
+const softKeyboard = new SoftKeyboard();
+
+/** ソフトキーボードが出ていそうか。 */
+function keyboardVisible(): boolean {
+  const vv = window.visualViewport;
+  return softKeyboard.visible(vv?.width ?? window.innerWidth, vv?.height ?? window.innerHeight);
+}
+
 function fitViewport() {
+  keyboardVisible(); // キーボードが出ていないときの高さを覚えておく
   const vv = window.visualViewport;
   const h = vv?.height ?? window.innerHeight;
   const root = document.documentElement.style;
@@ -380,7 +390,9 @@ mods.onChange = () => {
 };
 
 /**
- * キーバーのボタン。押してもフォーカスを奪わない（ソフトキーボードを閉じない）。
+ * キーバーのボタン。押してもフォーカスを奪わない（出ているソフトキーボードを閉じない）。
+ * ただし、キーボードが出ていないときに指で押したら、入力欄のフォーカスを外す。入力欄にフォーカスが
+ * 残ったままタップすると、ブラウザがキーボードを出してしまうため。
  * repeat のものは押し続けると繰り返す。横にスクロールしたときは押したことにしない。
  */
 function bindKeyButton(btn: HTMLButtonElement, fire: () => void, repeat: boolean) {
@@ -394,6 +406,7 @@ function bindKeyButton(btn: HTMLButtonElement, fire: () => void, repeat: boolean
   };
   btn.addEventListener("pointerdown", (e) => {
     e.preventDefault();
+    if (e.pointerType === "touch" && !keyboardVisible()) (document.activeElement as HTMLElement | null)?.blur();
     startX = e.clientX;
     fired = false;
     moved = false;

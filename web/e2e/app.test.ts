@@ -345,6 +345,37 @@ describe("タッチ操作", () => {
     await page.evaluate(() => localStorage.removeItem("palmterm.fontSize"));
   });
 
+  async function tapKey(label: string) {
+    const box = (await key(label).boundingBox())!;
+    const at: [number, number] = [box.x + box.width / 2, box.y + box.height / 2];
+    await touch("touchStart", [at]);
+    await touch("touchEnd", []);
+  }
+  const focused = () => page.evaluate(() => (document.activeElement?.closest("#term") ? "term" : document.activeElement?.id || document.activeElement?.tagName));
+
+  it("キーボードが出ていないときにキーバーを指で押しても、キーボードを出さない（入力欄のフォーカスを外す）", async () => {
+    expect(await focused()).toBe("term"); // wterm は起動時に自分の入力欄にフォーカスする
+    await tapKey("Ctrl");
+    expect(await focused()).toBe("BODY");
+    expect(await key("Ctrl").getAttribute("data-state")).toBe("once");
+    await tapKey("Esc");
+    expect(await sent()).toEqual(["\x1b"]);
+  });
+
+  it("キーボードが出ているときは、キーバーを押してもフォーカスを残す（キーボードを閉じない）", async () => {
+    await page.locator("#line").focus();
+    await page.setViewportSize({ width: 400, height: 400 }); // キーボードが出て画面が縮んだ
+    try {
+      // 下の段が新しい高さに収まるまで待つ
+      await waitUntil("縮んだ画面に収まる", async () => ((await page.locator("#inputbar").boundingBox())?.y ?? 999) < 400);
+      await tapKey("Esc");
+      expect(await focused()).toBe("line");
+      expect(await sent()).toEqual(["\x1b"]);
+    } finally {
+      await page.setViewportSize({ width: 400, height: 760 });
+    }
+  });
+
   it("シェルの上で下へスワイプすると tmux の履歴をさかのぼる", async () => {
     await page.evaluate(() => localStorage.removeItem("palmterm.fontSize"));
     await openPage();
