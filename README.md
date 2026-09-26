@@ -119,9 +119,11 @@ tailscale serve --bg 7681
 ./palmterm -lan :7682
 ```
 
-palmterm prints `https://<LAN address>:7682/auth?token=…` for each LAN address. It uses a self-signed
-certificate that it creates in `~/.config/palmterm/` (and recreates when the PC's IP addresses change),
-so the browser warns you the first time — choose “Advanced” and proceed. The LAN side uses HTTPS so the
+palmterm listens on each of the PC's LAN IPv4 addresses (and its Tailscale address) and prints
+`https://<address>:7682/auth?token=…` for each. Give an address instead (`-lan 192.168.1.5:7682`) to
+listen on that one only. It uses a self-signed certificate that it creates in `~/.config/palmterm/`
+(recreated when a new IP address appears, keeping the old ones), so the browser warns you the first
+time — choose “Advanced” and proceed. The LAN side uses HTTPS so the
 token is not sent in clear text and the paste button works.
 
 ### Options
@@ -178,12 +180,18 @@ Mistakes (unknown fields, keys or icons) are reported when the page opens; every
 Whoever logs in to palmterm gets **a shell on your machine**. Keep it private.
 
 - There is a single token, stored in `~/.config/palmterm/token` (mode 0600). It survives restarts.
-- `/auth?token=…` sets an HttpOnly, SameSite=Lax cookie valid for a year (Secure over HTTPS). Every
-  page, API call and the WebSocket require it, and the WebSocket also checks the Origin.
-- The token is compared in constant time. There is no logout or per-device revocation: to log every
-  device out, delete the token file (or pass a new `-token`) and restart.
-- By default palmterm only listens on 127.0.0.1. Do not expose it to the internet; use Tailscale or
-  your LAN.
+  The login URL containing it is printed at startup, so it also ends up in logs such as the journal.
+- `/auth?token=…` sets an HttpOnly, SameSite=Lax cookie valid for a year (Secure over HTTPS). The cookie
+  holds a value derived from the token (HMAC-SHA256), not the token itself. Every page, API call and the
+  WebSocket require it, and the WebSocket also checks the Origin.
+- Browsers send cookies to every port of the same host name, so other services you open on the same
+  host (for example a dev server on another port of `127.0.0.1`) receive the cookie too. It lets them
+  use palmterm as you, but not log in from another device.
+- Comparisons are constant-time. There is no logout or per-device revocation: to log every device out,
+  delete the token file (or pass a new `-token`) and restart.
+- By default palmterm only listens on 127.0.0.1. `-lan :7682` listens only on the PC's LAN (and
+  Tailscale) IPv4 addresses, not on every interface. Do not expose palmterm to the internet.
+- Uploaded files are served with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`.
 
 ## Development
 
