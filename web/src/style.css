@@ -16,7 +16,7 @@ body {
   overflow: hidden;
   background: var(--bg);
   color: var(--btn-fg);
-  font-family: system-ui, sans-serif;
+  font-family: var(--mono-font); /* ボタンや入力欄も端末と同じ JetBrains Mono にそろえる */
   overscroll-behavior: none;
 }
 
@@ -81,12 +81,14 @@ button:active {
   touch-action: pan-x;
 }
 
+/* キーはどれも同じ幅（一番長い「Shift」が収まる幅）にそろえる。 */
 #keybar button {
   flex: none;
-  min-width: 40px;
+  width: 48px;
   height: 36px;
-  padding: 0 8px;
+  padding: 0;
   font-size: 14px;
+  white-space: nowrap;
 }
 
 /* tmux のボタン：キーバーを横にスクロールしても右端に残る。 */
