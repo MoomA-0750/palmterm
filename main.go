@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -31,6 +32,7 @@ type server struct {
 	clients   clientSet // つながっている画面（ブラウザで開く URL を届ける先）
 	// tmux の BROWSER に入れる palmterm-open のパス（空なら渡さない）
 	openCommand string
+	terminals   sync.WaitGroup // 動いている端末の中継（テストで終わりを待つ）
 }
 
 var sessionNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)

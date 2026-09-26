@@ -18,8 +18,21 @@ func newTestServer(t *testing.T) *server {
 	t.Helper()
 	dir := t.TempDir()
 	settings = newConfigStore(filepath.Join(dir, "config.toml"))
-	t.Cleanup(func() { settings = nil })
-	return &server{token: testToken, session: "t1", uploadDir: filepath.Join(dir, "uploads")}
+	s := &server{token: testToken, session: "t1", uploadDir: filepath.Join(dir, "uploads")}
+	t.Cleanup(func() {
+		settings = nil
+		// 端末の中継が終わるのを待ってから、環境変数（TMUX_TMPDIR など）を戻す。待たないと、テストがすぐに
+		// 失敗したときに、まだ動いている中継が tmux のコマンドを、ふだん使っている tmux に向けて実行してしまう
+		// （isolateTmux より後に作るので、この後片付けが先に走る）。
+		done := make(chan struct{})
+		go func() { s.terminals.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Error("端末の中継が終わりません")
+		}
+	})
+	return s
 }
 
 var configWrites int

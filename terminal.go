@@ -26,6 +26,8 @@ type controlMessage struct {
 
 // 接続ごとに tmux のクライアントを1つ起動する。切断してもセッションは tmux に残る。
 func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
+	s.terminals.Add(1)
+	defer s.terminals.Done()
 	session := s.session
 	size := &pty.Winsize{Cols: queryUint16(r, "cols", 80), Rows: queryUint16(r, "rows", 24)}
 
