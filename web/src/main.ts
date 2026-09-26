@@ -87,7 +87,8 @@ function bracketedPaste(text: string): string {
 }
 
 // ---- 入力のモード ----
-// line: 下の入力欄で編集してから送る（OS のカーソル移動・IME・予測変換が使える）
+// line: 下の入力欄で編集してから送る（OS のカーソル移動・IME・予測変換が使える）。
+//       Enter は改行で、送信ボタンか Ctrl+Enter で送る（Claude Code への複数行の指示など）
 // direct: 1文字ずつすぐ送る（vim や TUI 向け）。既定はこちら。
 // 保存の名前は既定を line から direct に変えたときに inputMode へ改めた（前の保存を引き継がないため）。
 
@@ -109,7 +110,7 @@ function setMode(next: InputMode, focus = true) {
 
 function autosizeLine() {
   line.style.height = "auto";
-  line.style.height = `${Math.min(line.scrollHeight, 120)}px`;
+  line.style.height = `${Math.min(line.scrollHeight, 200)}px`;
 }
 
 /** 入力欄の文字を送る。withEnter が false なら Enter を付けない（Tab 補完の前など）。 */
@@ -130,8 +131,10 @@ line.addEventListener("beforeinput", (e) => {
     mods.consume();
     return;
   }
-  if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") {
+  // Enter は改行。キーバーの Ctrl を押してからの Enter は送信（ソフトキーボード用）。
+  if ((e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") && mods.has("ctrl")) {
     e.preventDefault();
+    mods.consume();
     flushLine(true);
     return;
   }
@@ -143,8 +146,10 @@ line.addEventListener("beforeinput", (e) => {
 });
 line.addEventListener("keydown", (e) => {
   if (e.isComposing) return;
-  if (e.key === "Enter" && !e.shiftKey) {
+  // Ctrl+Enter（Mac は ⌘+Enter も）で送信。ただの Enter は改行。
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey || mods.has("ctrl"))) {
     e.preventDefault();
+    if (mods.has("ctrl")) mods.consume();
     flushLine(true);
   } else if (e.key === "Backspace" && line.value === "") {
     e.preventDefault();
