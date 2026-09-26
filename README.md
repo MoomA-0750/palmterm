@@ -119,7 +119,7 @@ tailscale serve --bg 7681
 ./palmterm -lan :7682
 ```
 
-palmterm listens on each of the PC's LAN IPv4 addresses (and its Tailscale address) and prints
+palmterm listens on each of the PC's private LAN IPv4 addresses (and its Tailscale address) and prints
 `https://<address>:7682/auth?token=…` for each. Give an address instead (`-lan 192.168.1.5:7682`) to
 listen on that one only. It uses a self-signed certificate that it creates in `~/.config/palmterm/`
 (recreated when a new IP address appears, keeping the old ones), so the browser warns you the first
@@ -179,18 +179,20 @@ Mistakes (unknown fields, keys or icons) are reported when the page opens; every
 
 Whoever logs in to palmterm gets **a shell on your machine**. Keep it private.
 
-- There is a single token, stored in `~/.config/palmterm/token` (mode 0600). It survives restarts.
+- There is a single token, stored in `~/.config/palmterm/token` (mode 0600, fixed on startup if looser).
+  It survives restarts.
   The login URL containing it is printed at startup, so it also ends up in logs such as the journal.
 - `/auth?token=…` sets an HttpOnly, SameSite=Lax cookie valid for a year (Secure over HTTPS). The cookie
   holds a value derived from the token (HMAC-SHA256), not the token itself. Every page, API call and the
   WebSocket require it, and the WebSocket also checks the Origin.
 - Browsers send cookies to every port of the same host name, so other services you open on the same
-  host (for example a dev server on another port of `127.0.0.1`) receive the cookie too. It lets them
-  use palmterm as you, but not log in from another device.
+  host (for example a dev server on another port of `127.0.0.1`) receive the cookie too. A leaked cookie
+  can be reused — from any device — until the token changes; it only does not reveal the token itself.
 - Comparisons are constant-time. There is no logout or per-device revocation: to log every device out,
   delete the token file (or pass a new `-token`) and restart.
-- By default palmterm only listens on 127.0.0.1. `-lan :7682` listens only on the PC's LAN (and
-  Tailscale) IPv4 addresses, not on every interface. Do not expose palmterm to the internet.
+- By default palmterm only listens on 127.0.0.1. `-lan :7682` listens only on the PC's private
+  (RFC 1918), link-local and Tailscale (100.64.0.0/10) IPv4 addresses, not on every interface; give an
+  address to listen elsewhere. Do not expose palmterm to the internet.
 - Uploaded files are served with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`.
 
 ## Development
