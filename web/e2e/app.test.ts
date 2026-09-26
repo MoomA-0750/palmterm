@@ -271,6 +271,11 @@ describe("tmux のタブとパネル", () => {
     await waitUntil("1つになる", () => tmux("list-windows", "-t", SESSION).split("\n").length === 1);
   });
 
+  it("palmterm の外で作ったウィンドウや付けた名前も、出力をきっかけにタブに映る", async () => {
+    tmux("new-window", "-t", SESSION, "-n", "outside");
+    await waitUntil("タブに映る", async () => (await page.locator(".tmux-tab").allTextContents()).some((t) => t.includes("1:outside")));
+  });
+
   it("パネルで分割し、端末をタップしたペインに移り、文字サイズを変える", async () => {
     await page.locator("#tmux-btn").click();
     expect(await page.locator("#tmuxpanel").isVisible()).toBe(true);

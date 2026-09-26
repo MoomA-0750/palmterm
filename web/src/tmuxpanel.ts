@@ -3,6 +3,7 @@
 
 import { t } from "./i18n";
 import { icon, type IconName } from "./icons";
+import { Refresher } from "./refresher";
 
 interface TmuxWindow {
   index: number;
@@ -30,11 +31,6 @@ export interface TmuxPanelOptions {
 
 // 押したあともパネルを開いたままにする操作（続けて何回か押すもの）。
 const KEEP_OPEN = new Set(["pane-left", "pane-right", "pane-up", "pane-down", "pane-next"]);
-
-// 端末に何か出力があったら、少し待ってからタブを取り直す（キーで作ったウィンドウや名前の変化を映す）。
-// 出力が続いている間も、この間隔より頻繁には問い合わせない。
-const REFRESH_DELAY_MS = 250;
-const REFRESH_MIN_INTERVAL_MS = 1000;
 
 // 閉じるボタンは、間違えて押しても消えないよう、2回目で閉じる。1回目から戻るまでの時間。
 const ARM_MS = 3000;
@@ -133,12 +129,14 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
     zoomBtn.classList.toggle("on", !!active?.zoomed);
   }
 
-  function setWindows(list: TmuxWindow[]) {
+  /** 変わっていたら描き直して true。 */
+  function setWindows(list: TmuxWindow[]): boolean {
     const json = JSON.stringify(list);
-    if (json === lastJson) return; // 変わっていなければ描き直さない（押しかけの × を戻さない）
+    if (json === lastJson) return false; // 変わっていなければ描き直さない（押しかけの × を戻さない）
     lastJson = json;
     windows = list;
     if (!renaming) renderTabs(); // 名前を入力している間は描き直さない（終わったら描く）
+    return true;
   }
 
   let renaming = false;
@@ -180,33 +178,24 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
     input.select();
   }
 
-  let refreshTimer: number | undefined;
-  let lastRefresh = 0;
-  let refreshing = false;
-
-  async function refresh() {
-    if (refreshing) return;
-    refreshing = true;
-    lastRefresh = performance.now();
+  // 端末に出力があったら、少し待ってからタブを取り直す（キーで作ったウィンドウや名前の変化を映す）。
+  const refresher = new Refresher(async () => {
     try {
       const res = await fetch("/api/windows", { cache: "no-store" });
-      if (res.ok) setWindows((await res.json()).windows ?? []);
+      return res.ok && setWindows((await res.json()).windows ?? []);
     } catch {
-      // つながっていないときは前のタブのままにする（つなぎ直したら取り直す）。
-    } finally {
-      refreshing = false;
+      return false; // つながっていないときは前のタブのままにする（つなぎ直したら取り直す）
     }
-  }
+  });
+  const refresh = () => refresher.refresh();
 
-  /** 端末に出力があったときに呼ぶ。 */
+  /** 端末に出力があったときに呼ぶ。画面を裏に回している間は取り直さない（表に戻ったら取り直す）。 */
   function outputSeen() {
-    if (refreshTimer !== undefined) return;
-    const wait = Math.max(REFRESH_DELAY_MS, lastRefresh + REFRESH_MIN_INTERVAL_MS - performance.now());
-    refreshTimer = window.setTimeout(() => {
-      refreshTimer = undefined;
-      refresh();
-    }, wait);
+    if (!document.hidden) refresher.outputSeen();
   }
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) void refresh();
+  });
 
   // ---- ペインの操作パネル ----
 
@@ -270,6 +259,7 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
 
   async function run(action: string, window?: number, extra: Record<string, string | number> = {}) {
     if (!KEEP_OPEN.has(action)) close();
+    refresher.reset(); // 操作のあとは変化がありそうなので、間隔を最短に戻す
     try {
       const res = await fetch("/api/tmux", {
         method: "POST",
