@@ -53,6 +53,30 @@ func TestLANCertificateIsCreatedReusedAndRenewedForNewAddresses(t *testing.T) {
 	}
 }
 
+// 作り直すときは前のアドレスも引き継ぐ。家と職場を行き来しても、2回目からは作り直さない（警告も出ない）。
+func TestLANCertificateKeepsPreviousAddresses(t *testing.T) {
+	dir := t.TempDir()
+	home, work := net.ParseIP("192.0.2.10"), net.ParseIP("198.51.100.20")
+	if _, err := lanCertificate(dir, []net.IP{home}, "h"); err != nil {
+		t.Fatal(err)
+	}
+	c2, err := lanCertificate(dir, []net.IP{work}, "h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, _ := x509.ParseCertificate(c2.Certificate[0])
+	if leaf.VerifyHostname("192.0.2.10") != nil || leaf.VerifyHostname("198.51.100.20") != nil {
+		t.Fatalf("前のアドレスを引き継いでいません: %v", leaf.IPAddresses)
+	}
+	c3, err := lanCertificate(dir, []net.IP{home}, "h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(c3.Certificate[0]) != string(c2.Certificate[0]) {
+		t.Fatal("家に戻っただけで作り直しました")
+	}
+}
+
 func TestLANURLs(t *testing.T) {
 	ips := []net.IP{net.ParseIP("192.0.2.10"), net.ParseIP("198.51.100.2")}
 	got := lanURLs(":7682", ips, "tok")

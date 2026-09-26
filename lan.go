@@ -31,13 +31,28 @@ const (
 )
 
 // dir の証明書を読む。無い・期限が近い・ips を含まないときは作り直して保存する。
+// 作り直すときは、前の証明書のアドレスも引き継ぐ（家と職場のように行き来しても、2回目からは作り直さない）。
 func lanCertificate(dir string, ips []net.IP, host string) (tls.Certificate, error) {
 	certPath, keyPath := filepath.Join(dir, lanCertFile), filepath.Join(dir, lanKeyFile)
-	if cert, err := tls.LoadX509KeyPair(certPath, keyPath); err == nil && certCovers(cert.Leaf, ips) {
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err == nil && certCovers(cert.Leaf, ips) {
 		return cert, nil
 	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return tls.Certificate{}, fmt.Errorf("%s を読めませんでした: %w", certPath, err)
 	}
+	var addrs []net.IP
+	add := func(ips ...net.IP) {
+		for _, ip := range ips {
+			if !slices.ContainsFunc(addrs, ip.Equal) {
+				addrs = append(addrs, ip)
+			}
+		}
+	}
+	add(net.IPv4(127, 0, 0, 1))
+	if err == nil && cert.Leaf != nil {
+		add(cert.Leaf.IPAddresses...)
+	}
+	add(ips...)
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -56,7 +71,7 @@ func lanCertificate(dir string, ips []net.IP, host string) (tls.Certificate, err
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-		IPAddresses:           append([]net.IP{net.IPv4(127, 0, 0, 1)}, ips...),
+		IPAddresses:           addrs,
 		DNSNames:              []string{"localhost", host},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
