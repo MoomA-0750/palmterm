@@ -97,7 +97,7 @@ func TestLANListenAddrs(t *testing.T) {
 // 自動で待ち受けるのは LAN・リンクローカル・Tailscale（100.64.0.0/10）のアドレスだけ。グローバルなアドレスは選ばない。
 func TestIsLANAddress(t *testing.T) {
 	for addr, want := range map[string]bool{
-		"192.168.0.98": true, "10.1.2.3": true, "172.16.5.4": true, "169.254.1.1": true, "100.79.197.113": true,
+		"192.168.1.20": true, "10.1.2.3": true, "172.16.5.4": true, "169.254.1.1": true, "100.100.1.2": true,
 		"8.8.8.8": false, "203.0.113.5": false, "100.128.0.1": false, "172.32.0.1": false,
 	} {
 		if got := isLANAddress(net.ParseIP(addr)); got != want {
