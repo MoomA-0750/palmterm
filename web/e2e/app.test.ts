@@ -373,6 +373,19 @@ describe("画像とコピー", () => {
     expect(await page.locator("#attachments").isHidden()).toBe(true);
   });
 
+  it("画像を送った直後に切れても、文章は消さずに残す", async () => {
+    await page.locator("#line").fill("after image");
+    await page.locator("#upload-input").setInputFiles({ name: "cut.png", mimeType: "image/png", buffer: Buffer.from("89504e47", "hex") });
+    await waitUntil("アップロードが終わる", async () => (await page.locator('.att[data-status="done"]').count()) === 1);
+    await page.locator("#send").click();
+    await waitUntil("パスを送る", async () => (await sent()).some((s) => s.includes("cut.png")));
+    await page.evaluate(() => (window as unknown as { __sockets: WebSocket[] }).__sockets.at(-1)!.close()); // 画像のあとの待ちの間に切れる
+    await page.waitForTimeout(600);
+    expect(await page.inputValue("#line")).toBe("after image");
+    expect(await page.locator("#toast").textContent()).toContain("Not connected");
+    expect((await sent()).some((s) => s.includes("after image"))).toBe(false);
+  });
+
   it("コピーモードで tmux の履歴を出す", async () => {
     tmux("send-keys", "-t", SESSION, "echo history$((2+3))", "Enter");
     await waitUntil("出力", () => paneText().includes("history5"));

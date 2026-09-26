@@ -240,6 +240,11 @@ async function flushLine(withEnter: boolean): Promise<boolean> {
     } finally {
       sending = false;
     }
+    // 画像のあとの待ちの間に切れていたら、文章は消さずに残す。
+    if (!conn.isOpen()) {
+      toast(t("notConnected"));
+      return false;
+    }
   }
   const text = line.value;
   line.value = "";
