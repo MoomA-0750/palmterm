@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run src",
-    "test:e2e": "tsc --noEmit -p e2e && vitest run e2e"
+    "test:e2e": "tsc --noEmit -p e2e && vitest run e2e",
+    "screenshot": "node scripts/screenshot.mjs"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",
