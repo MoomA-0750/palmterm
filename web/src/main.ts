@@ -123,12 +123,35 @@ function autosizeLine() {
 }
 
 /** 入力欄の文字を送る。withEnter が false なら Enter を付けない（Tab 補完の前など）。 */
-function flushLine(withEnter: boolean) {
+async function flushLine(withEnter: boolean) {
   const text = line.value;
   line.value = "";
   autosizeLine();
-  if (text) conn.send(text.includes("\n") ? bracketedPaste(text) : text);
+  for (const part of splitUploadedPaths(text)) {
+    if (uploadedPaths.has(part)) {
+      // アップロードしたパスは1つずつ貼り付けとして送る。Claude Code は画像のパスだけの貼り付けを
+      // 画像の添付として扱う（文章と混ざった貼り付けでは扱わない）。添付の処理は少し遅れて進むので、
+      // 続きの文字や Enter が先に届かないよう待つ。
+      conn.send(bracketedPaste(part));
+      await sleep(PASTE_SETTLE_MS);
+    } else if (part) {
+      conn.send(part.includes("\n") ? bracketedPaste(part) : part);
+    }
+  }
   if (withEnter) conn.send("\r");
+}
+
+const PASTE_SETTLE_MS = 400;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// このページでアップロードしたファイルのパス。
+const uploadedPaths = new Set<string>();
+
+function splitUploadedPaths(text: string): string[] {
+  const known = [...uploadedPaths].filter((p) => text.includes(p));
+  if (known.length === 0) return [text];
+  const pattern = new RegExp(`(${known.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
+  return text.split(pattern);
 }
 
 line.addEventListener("input", autosizeLine);
@@ -217,7 +240,11 @@ function pressKey(def: KeyDef) {
   }
   if ("key" in def) {
     // Tab 補完は、入力欄に書きかけの文字を先に送ってから。
-    if (def.key === "tab" && mode === "line" && !mods.active()) flushLine(false);
+    if (def.key === "tab" && mode === "line" && !mods.active()) {
+      const seq = specialKey(def.key, mods, appCursor());
+      flushLine(false).then(() => conn.send(seq));
+      return;
+    }
     conn.send(specialKey(def.key, mods, appCursor()));
   } else {
     conn.send(isSingleChar(def.text) ? applyToChar(def.text, mods) : def.text);
@@ -341,6 +368,73 @@ $("paste").addEventListener("click", async () => {
     conn.send(bracketedPaste(text));
   }
 });
+
+// ---- 画像のアップロード ----
+// サーバーに保存し、保存したパスを入力欄（直接入力なら端末）に入れる。Claude Code などに画像を渡すため。
+
+const uploadInput = $<HTMLInputElement>("upload-input");
+
+async function uploadFiles(files: File[]) {
+  if (files.length === 0) return;
+  const form = new FormData();
+  for (const f of files) form.append("file", f, f.name || "image.png");
+  toast(`アップロード中…（${files.length}件）`);
+  let paths: string[];
+  try {
+    const res = await fetch("/api/upload", { method: "POST", body: form });
+    if (!res.ok) throw new Error(await res.text());
+    paths = (await res.json()).paths;
+  } catch (e) {
+    toast(`アップロードできませんでした: ${e instanceof Error ? e.message : e}`);
+    return;
+  }
+  for (const p of paths) uploadedPaths.add(p);
+  insertPaths(paths);
+  toast(`アップロードしました（${paths.length}件）`);
+}
+
+function insertPaths(paths: string[]) {
+  const text = paths.join(" ");
+  if (mode === "line") {
+    const before = line.value.slice(0, line.selectionStart);
+    const sep = before && !/\s$/.test(before) ? " " : "";
+    line.setRangeText(sep + text + " ", line.selectionStart, line.selectionEnd, "end");
+    autosizeLine();
+    line.focus();
+  } else {
+    // 貼り付けとして送る。Claude Code は画像のパスの貼り付けを画像の添付として扱う。
+    conn.send(bracketedPaste(text));
+  }
+}
+
+$("upload").addEventListener("click", () => uploadInput.click());
+uploadInput.addEventListener("change", () => {
+  const files = [...(uploadInput.files ?? [])];
+  uploadInput.value = "";
+  uploadFiles(files);
+});
+
+// 画像の貼り付け（入力欄・端末）も、アップロードしてパスを入れる。
+function pastedFiles(e: ClipboardEvent): File[] {
+  return [...(e.clipboardData?.files ?? [])];
+}
+line.addEventListener("paste", (e) => {
+  const files = pastedFiles(e);
+  if (files.length === 0) return;
+  e.preventDefault();
+  uploadFiles(files);
+});
+termEl.addEventListener(
+  "paste",
+  (e) => {
+    const files = pastedFiles(e);
+    if (files.length === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    uploadFiles(files);
+  },
+  true,
+);
 
 // ---- コピーモード：履歴を普通のテキストとして出し、OS の選択でコピーする ----
 

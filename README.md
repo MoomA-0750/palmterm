@@ -18,6 +18,8 @@
   - シェルや Claude Code など（マウスも全画面も使っていない）、tmux のコピーモード中：tmux のコピーモードで1行ずつスクロールする（tmux の `mouse` 設定に関係なく動く）。一番下まで戻すとコピーモードを抜ける。
   - vim・lazygit などマウスを使うアプリ：ホイールを送る。
   - less など全画面でマウスを使わないアプリ：↑↓ を送る。
+- **画像のアップロード**：「画像」ボタンで写真を選ぶか、入力欄・端末に画像を貼り付けると、サーバーに保存してパスを入れる（保存先は `~/.cache/palmterm/uploads`、`-upload-dir` で変更可）。
+  - Claude Code では `[Image #1]` のように画像として添付される。入力欄モードでは文章の途中にパスがあっても、そこだけ貼り付けとして送るので添付になる。
 - **ピンチ**：2本指で文字サイズを変える（8〜32px）。
 - 切断されても tmux のセッションは残り、つなぎ直すと続きから表示される。
 - **フォント**：JetBrains Mono ＋ Symbols Nerd Font Mono（Nerd Fonts v3.5.1、MIT）をサーバーから配る。日本語は端末のフォントで表示する。
@@ -30,7 +32,7 @@ make            # web をビルドして ./palmterm を作る（Go と Node が�
 ./palmterm      # 127.0.0.1:7681 で待ち受け。表示される /auth?token=… の URL を開く
 ```
 
-オプション：`-listen`（待ち受けるアドレス）、`-session`（tmux のセッション名、既定 `main`）、`-token`（省略時は `~/.config/palmterm/token` を使い、なければ作る）。
+オプション：`-listen`（待ち受けるアドレス）、`-session`（tmux のセッション名、既定 `main`）、`-token`（省略時は `~/.config/palmterm/token` を使い、なければ作る）、`-upload-dir`（アップロードの保存先）。
 
 スマホからは、Tailscale の中だけで公開するのがおすすめ。
 `tailscale serve --bg 7681` にすると HTTPS になり、貼付ボタン（clipboard API）も使える。

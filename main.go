@@ -26,6 +26,7 @@ type server struct {
 	token          string
 	defaultSession string
 	origins        []string
+	uploadDir      string
 }
 
 var sessionNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -35,6 +36,7 @@ func main() {
 	session := flag.String("session", "main", "既定でつなぐ tmux のセッション名")
 	token := flag.String("token", "", "ログイン用のトークン（省略時は ~/.config/palmterm/token を使い、なければ作る）")
 	allowOrigin := flag.String("allow-origin", "", "WebSocket を許す別の Origin（カンマ区切り。開発時の Vite 用など）")
+	uploadDir := flag.String("upload-dir", "", "アップロードしたファイルの保存先（省略時は ~/.cache/palmterm/uploads）")
 	flag.Parse()
 
 	if !sessionNamePattern.MatchString(*session) {
@@ -51,7 +53,14 @@ func main() {
 		}
 	}
 
-	s := &server{token: tok, defaultSession: *session}
+	s := &server{token: tok, defaultSession: *session, uploadDir: *uploadDir}
+	if s.uploadDir == "" {
+		cache, err := os.UserCacheDir()
+		if err != nil {
+			log.Fatal(err)
+		}
+		s.uploadDir = filepath.Join(cache, "palmterm", "uploads")
+	}
 	if *allowOrigin != "" {
 		s.origins = strings.Split(*allowOrigin, ",")
 	}
@@ -65,6 +74,7 @@ func main() {
 	mux.Handle("GET /ws", s.requireAuth(http.HandlerFunc(s.handleTerminal)))
 	mux.Handle("GET /api/history", s.requireAuth(http.HandlerFunc(s.handleHistory)))
 	mux.Handle("GET /api/pane", s.requireAuth(http.HandlerFunc(s.handlePane)))
+	mux.Handle("POST /api/upload", s.requireAuth(http.HandlerFunc(s.handleUpload)))
 	mux.Handle("GET /", s.requireAuth(cacheAssets(http.FileServerFS(dist))))
 
 	log.Printf("palmterm: http://%s/auth?token=%s を開いてください", *listen, tok)
