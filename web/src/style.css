@@ -194,6 +194,19 @@ button:active {
   font-family: var(--mono-font);
 }
 
+.tmux-tab-input {
+  width: 9em;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 6px;
+  border: 0;
+  outline: 2px solid #3fb950;
+  outline-offset: -2px;
+  color: var(--btn-fg);
+  background: #111;
+  font: 16px var(--mono-font); /* 16px 未満だと iOS が拡大する */
+}
+
 .tmux-tab-close {
   min-width: 32px;
   padding: 0 8px;

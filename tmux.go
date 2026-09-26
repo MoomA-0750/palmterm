@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 type tmuxWindow struct {
@@ -62,13 +63,19 @@ func (s *server) handleTmuxAction(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Action string `json:"action"`
-		Window int    `json:"window"` // select-window・kill-window のとき
+		Window int    `json:"window"` // select-window・kill-window・rename-window のとき
+		Name   string `json:"name"`   // rename-window のとき
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
 		http.Error(w, "操作を読めませんでした: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	args := tmuxActionArgs(session, req.Action, req.Window)
+	var args []string
+	if req.Action == "rename-window" {
+		args = renameWindowArgs(session, req.Window, req.Name)
+	} else {
+		args = tmuxActionArgs(session, req.Action, req.Window)
+	}
 	if args == nil {
 		http.Error(w, "知らない操作です: "+req.Action, http.StatusBadRequest)
 		return
@@ -118,4 +125,24 @@ func tmuxActionArgs(session, action string, window int) []string {
 		return []string{"copy-mode", "-t", session}
 	}
 	return nil
+}
+
+const maxWindowNameRunes = 64
+
+// ウィンドウの名前を変える。空なら tmux の自動の名前（動いているコマンド名）に戻す。
+func renameWindowArgs(session string, window int, name string) []string {
+	target := session + ":" + strconv.Itoa(window)
+	name = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(name))
+	if name == "" {
+		return []string{"set-option", "-w", "-t", target, "automatic-rename", "on"}
+	}
+	if rs := []rune(name); len(rs) > maxWindowNameRunes {
+		name = string(rs[:maxWindowNameRunes])
+	}
+	return []string{"rename-window", "-t", target, name}
 }

@@ -84,8 +84,9 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
         tab.className = w.active ? "tmux-tab active" : "tmux-tab";
         const name = makeBtn(
           `${w.index}:${w.name}${w.panes > 1 ? ` ⊞${w.panes}` : ""}`,
-          `ウィンドウ ${w.index}（${w.name}）へ`,
-          () => w.active || run("select-window", w.index),
+          w.active ? `ウィンドウ ${w.index}（${w.name}）の名前を変える` : `ウィンドウ ${w.index}（${w.name}）へ`,
+          // 今いるタブをもう一度押したら名前を変える。
+          () => (w.active ? startRename(w, name) : run("select-window", w.index)),
           "tmux-tab-name",
         );
         const x = makeBtn(
@@ -111,7 +112,46 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
     if (json === lastJson) return; // 変わっていなければ描き直さない（押しかけの × を戻さない）
     lastJson = json;
     windows = list;
-    renderTabs();
+    if (!renaming) renderTabs(); // 名前を入力している間は描き直さない（終わったら描く）
+  }
+
+  let renaming = false;
+
+  /** タブの名前の所を入力欄にする。Enter か外をタップで決定、Esc でやめる。空にすると自動の名前に戻す。 */
+  function startRename(w: TmuxWindow, nameBtn: HTMLButtonElement) {
+    disarm?.();
+    renaming = true;
+    const input = document.createElement("input");
+    input.className = "tmux-tab-input";
+    input.value = w.name;
+    input.setAttribute("aria-label", `ウィンドウ ${w.index} の新しい名前（空なら自動の名前）`);
+    input.enterKeyHint = "done";
+    input.autocapitalize = "off";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    let finished = false;
+    const finish = (commit: boolean) => {
+      if (finished) return;
+      finished = true;
+      renaming = false;
+      const name = input.value;
+      renderTabs();
+      if (commit && name !== w.name) run("rename-window", w.index, { name });
+    };
+    input.addEventListener("keydown", (e) => {
+      if (e.isComposing) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        finish(true);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        finish(false);
+      }
+    });
+    input.addEventListener("blur", () => finish(true));
+    nameBtn.replaceWith(input);
+    input.focus();
+    input.select();
   }
 
   let refreshTimer: number | undefined;
@@ -180,13 +220,13 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
     ),
   );
 
-  async function run(action: string, window?: number) {
+  async function run(action: string, window?: number, extra: Record<string, string> = {}) {
     if (!KEEP_OPEN.has(action)) close();
     try {
       const res = await fetch("/api/tmux", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, window }),
+        body: JSON.stringify({ action, window, ...extra }),
       });
       if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
       setWindows((await res.json()).windows ?? []);
