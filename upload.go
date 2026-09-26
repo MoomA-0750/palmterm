@@ -58,7 +58,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 			path = jpeg
 		}
 		if err != nil {
-			log.Printf("アップロードを保存できませんでした（%s）: %v", fh.Filename, err)
+			log.Printf(tr("アップロードを保存できませんでした（%s）: %v", "Could not save the upload (%s): %v"), fh.Filename, err)
 			http.Error(w, fmt.Sprintf(tr("%s を保存できませんでした: ", "Could not save %s: "), fh.Filename)+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -78,7 +78,7 @@ func convertToJPEG(src string) (string, error) {
 	out, err := exec.Command("ffmpeg", "-v", "error", "-n", "-i", src, "-frames:v", "1", "-q:v", "2", dst).CombinedOutput()
 	if err != nil {
 		os.Remove(dst)
-		log.Printf("ffmpeg で %s を変換できませんでした: %v\n%s", src, err, out)
+		log.Printf(tr("ffmpeg で %s を変換できませんでした: %v\n%s", "ffmpeg could not convert %s: %v\n%s"), src, err, out)
 		// 画面に出すのは最後の1行（原因の要約）だけにする。
 		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 		return "", fmt.Errorf(tr("JPEG に変換できませんでした（%s）", "Could not convert to JPEG (%s)"), lines[len(lines)-1])

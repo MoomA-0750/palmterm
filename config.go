@@ -60,7 +60,8 @@ func (c *configStore) get() (config, error) {
 		c.modTime = info.ModTime()
 		c.cfg, c.err = loadConfig(c.path)
 		if c.err != nil {
-			log.Printf("設定ファイルを読めませんでした（既定の設定を使います）: %v", c.err)
+			// 読めていないので言語がわからない。両方で出す。
+			log.Printf("設定ファイルを読めませんでした（既定の設定を使います） / Could not read the config file (using the defaults): %v", c.err)
 		}
 	}
 	cfg := c.cfg

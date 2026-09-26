@@ -30,7 +30,7 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: s.origins})
 	if err != nil {
-		log.Printf("WebSocket を開けませんでした: %v", err)
+		log.Printf(tr("WebSocket を開けませんでした: %v", "Could not open the WebSocket: %v"), err)
 		return
 	}
 	defer conn.CloseNow()
@@ -43,7 +43,7 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	}
 	ptmx, err := pty.StartWithSize(cmd, size)
 	if err != nil {
-		log.Printf("tmux を起動できませんでした: %v", err)
+		log.Printf(tr("tmux を起動できませんでした: %v", "Could not start tmux: %v"), err)
 		conn.Close(websocket.StatusInternalError, tr("tmux を起動できませんでした", "Could not start tmux"))
 		return
 	}

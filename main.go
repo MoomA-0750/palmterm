@@ -32,13 +32,14 @@ type server struct {
 var sessionNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 func main() {
-	listen := flag.String("listen", "127.0.0.1:7681", "待ち受けるアドレス")
-	session := flag.String("session", "main", "既定でつなぐ tmux のセッション名")
-	token := flag.String("token", "", "ログイン用のトークン（省略時は ~/.config/palmterm/token を使い、なければ作る）")
-	allowOrigin := flag.String("allow-origin", "", "WebSocket を許す別の Origin（カンマ区切り。開発時の Vite 用など）")
-	uploadDir := flag.String("upload-dir", "", "アップロードしたファイルの保存先（省略時は ~/.cache/palmterm/uploads）")
-	configPath := flag.String("config", "", "設定ファイル（省略時は ~/.config/palmterm/config.toml）")
-	lan := flag.String("lan", "", "LAN から HTTPS でつなぐときに待ち受けるアドレス（例 :7682。自分で署名した証明書を ~/.config/palmterm に作る）")
+	// 説明は設定ファイル（言語）を読む前に出るので、既定の言語の英語で書く。
+	listen := flag.String("listen", "127.0.0.1:7681", "address to listen on (HTTP)")
+	session := flag.String("session", "main", "tmux session to attach to")
+	token := flag.String("token", "", "login token (default: ~/.config/palmterm/token, created on first run)")
+	allowOrigin := flag.String("allow-origin", "", "extra WebSocket origins, comma-separated (e.g. for the Vite dev server)")
+	uploadDir := flag.String("upload-dir", "", "where uploaded files are saved (default: ~/.cache/palmterm/uploads)")
+	configPath := flag.String("config", "", "configuration file (default: ~/.config/palmterm/config.toml)")
+	lan := flag.String("lan", "", "also listen on this address over HTTPS for the local network, e.g. :7682 (self-signed certificate in ~/.config/palmterm)")
 	flag.Parse()
 
 	if *configPath == "" {
@@ -51,7 +52,7 @@ func main() {
 	settings = newConfigStore(*configPath)
 
 	if !sessionNamePattern.MatchString(*session) {
-		log.Fatalf("セッション名に使えない文字があります: %q", *session)
+		log.Fatalf(tr("セッション名に使えない文字があります: %q", "Invalid session name: %q"), *session)
 	}
 	tok := *token
 	if tok == "" {
@@ -80,7 +81,7 @@ func main() {
 	if *lan != "" {
 		go serveLAN(*lan, handler, tok)
 	}
-	log.Printf("palmterm: http://%s/auth?token=%s を開いてください", *listen, tok)
+	log.Printf(tr("palmterm: http://%s/auth?token=%s を開いてください", "palmterm: open http://%s/auth?token=%s"), *listen, tok)
 	log.Fatal(http.ListenAndServe(*listen, handler))
 }
 
@@ -94,11 +95,12 @@ func serveLAN(addr string, handler http.Handler, token string) {
 	ips := lanAddresses()
 	cert, err := lanCertificate(filepath.Join(dir, "palmterm"), ips, host)
 	if err != nil {
-		log.Fatalf("LAN 用の証明書を用意できませんでした: %v", err)
+		log.Fatalf(tr("LAN 用の証明書を用意できませんでした: %v", "Could not prepare the LAN certificate: %v"), err)
 	}
 	srv := &http.Server{Addr: addr, Handler: handler, TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}}}
 	for _, u := range lanURLs(addr, ips, token) {
-		log.Printf("palmterm（LAN）: %s を開いてください（最初は証明書の警告が出るので、先へ進む）", u)
+		log.Printf(tr("palmterm（LAN）: %s を開いてください（最初は証明書の警告が出るので、先へ進む）",
+			"palmterm (LAN): open %s (the browser warns about the certificate the first time; proceed)"), u)
 	}
 	log.Fatal(srv.ListenAndServeTLS("", ""))
 }
