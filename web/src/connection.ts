@@ -60,8 +60,12 @@ export class Connection {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
+  /** キーなどの入力を送る直前に呼ばれる（サイズ変更では呼ばれない）。 */
+  onInput: () => void = () => {};
+
   send(data: string | Uint8Array) {
     if (!this.isOpen() || data.length === 0) return;
+    this.onInput();
     this.ws!.send(typeof data === "string" ? encoder.encode(data) : (data as Uint8Array<ArrayBuffer>));
   }
 

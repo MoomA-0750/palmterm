@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"os/exec"
 	"strconv"
@@ -12,8 +13,10 @@ const (
 	maxHistoryLines     = 50000
 )
 
-// 今のペインの履歴を、スクロールバックも含めて普通のテキストで返す（コピーモード用）。
-// tmux の中では画面が描き直されるだけでブラウザ側に履歴がたまらないので、tmux から取る。
+// 今のペインの履歴を、スクロールバックも含めて返す。tmux の中では画面が描き直されるだけで
+// ブラウザ側に履歴がたまらないので、tmux から取る。
+// - 既定: 普通のテキスト。折り返された行はつなぐ（コピーモード用）
+// - color=1: 色などのエスケープ付きで、ペインの幅の行のまま（スクロール用の履歴表示に流し込む）
 func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	session, err := s.sessionFrom(r)
 	if err != nil {
@@ -24,8 +27,14 @@ func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	if v, err := strconv.Atoi(r.URL.Query().Get("lines")); err == nil && v > 0 {
 		lines = min(v, maxHistoryLines)
 	}
-	// -J は折り返された行をつなぐ。代わりに行末の空白が残るので後で落とす。
-	out, err := exec.Command("tmux", "capture-pane", "-p", "-J", "-S", "-"+strconv.Itoa(lines), "-t", session).Output()
+	args := []string{"capture-pane", "-p", "-S", "-" + strconv.Itoa(lines), "-t", session}
+	if r.URL.Query().Get("color") == "1" {
+		args = append(args, "-e")
+	} else {
+		// -J は折り返された行をつなぐ。代わりに行末の空白が残るので後で落とす。
+		args = append(args, "-J")
+	}
+	out, err := exec.Command("tmux", args...).Output()
 	if err != nil {
 		http.Error(w, "tmux の履歴を取れませんでした: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -41,4 +50,37 @@ func trimLines(s string) string {
 		ls[i] = strings.TrimRight(l, " ")
 	}
 	return strings.TrimRight(strings.Join(ls, "\n"), "\n") + "\n"
+}
+
+type paneState struct {
+	AltScreen bool `json:"altScreen"` // 全画面のアプリ（vim・less など）が動いている
+	Mouse     bool `json:"mouse"`     // 中のアプリがマウスを受け取っている
+	InMode    bool `json:"inMode"`    // tmux のコピーモードなどに入っている
+	Width     int  `json:"width"`
+}
+
+// 今のペインの状態。スワイプを始めたときに、画面側がスクロールのしかたを決めるのに使う。
+// ブラウザからは tmux 自身のモードしか見えず、中のアプリの状態はわからないので tmux に聞く。
+func (s *server) handlePane(w http.ResponseWriter, r *http.Request) {
+	session, err := s.sessionFrom(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	out, err := exec.Command("tmux", "display-message", "-p", "-t", session,
+		"#{alternate_on} #{mouse_any_flag} #{pane_in_mode} #{pane_width}").Output()
+	if err != nil {
+		http.Error(w, "tmux の状態を取れませんでした: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	f := strings.Fields(string(out))
+	if len(f) != 4 {
+		http.Error(w, "tmux の状態を読めませんでした: "+string(out), http.StatusInternalServerError)
+		return
+	}
+	width, _ := strconv.Atoi(f[3])
+	st := paneState{AltScreen: f[0] == "1", Mouse: f[1] == "1", InMode: f[2] != "0", Width: width}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(st)
 }

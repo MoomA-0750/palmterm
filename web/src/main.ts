@@ -5,7 +5,8 @@ import "./style.css";
 import { Connection } from "./connection";
 import { applyToChar, isSingleChar, Modifiers, type ModName, specialKey, type SpecialKey } from "./keys";
 import { setupNerdIcons } from "./nerd";
-import { setupTouchScroll } from "./touch";
+import { HistoryView } from "./history";
+import { setupTouch } from "./touch";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -291,7 +292,7 @@ function bindKeyButton(btn: HTMLButtonElement, fire: () => void, repeat: boolean
 }
 
 function changeFontSize(delta: number) {
-  fontSize = Math.min(24, Math.max(8, fontSize + delta));
+  fontSize = Math.min(32, Math.max(8, fontSize + delta));
   applyFontSize(fontSize);
   saveSetting("fontSize", String(fontSize));
 }
@@ -416,5 +417,20 @@ termInput?.addEventListener("focus", (e) => {
   else termInput.blur();
 });
 setupNerdIcons(termEl);
-setupTouchScroll(termEl, term, (data) => conn.send(data), appCursor);
+const history = new HistoryView($("term-wrap"), termEl);
+// 何か入力したら、履歴表示を閉じて今の画面に戻る。
+conn.onInput = () => history.close();
+setupTouch({
+  el: termEl,
+  term,
+  history,
+  send: (data) => conn.send(data),
+  appCursor,
+  getFontSize: () => fontSize,
+  setFontSize: (size, save) => {
+    fontSize = size;
+    applyFontSize(size);
+    if (save) saveSetting("fontSize", String(size));
+  },
+});
 conn.connect();

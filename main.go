@@ -64,6 +64,7 @@ func main() {
 	mux.HandleFunc("GET /auth", s.handleAuth)
 	mux.Handle("GET /ws", s.requireAuth(http.HandlerFunc(s.handleTerminal)))
 	mux.Handle("GET /api/history", s.requireAuth(http.HandlerFunc(s.handleHistory)))
+	mux.Handle("GET /api/pane", s.requireAuth(http.HandlerFunc(s.handlePane)))
 	mux.Handle("GET /", s.requireAuth(cacheAssets(http.FileServerFS(dist))))
 
 	log.Printf("palmterm: http://%s/auth?token=%s を開いてください", *listen, tok)
