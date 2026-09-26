@@ -89,8 +89,10 @@ func main() {
 // 見出しを送りきらずに居座る接続を切る時間切れを付ける。端末の WebSocket はずっと開いているので、
 // 読み書き全体の時間切れ（ReadTimeout・WriteTimeout）は付けない。
 func newHTTPServer(addr string, handler http.Handler) *http.Server {
-	return &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
+	return &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: readHeaderTimeout, IdleTimeout: 120 * time.Second}
 }
+
+var readHeaderTimeout = 10 * time.Second // テストで短くする
 
 // LAN 向けに HTTPS で待ち受ける（証明書は自分で署名したもの）。
 func serveLAN(addr string, handler http.Handler, token string) {

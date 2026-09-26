@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -297,5 +298,41 @@ func TestTerminalEnv(t *testing.T) {
 		if !strings.Contains(env, want) {
 			t.Errorf("%s がありません", strings.TrimSpace(want))
 		}
+	}
+}
+
+// 見出しを読む時間切れを過ぎても、開いたままの端末の WebSocket は切れない。
+func TestWebSocketOutlivesHeaderTimeout(t *testing.T) {
+	isolateTmux(t, "")
+	s := newTestServer(t)
+	old := readHeaderTimeout
+	readHeaderTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { readHeaderTimeout = old })
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := newHTTPServer("", http.HandlerFunc(s.handleTerminal))
+	go srv.Serve(ln)
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, "ws://"+ln.Addr().String()+"/?cols=80&rows=20", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseNow()
+	time.Sleep(700 * time.Millisecond) // 時間切れより長く何もしない
+	if err := c.Write(ctx, websocket.MessageBinary, []byte("echo alive$((2*21))\r")); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	for !strings.Contains(out.String(), "alive42") {
+		_, data, err := c.Read(ctx)
+		if err != nil {
+			t.Fatalf("切れました: %v\n%s", err, out.String())
+		}
+		out.Write(data)
 	}
 }
