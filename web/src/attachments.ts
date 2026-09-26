@@ -10,10 +10,10 @@ export interface UploadedFile {
 }
 
 /** 1つのファイルをアップロードする。失敗したらサーバーの説明を付けて投げる。 */
-export async function uploadFile(file: File): Promise<UploadedFile> {
+export async function uploadFile(file: File, signal?: AbortSignal): Promise<UploadedFile> {
   const form = new FormData();
   form.append("file", file, file.name || "image.png");
-  const res = await fetch("/api/upload", { method: "POST", body: form });
+  const res = await fetch("/api/upload", { method: "POST", body: form, signal });
   if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
   const files: UploadedFile[] = (await res.json()).files;
   if (!files?.[0]) throw new Error(t("noFileInResponse"));
@@ -26,7 +26,8 @@ interface Item {
   status: Status;
   uploaded?: UploadedFile;
   error?: string;
-  done: Promise<void>;
+  done: Promise<void>; // アップロードが終わったか、× で外された
+  abort: () => void; // 外したときにアップロードを取り消し、待つのをやめる
   el: HTMLElement;
   img: HTMLImageElement;
   objectUrl: string;
@@ -81,6 +82,7 @@ export class Attachments {
     const item: Item = {
       status: "uploading",
       done: Promise.resolve(),
+      abort: () => {},
       el,
       img,
       objectUrl: URL.createObjectURL(file),
@@ -98,7 +100,14 @@ export class Attachments {
     remove.addEventListener("pointerdown", (e) => e.preventDefault());
     remove.addEventListener("click", () => this.remove(item));
 
-    item.done = uploadFile(file).then(
+    const controller = new AbortController();
+    const removed = new Promise<void>((resolve) => {
+      item.abort = () => {
+        controller.abort();
+        resolve();
+      };
+    });
+    const uploaded = uploadFile(file, controller.signal).then(
       (uploaded) => {
         item.status = "done";
         item.uploaded = uploaded;
@@ -111,6 +120,7 @@ export class Attachments {
         this.render();
       },
     );
+    item.done = Promise.race([uploaded, removed]);
     this.items.push(item);
   }
 
@@ -119,6 +129,7 @@ export class Attachments {
   }
 
   private remove(item: Item) {
+    item.abort();
     URL.revokeObjectURL(item.objectUrl);
     this.items = this.items.filter((i) => i !== item);
     this.render();

@@ -64,6 +64,18 @@ describe("Attachments", () => {
     expect(result.entries.filter((e) => e.present()).map((e) => e.path)).toEqual(["/up/b.png"]);
   });
 
+  it("終わらないアップロードを × で外したら、待つのをやめる（送信が止まらない）", async () => {
+    const up = fakeUploads();
+    const bar = document.createElement("div");
+    const att = new Attachments(bar);
+    att.add([file("stuck.png"), file("b.png")]);
+    const waiting = att.waitAll();
+    await up.settle("b.png");
+    (bar.querySelectorAll(".att-remove")[0] as HTMLButtonElement).click(); // stuck.png は終わらせない
+    const result = await Promise.race([waiting, new Promise((r) => setTimeout(() => r("まだ待っている"), 100))]);
+    expect(result).toEqual({ ok: true, entries: [expect.objectContaining({ path: "/up/b.png" })] });
+  });
+
   it("アップロードに失敗した画像があれば ok: false", async () => {
     const up = fakeUploads();
     const att = new Attachments(document.createElement("div"));
