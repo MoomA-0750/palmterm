@@ -360,15 +360,55 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-$("paste").addEventListener("click", async () => {
-  let text: string;
-  try {
-    text = await navigator.clipboard.readText();
-  } catch {
+/**
+ * クリップボードの文字を読む。読めなかったら理由を知らせて null を返す。
+ * 許可を求める画面が出た最初の1回は、許可しても失敗することがあるので、許可済みならもう一度読む。
+ */
+async function readClipboard(): Promise<string | null> {
+  if (!window.isSecureContext || !navigator.clipboard?.readText) {
     toast("この接続では貼付ボタンを使えません（HTTPS が必要）。入力欄を長押しして貼り付けてください");
+    return null;
+  }
+  let error: unknown;
+  try {
+    return await navigator.clipboard.readText();
+  } catch (e) {
+    error = e;
+  }
+  const state = await clipboardPermission();
+  if (state === "granted") {
+    try {
+      return await navigator.clipboard.readText();
+    } catch (e) {
+      error = e;
+    }
+  }
+  if (state === "denied") {
+    toast("クリップボードの読み取りが許可されていません。ブラウザのサイトの設定で許可してください");
+  } else if (error instanceof DOMException && error.name === "NotAllowedError") {
+    toast("クリップボードを読めませんでした（許可の確認が済んでいないか、取り消されました）。もう一度押してください");
+  } else {
+    const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    toast(`クリップボードを読めませんでした（${detail}）`);
+  }
+  return null;
+}
+
+async function clipboardPermission(): Promise<PermissionState | null> {
+  try {
+    return (await navigator.permissions.query({ name: "clipboard-read" as PermissionName })).state;
+  } catch {
+    return null; // Safari などは clipboard-read を問い合わせられない
+  }
+}
+
+$("paste").addEventListener("click", async () => {
+  const text = await readClipboard();
+  if (text === null) return;
+  if (!text) {
+    toast("クリップボードに文字がありません");
     return;
   }
-  if (!text) return;
   if (mode === "line") {
     line.setRangeText(text, line.selectionStart, line.selectionEnd, "end");
     autosizeLine();
