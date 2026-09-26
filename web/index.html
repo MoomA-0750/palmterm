@@ -12,8 +12,19 @@
   <body>
     <div id="app">
       <div id="status" hidden></div>
-      <div id="term-wrap"><div id="term" aria-label="端末"></div></div>
-      <div id="keybar" role="toolbar" aria-label="特殊キー"></div>
+      <div id="term-wrap">
+        <div id="term" aria-label="端末"></div>
+        <div id="tmuxpanel" role="toolbar" aria-label="tmux のウィンドウとペイン" hidden></div>
+      </div>
+      <div id="keyrow">
+        <div id="keybar" role="toolbar" aria-label="特殊キー"></div>
+        <button id="tmux-btn" type="button" aria-label="tmux のウィンドウとペイン" aria-expanded="false" title="ウィンドウ・ペイン">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M12 4v16M12 12h9" />
+          </svg>
+        </button>
+      </div>
       <div id="attachments" aria-label="添付する画像" hidden></div>
       <div id="inputbar">
         <button id="mode" type="button"></button>

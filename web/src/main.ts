@@ -6,6 +6,7 @@ import { Attachments, uploadFile } from "./attachments";
 import { Connection } from "./connection";
 import { applyToChar, isSingleChar, Modifiers, type ModName, specialKey, type SpecialKey } from "./keys";
 import { setupNerdIcons } from "./nerd";
+import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -220,7 +221,6 @@ const keyDefs: KeyDef[] = [
   { label: "→", key: "right", repeat: true },
   { label: "^C", text: "\x03" },
   { label: "^D", text: "\x04" },
-  { label: "tmux", text: "\x02" },
   { label: "⌫", key: "backspace", repeat: true },
   { label: "⏎", key: "enter" },
   { label: "Home", key: "home" },
@@ -272,6 +272,16 @@ for (const def of keyDefs) {
   bindKeyButton(btn, () => pressKey(def), "repeat" in def && !!def.repeat);
   keybar.appendChild(btn);
 }
+
+const tmuxPanel = setupTmuxPanel({
+  button: $("tmux-btn"),
+  panel: $("tmuxpanel"),
+  sendPrefix: () => conn.send("\x02"),
+  toast,
+  bind: bindKeyButton,
+});
+// 端末に触れたらパネルを閉じる。
+termEl.addEventListener("pointerdown", () => tmuxPanel.close());
 
 mods.onChange = () => {
   for (const [name, btn] of modButtons) btn.dataset.state = mods.get(name);

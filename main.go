@@ -74,6 +74,8 @@ func main() {
 	mux.Handle("GET /ws", s.requireAuth(http.HandlerFunc(s.handleTerminal)))
 	mux.Handle("GET /api/history", s.requireAuth(http.HandlerFunc(s.handleHistory)))
 	mux.Handle("GET /api/pane", s.requireAuth(http.HandlerFunc(s.handlePane)))
+	mux.Handle("GET /api/windows", s.requireAuth(http.HandlerFunc(s.handleWindows)))
+	mux.Handle("POST /api/tmux", s.requireAuth(http.HandlerFunc(s.handleTmuxAction)))
 	mux.Handle("POST /api/upload", s.requireAuth(http.HandlerFunc(s.handleUpload)))
 	mux.Handle("GET /api/upload/{name}", s.requireAuth(http.HandlerFunc(s.handleUploadFile)))
 	mux.Handle("GET /", s.requireAuth(cacheAssets(http.FileServerFS(dist))))

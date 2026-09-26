@@ -64,7 +64,14 @@ button:active {
   background: #555;
 }
 
+#keyrow {
+  display: flex;
+  background: var(--bar-bg);
+}
+
 #keybar {
+  flex: 1;
+  min-width: 0;
   display: flex;
   gap: 4px;
   padding: 4px;
@@ -80,6 +87,98 @@ button:active {
   height: 36px;
   padding: 0 8px;
   font-size: 14px;
+}
+
+/* tmux のボタン：キーバーを横にスクロールしても右端に残る。 */
+#tmux-btn {
+  --tmux: #3fb950;
+  flex: none;
+  width: 48px;
+  height: 36px;
+  margin: 4px 4px 4px 0;
+  display: grid;
+  place-items: center;
+  color: var(--tmux);
+  background: #1f3325;
+  box-shadow: inset 0 0 0 1.5px var(--tmux), -8px 0 8px -4px var(--bar-bg);
+}
+
+#tmux-btn[aria-expanded="true"] {
+  color: #000;
+  background: var(--tmux);
+}
+
+#tmuxpanel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 4px;
+  background: rgba(30, 36, 32, 0.97);
+  border-top: 2px solid #3fb950;
+}
+
+#tmuxpanel[hidden] {
+  display: none;
+}
+
+.tmux-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  touch-action: pan-x;
+}
+
+.tmux-label {
+  flex: none;
+  width: 5.5em;
+  font-size: 11px;
+  white-space: nowrap;
+  color: #9a9;
+}
+
+.tmux-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+#tmuxpanel button {
+  flex: none;
+  min-width: 40px;
+  height: 36px;
+  padding: 0 10px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+#tmuxpanel button.tmux-tab {
+  max-width: 12em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--mono-font);
+}
+
+#tmuxpanel button.active,
+#tmuxpanel button.on {
+  color: #000;
+  background: #3fb950;
+}
+
+#tmuxpanel button.tmux-new {
+  font-weight: bold;
+  color: #3fb950;
+  box-shadow: inset 0 0 0 1px #3fb950;
+}
+
+#tmuxpanel button.armed {
+  color: #fff;
+  background: #b3261e;
 }
 
 #keybar button.mod[data-state="once"] {
