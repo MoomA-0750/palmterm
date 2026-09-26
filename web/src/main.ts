@@ -50,10 +50,41 @@ applyFontSize(fontSize);
 
 // ---- 画面の高さをソフトキーボードに合わせる ----
 
+// 画面の端（ナビゲーションバーの裏）までは描かない（viewport-fit=cover にしない）。Android の Chromium 系では、
+// そうするとキーボードを出したときの高さがバーの分だけ大きく報告され、下の段がキーボードに潜る。
+// ブラウザが入力欄を見せるために見えている範囲をずらしたときも、その位置（offsetTop）に合わせる。
 function fitViewport() {
-  const h = window.visualViewport?.height ?? window.innerHeight;
-  document.documentElement.style.setProperty("--app-h", `${h}px`);
+  const vv = window.visualViewport;
+  const h = vv?.height ?? window.innerHeight;
+  const root = document.documentElement.style;
+  root.setProperty("--app-h", `${h}px`);
   window.scrollTo(0, 0);
+  root.setProperty("--app-top", `${Math.max(0, vv?.offsetTop ?? 0)}px`);
+  showViewportDebug();
+}
+
+// ?debug=viewport で開くと、画面の寸法を右上に出す（キーボードまわりのずれを調べる用）。
+const viewportDebug = new URLSearchParams(location.search).get("debug") === "viewport";
+function showViewportDebug() {
+  if (!viewportDebug) return;
+  let el = document.getElementById("vp-debug");
+  if (!el) {
+    el = document.createElement("pre");
+    el.id = "vp-debug";
+    el.style.cssText =
+      "position:fixed;top:0;right:0;z-index:100;margin:0;padding:4px;font:11px/1.3 monospace;background:#000c;color:#0f0;pointer-events:none";
+    document.body.appendChild(el);
+  }
+  const vv = window.visualViewport;
+  const barEl = document.getElementById("inputbar")!;
+  const bar = barEl.getBoundingClientRect();
+  const inset = getComputedStyle(barEl).paddingBottom; // 4px + safe-area-inset-bottom
+  el.textContent = [
+    `inner ${window.innerWidth}x${window.innerHeight}`,
+    `vv ${vv?.width.toFixed(1)}x${vv?.height.toFixed(1)} top=${vv?.offsetTop.toFixed(1)}`,
+    `screen ${screen.width}x${screen.height} dpr=${devicePixelRatio}`,
+    `inputbar bottom=${bar.bottom.toFixed(1)} pad=${inset}`,
+  ].join("\n");
 }
 window.visualViewport?.addEventListener("resize", fitViewport);
 window.visualViewport?.addEventListener("scroll", fitViewport);

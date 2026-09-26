@@ -22,7 +22,7 @@ body {
 
 #app {
   position: fixed;
-  inset: 0 0 auto 0;
+  inset: var(--app-top, 0px) 0 auto 0;
   height: var(--app-h);
   display: flex;
   flex-direction: column;
