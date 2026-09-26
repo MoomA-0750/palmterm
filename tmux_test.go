@@ -66,6 +66,11 @@ func TestTmuxWindowsAndActions(t *testing.T) {
 	if got := runTmux(t, "show-options", "-wv", "-t", "t1:1", "automatic-rename"); got != "off" {
 		t.Fatalf("名前を付けたら automatic-rename は off のはず: %q", got)
 	}
+	// # は tmux の書式として展開される（#(…) はコマンドとして動く）ので、書いたとおりの名前にする。
+	ws = windowsOf(t, tmuxAction(t, s, `{"action":"rename-window","window":1,"name":"C# #{session_name} #(echo x)"}`))
+	if ws[1].Name != "C# #{session_name} #(echo x)" {
+		t.Fatalf("# を含む名前: %q", ws[1].Name)
+	}
 	windowsOf(t, tmuxAction(t, s, `{"action":"rename-window","window":1,"name":""}`))
 	if got := runTmux(t, "show-options", "-wv", "-t", "t1:1", "automatic-rename"); got != "on" {
 		t.Fatalf("空の名前で automatic-rename に戻るはず: %q", got)

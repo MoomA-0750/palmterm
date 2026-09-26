@@ -142,7 +142,8 @@ func renameWindowArgs(session string, window int, name string) []string {
 	if rs := []rune(name); len(rs) > maxWindowNameRunes {
 		name = string(rs[:maxWindowNameRunes])
 	}
-	return []string{"rename-window", "-t", target, name}
+	// tmux は名前を書式として展開する（#{…} は置き換わり、#(…) はコマンドとして動く）。書いたとおりにするため # を重ねる。
+	return []string{"rename-window", "-t", target, strings.ReplaceAll(name, "#", "##")}
 }
 
 // 画面のタップした位置（セル）にあるペインを選ぶ。tmux の mouse 設定が off でもタップでペインを移れるように。
