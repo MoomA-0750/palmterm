@@ -62,7 +62,7 @@ func (s *server) handleTmuxAction(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Action string `json:"action"`
-		Window int    `json:"window"` // select-window のとき
+		Window int    `json:"window"` // select-window・kill-window のとき
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
 		http.Error(w, "操作を読めませんでした: "+err.Error(), http.StatusBadRequest)
@@ -94,6 +94,8 @@ func tmuxActionArgs(session, action string, window int) []string {
 		return []string{"last-window", "-t", session}
 	case "select-window":
 		return []string{"select-window", "-t", session + ":" + strconv.Itoa(window)}
+	case "kill-window":
+		return []string{"kill-window", "-t", session + ":" + strconv.Itoa(window)}
 	case "split-h":
 		return append([]string{"split-window", "-h", "-t", session}, here...)
 	case "split-v":

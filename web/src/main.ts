@@ -78,10 +78,14 @@ term.onData = (data) => {
 term.onBinary = (data) => conn.send(data);
 term.onResize = (cols, rows) => conn.resize(cols, rows);
 
-conn.onOutput = (data) => term.write(data);
+conn.onOutput = (data) => {
+  term.write(data);
+  tmuxPanel.outputSeen(); // キーで作ったウィンドウや名前の変化をタブに映す
+};
 conn.onOpen = () => {
   // つなぎ直すと tmux が画面を描き直すので、前の状態を一度消しておく。
   term.write("\x1bc");
+  tmuxPanel.refresh();
 };
 conn.onStatus = (status) => {
   statusEl.hidden = status === "open";
@@ -274,6 +278,8 @@ for (const def of keyDefs) {
 }
 
 const tmuxPanel = setupTmuxPanel({
+  tabs: $("tabs"),
+  newWindow: $("new-window"),
   button: $("tmux-btn"),
   panel: $("tmuxpanel"),
   sendPrefix: () => conn.send("\x02"),
