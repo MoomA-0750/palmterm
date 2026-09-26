@@ -80,7 +80,7 @@ func main() {
 
 	handler := s.routes()
 	if *lan != "" {
-		go serveLAN(*lan, handler, tok)
+		serveLAN(*lan, handler, tok)
 	}
 	log.Printf(tr("palmterm: http://%s/auth?token=%s を開いてください", "palmterm: open http://%s/auth?token=%s"), *listen, tok)
 	log.Fatal(newHTTPServer(*listen, handler).ListenAndServe())
@@ -94,7 +94,7 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 
 var readHeaderTimeout = 10 * time.Second // テストで短くする
 
-// LAN 向けに HTTPS で待ち受ける（証明書は自分で署名したもの）。
+// LAN 向けに HTTPS で待ち受ける（証明書は自分で署名したもの）。ポートだけなら LAN のアドレスごとに待ち受ける。
 func serveLAN(addr string, handler http.Handler, token string) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
@@ -106,13 +106,20 @@ func serveLAN(addr string, handler http.Handler, token string) {
 	if err != nil {
 		log.Fatalf(tr("LAN 用の証明書を用意できませんでした: %v", "Could not prepare the LAN certificate: %v"), err)
 	}
-	srv := newHTTPServer(addr, handler)
-	srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+	addrs := lanListenAddrs(addr, ips)
+	if len(addrs) == 0 {
+		log.Print(tr("palmterm（LAN）: LAN のアドレスが見つからないので、LAN では待ち受けません", "palmterm (LAN): no LAN address found, so not listening on the LAN"))
+		return
+	}
+	for _, a := range addrs {
+		srv := newHTTPServer(a, handler)
+		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+		go func() { log.Fatal(srv.ListenAndServeTLS("", "")) }()
+	}
 	for _, u := range lanURLs(addr, ips, token) {
 		log.Printf(tr("palmterm（LAN）: %s を開いてください（最初は証明書の警告が出るので、先へ進む）",
 			"palmterm (LAN): open %s (the browser warns about the certificate the first time; proceed)"), u)
 	}
-	log.Fatal(srv.ListenAndServeTLS("", ""))
 }
 
 func (s *server) routes() http.Handler {

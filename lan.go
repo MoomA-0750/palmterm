@@ -139,23 +139,28 @@ func isVirtualBridge(name string) bool {
 	return false
 }
 
-// 待ち受けるアドレスから、ブラウザで開く URL を作る。すべてのアドレスで待つとき（":7682" など）は、
-// LAN のアドレスごとに1つずつ。
-func lanURLs(listen string, ips []net.IP, token string) []string {
+// 実際に待ち受けるアドレス。ポートだけ（":7682" など）のときは、この PC のすべてのネットワーク
+// （IPv6 のグローバルアドレスなども含む）ではなく、LAN のアドレスごとに待ち受ける。
+func lanListenAddrs(listen string, ips []net.IP) []string {
 	host, port, err := net.SplitHostPort(listen)
 	if err != nil {
 		return nil
 	}
-	hosts := []string{host}
-	if host == "" || host == "0.0.0.0" || host == "::" {
-		hosts = nil
-		for _, ip := range ips {
-			hosts = append(hosts, ip.String())
-		}
+	if host != "" && host != "0.0.0.0" && host != "::" {
+		return []string{listen}
 	}
-	urls := make([]string, len(hosts))
-	for i, h := range hosts {
-		urls[i] = "https://" + net.JoinHostPort(h, port) + "/auth?token=" + token
+	addrs := make([]string, len(ips))
+	for i, ip := range ips {
+		addrs[i] = net.JoinHostPort(ip.String(), port)
+	}
+	return addrs
+}
+
+// ブラウザで開くログイン用の URL（待ち受けるアドレスごとに1つ）。
+func lanURLs(listen string, ips []net.IP, token string) []string {
+	var urls []string
+	for _, addr := range lanListenAddrs(listen, ips) {
+		urls = append(urls, "https://"+addr+"/auth?token="+token)
 	}
 	return urls
 }

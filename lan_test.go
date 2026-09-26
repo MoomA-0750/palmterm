@@ -89,6 +89,23 @@ func TestLANURLs(t *testing.T) {
 	}
 }
 
+// ポートだけ（":7682"）なら、全部のネットワークではなく LAN のアドレスごとに待ち受ける。
+func TestLANListenAddrs(t *testing.T) {
+	ips := []net.IP{net.ParseIP("192.0.2.10"), net.ParseIP("198.51.100.2")}
+	for _, addr := range []string{":7682", "0.0.0.0:7682", "[::]:7682"} {
+		got := lanListenAddrs(addr, ips)
+		if strings.Join(got, " ") != "192.0.2.10:7682 198.51.100.2:7682" {
+			t.Errorf("%s: %v", addr, got)
+		}
+	}
+	if got := lanListenAddrs("192.0.2.10:9000", ips); strings.Join(got, " ") != "192.0.2.10:9000" {
+		t.Errorf("アドレスを書いたらそのまま: %v", got)
+	}
+	if got := lanListenAddrs(":7682", nil); len(got) != 0 {
+		t.Errorf("LAN のアドレスが無ければ待ち受けない: %v", got)
+	}
+}
+
 func TestIsVirtualBridge(t *testing.T) {
 	for name, want := range map[string]bool{"docker0": true, "br-3cbaf0fe6026": true, "veth12": true, "ens18": false, "wlan0": false, "tailscale0": false} {
 		if isVirtualBridge(name) != want {
