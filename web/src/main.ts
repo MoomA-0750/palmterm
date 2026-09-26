@@ -157,6 +157,18 @@ function setMode(next: InputMode, focus = true) {
 
 // ---- 下の入力欄 ----
 
+/**
+ * 今テキストボックスに入力しているか。テキストボックスを出していても、端末をタップすれば端末に直接
+ * 入力できるので、出しているかどうかではなく、最後に文字を入れる所としてフォーカスしたのがどちらかで決める
+ * （下の段のボタンを押すとフォーカスがボタンに移るので、今のフォーカスでは決められない）。
+ */
+let lastInput: "line" | "term" = "line";
+line.addEventListener("focus", () => (lastInput = "line"));
+termEl.addEventListener("focusin", () => (lastInput = "term"));
+function usingLine(): boolean {
+  return mode === "line" && lastInput === "line";
+}
+
 // 1行のときはボタンと同じ高さ、改行したら 200px まで伸ばす。
 const LINE_MIN_HEIGHT = 36;
 function autosizeLine() {
@@ -284,7 +296,7 @@ function pressKey(def: KeyDef) {
   }
   if ("key" in def) {
     // Tab 補完は、入力欄に書きかけの文字を先に送ってから。
-    if (def.key === "tab" && mode === "line" && !mods.active()) {
+    if (def.key === "tab" && usingLine() && !mods.active()) {
       const seq = specialKey(def.key, mods, appCursor());
       flushLine(false).then(() => conn.send(seq));
       return;
@@ -498,7 +510,7 @@ $("paste").addEventListener("click", async () => {
     toast("クリップボードに文字がありません");
     return;
   }
-  if (mode === "line") {
+  if (usingLine()) {
     line.setRangeText(text, line.selectionStart, line.selectionEnd, "end");
     autosizeLine();
     line.focus();
@@ -508,8 +520,8 @@ $("paste").addEventListener("click", async () => {
 });
 
 // ---- 画像のアップロード ----
-// 入力欄モードでは添付欄に並べて、送信のときに渡す（プレビューで確かめてから送れる）。
-// 直接入力モードでは、アップロードしたらすぐパスを貼り付ける。
+// テキストボックスに入力しているときは添付欄に並べて、送信のときに渡す（プレビューで確かめてから送れる）。
+// 端末に直接入力しているときは、アップロードしたらすぐパスを貼り付ける。
 // どちらも Claude Code などに画像を渡すため。HEIC などはサーバーが JPEG に変換してから返す。
 
 const uploadInput = $<HTMLInputElement>("upload-input");
@@ -517,7 +529,7 @@ const attachments = new Attachments($("attachments"));
 
 async function addImages(files: File[]) {
   if (files.length === 0) return;
-  if (mode === "line") {
+  if (usingLine()) {
     attachments.add(files);
     return;
   }
@@ -629,14 +641,6 @@ $("copy-to-line").addEventListener("click", () => {
 await term.init();
 setMode(mode, false);
 
-// 入力欄モードで端末をタップしても、ソフトキーボードは出さない（マウス操作は届く）。
-// 入力欄を使っている最中なら、入力欄にフォーカスを戻す。
-const termInput = termEl.querySelector("textarea");
-termInput?.addEventListener("focus", (e) => {
-  if (mode !== "line") return;
-  if (e.relatedTarget === line) line.focus();
-  else termInput.blur();
-});
 setupNerdIcons(termEl);
 setupTouch({
   el: termEl,
