@@ -336,3 +336,27 @@ func TestWebSocketOutlivesHeaderTimeout(t *testing.T) {
 		out.Write(data)
 	}
 }
+
+// 前の palmterm が tmux のサーバーを起動していて、サーバーの環境にトークンが残っていても、つないだときに消す
+// （以後に作るウィンドウのシェルに渡らないように）。
+func TestTerminalRemovesTokenFromTmuxEnvironment(t *testing.T) {
+	t.Setenv("PALMTERM_TOKEN", "old-secret")
+	isolateTmux(t, "t1") // この環境で tmux のサーバーを起動する
+	if got := runTmux(t, "show-environment", "-g", "PALMTERM_TOKEN"); got != "PALMTERM_TOKEN=old-secret" {
+		t.Fatalf("前提が違います: %q", got)
+	}
+	s := newTestServer(t)
+	srv := httptest.NewServer(http.HandlerFunc(s.handleTerminal))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+"/?cols=80&rows=20", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseNow()
+	waitFor(t, "トークンが消える", func() bool {
+		out, _ := exec.Command("tmux", "show-environment", "-g", "PALMTERM_TOKEN").CombinedOutput()
+		return !strings.Contains(string(out), "old-secret")
+	})
+}

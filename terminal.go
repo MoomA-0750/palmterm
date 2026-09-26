@@ -36,6 +36,10 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	defer conn.CloseNow()
 	conn.SetReadLimit(8 << 20) // 大きな貼り付けも1回で受ける
 
+	// 前の palmterm などが tmux のサーバーを起動していて、サーバーの環境にトークンが残っていたら消す
+	// （以後に作るウィンドウのシェルに渡さない）。サーバーがまだ無ければ何もしない。
+	exec.Command("tmux", "set-environment", "-g", "-u", "PALMTERM_TOKEN").Run()
+
 	cmd := exec.Command("tmux", "new-session", "-A", "-s", session)
 	cmd.Env = terminalEnv()
 	if home, err := os.UserHomeDir(); err == nil {
