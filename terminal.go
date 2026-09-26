@@ -99,12 +99,13 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 
 // サーバーを tmux の中から起動しても入れ子の扱いにならないよう、TMUX を外す。
 // 起動元の端末の幅（COLUMNS・LINES）も渡さない。tmux の中のプログラムが画面の幅を取り違えるため。
+// ログイン用のトークン（PALMTERM_TOKEN）も、tmux の中のシェルの環境に残さない。
 func terminalEnv() []string {
 	env := make([]string, 0, len(os.Environ())+2)
 	for _, kv := range os.Environ() {
 		name, _, _ := strings.Cut(kv, "=")
 		switch name {
-		case "TMUX", "TMUX_PANE", "TERM", "COLORTERM", "COLUMNS", "LINES":
+		case "TMUX", "TMUX_PANE", "TERM", "COLORTERM", "COLUMNS", "LINES", "PALMTERM_TOKEN":
 			continue
 		}
 		env = append(env, kv)

@@ -266,16 +266,17 @@ func TestTerminalRelay(t *testing.T) {
 }
 
 // tmux に渡す環境：入れ子の扱いにならないよう TMUX を外し、端末の種類を決め、
-// 起動元の端末の幅（COLUMNS・LINES）は渡さない（渡すと tmux の中のプログラムが画面の幅を取り違える）。
+// 起動元の端末の幅（COLUMNS・LINES）とログイン用のトークン（PALMTERM_TOKEN）は渡さない。
 func TestTerminalEnv(t *testing.T) {
 	t.Setenv("TMUX", "/tmp/x,1,0")
 	t.Setenv("TMUX_PANE", "%1")
 	t.Setenv("TERM", "dumb")
 	t.Setenv("COLUMNS", "80")
 	t.Setenv("LINES", "24")
+	t.Setenv("PALMTERM_TOKEN", "secret")
 	t.Setenv("PALMTERM_TEST_KEEP", "yes")
 	env := strings.Join(terminalEnv(), "\n") + "\n"
-	for _, gone := range []string{"TMUX=", "TMUX_PANE=", "TERM=dumb", "COLUMNS=", "LINES="} {
+	for _, gone := range []string{"TMUX=", "TMUX_PANE=", "TERM=dumb", "COLUMNS=", "LINES=", "PALMTERM_TOKEN="} {
 		if strings.Contains(env, "\n"+gone) || strings.HasPrefix(env, gone) {
 			t.Errorf("%s が残っています", gone)
 		}
