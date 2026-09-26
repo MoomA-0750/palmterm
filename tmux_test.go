@@ -360,3 +360,22 @@ func TestTerminalRemovesTokenFromTmuxEnvironment(t *testing.T) {
 		return !strings.Contains(string(out), "old-secret")
 	})
 }
+
+// systemd のサービスとして動くときに tmux のサーバーを起動する方法：サービスの外の scope で、セッションを作る。
+// （実際にサービスを止めてもセッションが残ることは、systemd のユーザーサービスで手元で確かめた）
+func TestTmuxScopeArgs(t *testing.T) {
+	got := strings.Join(tmuxScopeArgs("main"), " ")
+	if !strings.HasPrefix(got, "--user --scope ") || !strings.HasSuffix(got, "tmux new-session -d -s main") {
+		t.Fatal(got)
+	}
+}
+
+// systemd の外（INVOCATION_ID が無い）では何もしない。
+func TestStartTmuxOutsideServiceDoesNothingOutsideSystemd(t *testing.T) {
+	isolateTmux(t, "")
+	t.Setenv("INVOCATION_ID", "")
+	startTmuxOutsideService("t1")
+	if out, err := exec.Command("tmux", "ls").CombinedOutput(); err == nil {
+		t.Fatalf("tmux を起動しました: %s", out)
+	}
+}

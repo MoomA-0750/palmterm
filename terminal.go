@@ -40,6 +40,7 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	// （以後に作るウィンドウのシェルに渡さない）。サーバーがまだ無ければ何もしない。
 	exec.Command("tmux", "set-environment", "-g", "-u", "PALMTERM_TOKEN").Run()
 
+	startTmuxOutsideService(session)
 	cmd := exec.Command("tmux", "new-session", "-A", "-s", session)
 	cmd.Env = terminalEnv()
 	if home, err := os.UserHomeDir(); err == nil {
@@ -146,4 +147,31 @@ func abs(n int) int {
 		return -n
 	}
 	return n
+}
+
+// systemd のサービスとして動いているときは、tmux のサーバーをサービスの外（別の scope）で起動する。
+// Fedora などの tmux は、ペインのシェルを tmux のサーバーが属する単位に結びついた scope に入れるので、
+// サービスの中でサーバーを起動すると、サービスを止めたり再起動したりしたときにペインが全部止められ、
+// セッションが消えてしまう。セッションがもうあるとき、systemd の外で動いているときは何もしない。
+func startTmuxOutsideService(session string) {
+	if os.Getenv("INVOCATION_ID") == "" {
+		return
+	}
+	if exec.Command("tmux", "has-session", "-t", "="+session).Run() == nil {
+		return
+	}
+	cmd := exec.Command("systemd-run", tmuxScopeArgs(session)...)
+	cmd.Env = terminalEnv()
+	if home, err := os.UserHomeDir(); err == nil {
+		cmd.Dir = home
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		// 使えなければ、今までどおりサービスの中で起動する（new-session -A が作る）。
+		log.Printf(tr("tmux をサービスの外で起動できませんでした: %v %s", "Could not start tmux outside the service: %v %s"), err, out)
+	}
+}
+
+func tmuxScopeArgs(session string) []string {
+	return []string{"--user", "--scope", "--quiet", "--collect", "--description=tmux server started by palmterm",
+		"tmux", "new-session", "-d", "-s", session}
 }
