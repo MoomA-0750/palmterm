@@ -8,7 +8,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { type Browser, chromium, type Page } from "playwright-core";
+import { type Browser, type CDPSession, chromium, type Page } from "playwright-core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 const BINARY = resolve(__dirname, "../../palmterm");
@@ -301,3 +301,56 @@ describe("画像とコピー", () => {
     expect(await page.locator("#copymode").isHidden()).toBe(true);
   });
 });
+
+describe("タッチ操作", () => {
+  let cdp: CDPSession;
+  beforeAll(async () => {
+    cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  });
+  afterAll(async () => {
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    await cdp.detach();
+  });
+
+  /** 指の操作を送る（CDP の Input.dispatchTouchEvent）。points は指ごとの [x, y]。 */
+  async function touch(type: "touchStart" | "touchMove" | "touchEnd", points: [number, number][]) {
+    await cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points.map(([x, y], id) => ({ x, y, id })) });
+  }
+  const fontSize = () => page.evaluate(() => document.getElementById("term")!.style.getPropertyValue("--term-font-size"));
+
+  it("2本指で広げると文字が大きくなり、離したら保存する", async () => {
+    await page.evaluate(() => localStorage.removeItem("palmterm.fontSize"));
+    await openPage();
+    expect(await fontSize()).toBe("13px");
+    await touch("touchStart", [[150, 200], [250, 200]]);
+    for (const d of [60, 80, 100]) await touch("touchMove", [[200 - d, 200], [200 + d, 200]]);
+    await touch("touchEnd", []);
+    expect(await fontSize()).toBe("26px"); // 指の間が 100px → 200px
+    expect(await page.evaluate(() => localStorage.getItem("palmterm.fontSize"))).toBe("26");
+
+    // 上限（32px）より大きくはならない
+    await touch("touchStart", [[190, 200], [210, 200]]);
+    await touch("touchMove", [[100, 200], [300, 200]]);
+    await touch("touchEnd", []);
+    expect(await fontSize()).toBe("32px");
+    await page.evaluate(() => localStorage.removeItem("palmterm.fontSize"));
+  });
+
+  it("シェルの上で下へスワイプすると tmux の履歴をさかのぼる", async () => {
+    await page.evaluate(() => localStorage.removeItem("palmterm.fontSize"));
+    await openPage();
+    for (let i = 0; i < 40; i++) tmux("send-keys", "-t", SESSION, `echo swipe${i}`, "Enter");
+    await waitUntil("出力", () => paneText().includes("swipe39"));
+    await touch("touchStart", [[200, 100]]);
+    for (let y = 120; y <= 400; y += 20) await touch("touchMove", [[200, y]]);
+    await page.waitForTimeout(100);
+    await touch("touchEnd", []);
+    await waitUntil("コピーモードでさかのぼる", () => {
+      const [mode, pos] = tmux("display-message", "-p", "-t", SESSION, "#{pane_in_mode} #{scroll_position}").split(" ");
+      return mode === "1" && Number(pos) > 5;
+    });
+    tmux("send-keys", "-t", SESSION, "-X", "cancel");
+  });
+});
+
