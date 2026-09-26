@@ -126,9 +126,13 @@ function setMode(next: InputMode, focus = true) {
 
 // ---- 下の入力欄 ----
 
+// 1行のときはボタンと同じ高さ、改行したら 200px まで伸ばす。
+const LINE_MIN_HEIGHT = 36;
 function autosizeLine() {
-  line.style.height = "auto";
-  line.style.height = `${Math.min(line.scrollHeight, 200)}px`;
+  line.style.height = "";
+  if (line.value === "") return; // 空なら CSS の高さ（プレースホルダーの折り返しで伸ばさない）
+  const border = line.offsetHeight - line.clientHeight; // box-sizing: border-box なので枠の分を足す
+  line.style.height = `${Math.min(Math.max(line.scrollHeight + border, LINE_MIN_HEIGHT), 200)}px`;
 }
 
 /**

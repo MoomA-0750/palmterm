@@ -258,7 +258,8 @@ button:active {
   display: flex;
   align-items: flex-end;
   gap: 4px;
-  padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+  /* 上はキーバーの下の余白（4px）があるので付けない。段の間はどこも 4px にそろえる */
+  padding: 0 4px calc(4px + env(safe-area-inset-bottom));
   background: var(--bar-bg);
 }
 
@@ -298,13 +299,19 @@ body[data-mode="line"] #direct-hint {
   min-width: 0;
   resize: none;
   box-sizing: border-box;
-  min-height: 36px;
+  height: 36px; /* ボタンと同じ高さ（1行のとき）。改行すると main.ts が伸ばす */
   padding: 7px 8px;
-  font: 16px var(--mono-font); /* 16px 未満だと iOS が拡大する */
+  font: 16px/20px var(--mono-font); /* 16px 未満だと iOS が拡大する */
   color: var(--btn-fg);
   background: #111;
   border: 1px solid #555;
   border-radius: 6px;
+}
+
+#line::placeholder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 body[data-mode="direct"] #line,
