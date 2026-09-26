@@ -7,7 +7,7 @@ import { Connection } from "./connection";
 import { type Lang, setLang, t } from "./i18n";
 import { icon } from "./icons";
 import { DEFAULT_KEYS, type KeyButton, type KeyConfig, parseKey } from "./keyconfig";
-import { applyToChar, isSingleChar, Modifiers, type ModName, specialKey, withMods } from "./keys";
+import { applyToChar, isSingleChar, keySequenceWithMods, Modifiers, type ModName, specialKey, withMods } from "./keys";
 import { setupNerdIcons } from "./nerd";
 import { pasteSequence } from "./paste";
 import { SoftKeyboard } from "./softkeyboard";
@@ -131,11 +131,14 @@ const term = new WTerm(termEl, { cursorBlink: false });
 const conn = new Connection(() => ({ cols: term.cols, rows: term.rows }));
 
 // 画面から出るデータ（直接入力のキー・マウス操作・端末からの応答）は全部ここを通る。
-// 修飾キーが待っていれば、1文字の入力にだけ効かせる。
+// 修飾キーが待っていれば、キーの入力（1文字か、物理キーボードの矢印などの特殊キー）にだけ効かせる。
 term.onData = (data) => {
-  if (mods.active() && isSingleChar(data)) {
-    data = applyToChar(data, mods);
-    mods.consume();
+  if (mods.active()) {
+    const modified = isSingleChar(data) ? applyToChar(data, mods) : keySequenceWithMods(data, mods, appCursor());
+    if (modified !== null) {
+      data = modified;
+      mods.consume();
+    }
   }
   conn.send(data);
 };

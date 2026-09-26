@@ -181,6 +181,15 @@ describe("キーバー", () => {
     await key("Alt").click();
     expect(await key("Alt").getAttribute("data-state")).toBe("off");
 
+    // 画面の修飾キーは、物理キーボードの特殊キーにも効き、そこで使い切る
+    await key("Ctrl").click();
+    await page.mouse.click(200, 150);
+    await clearSent();
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.type("c");
+    expect(await sent()).toEqual(["\x1b[1;5A", "c"]);
+    expect(await key("Ctrl").getAttribute("data-state")).toBe("off");
+
     await key("Shift").click();
     await page.waitForTimeout(500);
     await key("Shift").click();

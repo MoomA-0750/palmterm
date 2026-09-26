@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyToChar, isSingleChar, Modifiers, type ModName, specialKey, withMods } from "./keys";
+import { applyToChar, isSingleChar, keySequenceWithMods, Modifiers, type ModName, specialKey, withMods } from "./keys";
 
 /** 決まった修飾キーだけが効いている状態。 */
 function fixed(...names: ModName[]) {
@@ -131,5 +131,35 @@ describe("isSingleChar", () => {
     ["", false],
   ])("%j → %s", (s, want) => {
     expect(isSingleChar(s)).toBe(want);
+  });
+});
+
+describe("keySequenceWithMods（物理キーボードの特殊キーに画面の修飾キーを効かせる）", () => {
+  it.each([
+    ["\x1b[A", ["ctrl"], false, "\x1b[1;5A"],
+    ["\x1bOA", ["ctrl"], true, "\x1b[1;5A"],
+    ["\x1bOD", ["alt"], true, "\x1b[1;3D"],
+    ["\x1b[H", ["shift"], false, "\x1b[1;2H"],
+    ["\x1b[3~", ["ctrl"], false, "\x1b[3;5~"],
+    ["\x1b[6~", ["shift"], false, "\x1b[6;2~"],
+    ["\x1bOP", ["alt"], false, "\x1b[1;3P"],
+    ["\x1b[15~", ["ctrl"], false, "\x1b[15;5~"],
+    ["\t", ["shift"], false, "\x1b[Z"],
+    ["\r", ["alt"], false, "\x1b\r"],
+    ["\x7f", ["ctrl"], false, "\b"],
+    ["\x1b", ["alt"], false, "\x1b\x1b"],
+  ] as [string, ModName[], boolean, string][])("%j + %j", (seq, mods, app, want) => {
+    expect(keySequenceWithMods(seq, fixed(...mods), app)).toBe(want);
+  });
+
+  it.each([
+    "\x1b[1;5A", // 物理キーボードで修飾済み
+    "\x1b[12;40R", // カーソル位置の答え
+    "\x1b[?1;2c", // 端末の種類の答え
+    "\x1b[4;542;376t", // 画面の大きさの答え
+    "\x1b[<0;10;5M", // マウス
+    "abc",
+  ])("%j はキーではないので null", (seq) => {
+    expect(keySequenceWithMods(seq, fixed("ctrl"), false)).toBeNull();
   });
 });

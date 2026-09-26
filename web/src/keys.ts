@@ -147,3 +147,21 @@ export function specialKey(key: SpecialKey, mods: ModSet, appCursor: boolean): s
   }
   return "";
 }
+
+// 端末が送るキーの信号から、特殊キーの名前を引く（修飾なしの形だけ）。
+const KEY_SEQUENCES: Record<string, SpecialKey> = {
+  "\x1b": "esc", "\t": "tab", "\r": "enter", "\x7f": "backspace",
+  "\x1b[A": "up", "\x1b[B": "down", "\x1b[C": "right", "\x1b[D": "left", "\x1b[H": "home", "\x1b[F": "end",
+  "\x1bOA": "up", "\x1bOB": "down", "\x1bOC": "right", "\x1bOD": "left", "\x1bOH": "home", "\x1bOF": "end",
+  "\x1bOP": "f1", "\x1bOQ": "f2", "\x1bOR": "f3", "\x1bOS": "f4",
+};
+for (const [key, code] of Object.entries(tildeCode)) KEY_SEQUENCES[`\x1b[${code}~`] = key as SpecialKey;
+
+/**
+ * 物理キーボードの特殊キー（矢印など）の信号に、画面の修飾キーを効かせた信号。キーの信号でなければ null
+ * （端末が自分で返す答えやマウスの信号には効かせない）。
+ */
+export function keySequenceWithMods(data: string, mods: ModSet, appCursor: boolean): string | null {
+  const key = KEY_SEQUENCES[data];
+  return key ? specialKey(key, mods, appCursor) : null;
+}
