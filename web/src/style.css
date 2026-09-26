@@ -145,6 +145,14 @@ button:active {
   color: #9a9;
 }
 
+.tmux-size {
+  flex: none;
+  min-width: 3.5em;
+  text-align: center;
+  font-size: 13px;
+  color: #ccc;
+}
+
 #tmuxpanel button {
   flex: none;
   min-width: 40px;

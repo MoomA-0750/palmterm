@@ -217,8 +217,7 @@ modeBtn.addEventListener("click", () => setMode(mode === "line" ? "direct" : "li
 type KeyDef =
   | { label: string; mod: ModName }
   | { label: string; key: SpecialKey; repeat?: boolean }
-  | { label: string; text: string }
-  | { label: string; action: () => void };
+  | { label: string; text: string };
 
 const keyDefs: KeyDef[] = [
   { label: "Esc", key: "esc" },
@@ -243,8 +242,6 @@ const keyDefs: KeyDef[] = [
   { label: "/", text: "/" },
   { label: "-", text: "-" },
   { label: "`", text: "`" },
-  { label: "A−", action: () => changeFontSize(-1) },
-  { label: "A+", action: () => changeFontSize(1) },
 ];
 
 const modButtons = new Map<ModName, HTMLButtonElement>();
@@ -252,10 +249,6 @@ const modButtons = new Map<ModName, HTMLButtonElement>();
 function pressKey(def: KeyDef) {
   if ("mod" in def) {
     mods.tap(def.mod);
-    return;
-  }
-  if ("action" in def) {
-    def.action();
     return;
   }
   if ("key" in def) {
@@ -290,6 +283,7 @@ const tmuxPanel = setupTmuxPanel({
   button: $("tmux-btn"),
   panel: $("tmuxpanel"),
   sendPrefix: () => conn.send("\x02"),
+  fontSize: { get: () => fontSize, change: changeFontSize },
   toast,
   bind: bindKeyButton,
 });

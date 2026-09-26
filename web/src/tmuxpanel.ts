@@ -18,6 +18,8 @@ export interface TmuxPanelOptions {
   panel: HTMLElement;
   /** tmux のプレフィックス（Ctrl+B）をそのまま送る。パネルにない操作用。 */
   sendPrefix: () => void;
+  /** 端末の文字サイズ（パネルの「文字」の行で変える）。 */
+  fontSize: { get: () => number; change: (delta: number) => void };
   toast: (message: string) => void;
   /** キーバーと同じ押し方（フォーカスを奪わない、横スクロールでは押さない）でボタンをつなぐ。 */
   bind: (btn: HTMLButtonElement, fire: () => void, repeat: boolean) => void;
@@ -200,6 +202,16 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
     armOrFire(killBtn, "もう一度で閉じる", () => run("kill-pane")),
   );
 
+  // 文字サイズは押してもパネルを閉じない（続けて押して合わせる）。
+  const sizeLabel = document.createElement("span");
+  sizeLabel.className = "tmux-size";
+  const showSize = () => (sizeLabel.textContent = `${opts.fontSize.get()}px`);
+  const sizeBtn = (label: string, title: string, delta: number) =>
+    makeBtn(label, title, () => {
+      opts.fontSize.change(delta);
+      showSize();
+    });
+
   panel.append(
     row("分割", act("◫ 左右", "左右に分割", "split-h"), act("⊟ 上下", "上下に分割", "split-v"), zoomBtn, killBtn),
     row(
@@ -218,6 +230,7 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
         opts.sendPrefix();
       }),
     ),
+    row("文字", sizeBtn("A−", "文字を小さく", -1), sizeLabel, sizeBtn("A+", "文字を大きく", 1)),
   );
 
   async function run(action: string, window?: number, extra: Record<string, string | number> = {}) {
@@ -236,6 +249,7 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
   }
 
   function open() {
+    showSize(); // ピンチで変わっていることがある
     panel.hidden = false;
     button.setAttribute("aria-expanded", "true");
   }
