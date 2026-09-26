@@ -98,11 +98,13 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 }
 
 // サーバーを tmux の中から起動しても入れ子の扱いにならないよう、TMUX を外す。
+// 起動元の端末の幅（COLUMNS・LINES）も渡さない。tmux の中のプログラムが画面の幅を取り違えるため。
 func terminalEnv() []string {
 	env := make([]string, 0, len(os.Environ())+2)
 	for _, kv := range os.Environ() {
-		if strings.HasPrefix(kv, "TMUX=") || strings.HasPrefix(kv, "TMUX_PANE=") ||
-			strings.HasPrefix(kv, "TERM=") || strings.HasPrefix(kv, "COLORTERM=") {
+		name, _, _ := strings.Cut(kv, "=")
+		switch name {
+		case "TMUX", "TMUX_PANE", "TERM", "COLORTERM", "COLUMNS", "LINES":
 			continue
 		}
 		env = append(env, kv)

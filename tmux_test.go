@@ -259,3 +259,25 @@ func TestTerminalRelay(t *testing.T) {
 		return runTmux(t, "display-message", "-p", "-t", "t1", "#{pane_in_mode}") == "1"
 	})
 }
+
+// tmux に渡す環境：入れ子の扱いにならないよう TMUX を外し、端末の種類を決め、
+// 起動元の端末の幅（COLUMNS・LINES）は渡さない（渡すと tmux の中のプログラムが画面の幅を取り違える）。
+func TestTerminalEnv(t *testing.T) {
+	t.Setenv("TMUX", "/tmp/x,1,0")
+	t.Setenv("TMUX_PANE", "%1")
+	t.Setenv("TERM", "dumb")
+	t.Setenv("COLUMNS", "80")
+	t.Setenv("LINES", "24")
+	t.Setenv("PALMTERM_TEST_KEEP", "yes")
+	env := strings.Join(terminalEnv(), "\n") + "\n"
+	for _, gone := range []string{"TMUX=", "TMUX_PANE=", "TERM=dumb", "COLUMNS=", "LINES="} {
+		if strings.Contains(env, "\n"+gone) || strings.HasPrefix(env, gone) {
+			t.Errorf("%s が残っています", gone)
+		}
+	}
+	for _, want := range []string{"TERM=xterm-256color\n", "COLORTERM=truecolor\n", "PALMTERM_TEST_KEEP=yes\n"} {
+		if !strings.Contains(env, want) {
+			t.Errorf("%s がありません", strings.TrimSpace(want))
+		}
+	}
+}
