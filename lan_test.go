@@ -15,13 +15,13 @@ import (
 
 func TestLANCertificateIsCreatedReusedAndRenewedForNewAddresses(t *testing.T) {
 	dir := t.TempDir()
-	lan := net.ParseIP("192.168.0.98")
+	lan := net.ParseIP("192.0.2.10")
 	c1, err := lanCertificate(dir, []net.IP{lan}, "myhost")
 	if err != nil {
 		t.Fatal(err)
 	}
 	leaf, _ := x509.ParseCertificate(c1.Certificate[0])
-	if err := leaf.VerifyHostname("192.168.0.98"); err != nil {
+	if err := leaf.VerifyHostname("192.0.2.10"); err != nil {
 		t.Fatal(err)
 	}
 	for _, h := range []string{"127.0.0.1", "localhost", "myhost"} {
@@ -48,19 +48,19 @@ func TestLANCertificateIsCreatedReusedAndRenewedForNewAddresses(t *testing.T) {
 		t.Fatal(err)
 	}
 	leaf3, _ := x509.ParseCertificate(c3.Certificate[0])
-	if leaf3.VerifyHostname("10.0.0.5") != nil || leaf3.VerifyHostname("192.168.0.98") != nil {
+	if leaf3.VerifyHostname("10.0.0.5") != nil || leaf3.VerifyHostname("192.0.2.10") != nil {
 		t.Fatal("新しいアドレスが入っていません")
 	}
 }
 
 func TestLANURLs(t *testing.T) {
-	ips := []net.IP{net.ParseIP("192.168.0.98"), net.ParseIP("100.79.1.2")}
+	ips := []net.IP{net.ParseIP("192.0.2.10"), net.ParseIP("198.51.100.2")}
 	got := lanURLs(":7682", ips, "tok")
-	want := []string{"https://192.168.0.98:7682/auth?token=tok", "https://100.79.1.2:7682/auth?token=tok"}
+	want := []string{"https://192.0.2.10:7682/auth?token=tok", "https://198.51.100.2:7682/auth?token=tok"}
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("%v", got)
 	}
-	if got := lanURLs("192.168.0.98:7682", ips, "tok"); len(got) != 1 || got[0] != want[0] {
+	if got := lanURLs("192.0.2.10:7682", ips, "tok"); len(got) != 1 || got[0] != want[0] {
 		t.Fatalf("%v", got)
 	}
 }
