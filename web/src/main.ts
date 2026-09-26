@@ -288,6 +288,47 @@ const tmuxPanel = setupTmuxPanel({
 });
 // 端末に触れたらパネルを閉じる。
 termEl.addEventListener("pointerdown", () => tmuxPanel.close());
+onTap(termEl, (x, y) => {
+  const cell = cellAt(x, y);
+  if (cell) tmuxPanel.selectPaneAt(cell.col, cell.row);
+});
+
+/** 動かさずに短く触れて離したとき（スワイプ・長押しの選択・ピンチは除く）。 */
+function onTap(el: HTMLElement, fire: (x: number, y: number) => void) {
+  const TAP_MS = 350;
+  const TAP_PX = 10;
+  let start: { id: number; x: number; y: number; t: number } | null = null;
+  el.addEventListener("pointerdown", (e) => {
+    start = e.isPrimary && e.button === 0 ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() } : null;
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (start && e.pointerId === start.id && Math.hypot(e.clientX - start.x, e.clientY - start.y) > TAP_PX) start = null;
+  });
+  el.addEventListener("pointercancel", () => (start = null));
+  // 2本目の指が来たらピンチなので取りやめる。
+  el.addEventListener("touchstart", (e) => e.touches.length > 1 && (start = null), { passive: true });
+  el.addEventListener("pointerup", (e) => {
+    const s = start;
+    start = null;
+    if (!s || e.pointerId !== s.id || performance.now() - s.t > TAP_MS) return;
+    if (!document.getSelection()?.isCollapsed) return; // 文字を選んでいる
+    fire(e.clientX, e.clientY);
+  });
+}
+
+/** 画面の位置を、端末のセル（0 から）に直す。 */
+function cellAt(x: number, y: number): { col: number; row: number } | null {
+  const firstRow = termEl.querySelector(".term-row:not(.term-scrollback-row)");
+  if (!firstRow) return null;
+  const rect = firstRow.getBoundingClientRect();
+  // 文字の幅は wterm が測った値を使う（公開されていないので、なければ行の幅から出す）。
+  const charWidth = (term as unknown as { _charWidth?: number })._charWidth || rect.width / term.cols;
+  const rowHeight = parseFloat(getComputedStyle(termEl).getPropertyValue("--term-row-height")) || rect.height;
+  const col = Math.floor((x - rect.left) / charWidth);
+  const row = Math.floor((y - rect.top) / rowHeight);
+  if (col < 0 || row < 0 || col >= term.cols || row >= term.rows) return null;
+  return { col, row };
+}
 
 mods.onChange = () => {
   for (const [name, btn] of modButtons) btn.dataset.state = mods.get(name);

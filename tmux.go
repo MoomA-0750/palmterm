@@ -65,13 +65,24 @@ func (s *server) handleTmuxAction(w http.ResponseWriter, r *http.Request) {
 		Action string `json:"action"`
 		Window int    `json:"window"` // select-window・kill-window・rename-window のとき
 		Name   string `json:"name"`   // rename-window のとき
+		Col    int    `json:"col"`    // select-pane-at のとき（端末の画面での位置、0 から）
+		Row    int    `json:"row"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
 		http.Error(w, "操作を読めませんでした: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	var args []string
-	if req.Action == "rename-window" {
+	if req.Action == "select-pane-at" {
+		if args, err = selectPaneAtArgs(session, req.Col, req.Row); err != nil {
+			http.Error(w, "tmux のペインを取れませんでした: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if args == nil { // ペインの境目や、すでに選ばれているペイン
+			s.handleWindows(w, r)
+			return
+		}
+	} else if req.Action == "rename-window" {
 		args = renameWindowArgs(session, req.Window, req.Name)
 	} else {
 		args = tmuxActionArgs(session, req.Action, req.Window)
@@ -145,4 +156,49 @@ func renameWindowArgs(session string, window int, name string) []string {
 		name = string(rs[:maxWindowNameRunes])
 	}
 	return []string{"rename-window", "-t", target, name}
+}
+
+// 画面のタップした位置（セル）にあるペインを選ぶ。tmux の mouse 設定が off でもタップでペインを移れるように。
+// 何もしなくてよいとき（境目・選ばれているペイン・拡大中）は nil を返す。
+func selectPaneAtArgs(session string, col, row int) ([]string, error) {
+	out, err := exec.Command("tmux", "display-message", "-p", "-t", session,
+		"#{status} #{status-position} #{window_zoomed_flag}").Output()
+	if err != nil {
+		return nil, err
+	}
+	f := strings.Fields(string(out))
+	if len(f) != 3 || f[2] == "1" {
+		return nil, nil
+	}
+	// ステータス行が上にあるときは、その分だけペインが下にずれる。
+	if f[1] == "top" {
+		switch lines, err := strconv.Atoi(f[0]); {
+		case err == nil:
+			row -= lines
+		case f[0] == "on":
+			row--
+		}
+	}
+	out, err = exec.Command("tmux", "list-panes", "-t", session,
+		"-F", "#{pane_id} #{pane_active} #{pane_left} #{pane_top} #{pane_right} #{pane_bottom}").Output()
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		f := strings.Fields(l)
+		if len(f) != 6 {
+			continue
+		}
+		var b [4]int
+		for i := range b {
+			b[i], _ = strconv.Atoi(f[2+i])
+		}
+		if col >= b[0] && col <= b[2] && row >= b[1] && row <= b[3] {
+			if f[1] == "1" {
+				return nil, nil
+			}
+			return []string{"select-pane", "-t", f[0]}, nil
+		}
+	}
+	return nil, nil
 }

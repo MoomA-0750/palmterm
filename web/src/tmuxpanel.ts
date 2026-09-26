@@ -220,7 +220,7 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
     ),
   );
 
-  async function run(action: string, window?: number, extra: Record<string, string> = {}) {
+  async function run(action: string, window?: number, extra: Record<string, string | number> = {}) {
     if (!KEEP_OPEN.has(action)) close();
     try {
       const res = await fetch("/api/tmux", {
@@ -247,7 +247,14 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
     button.setAttribute("aria-expanded", "false");
   }
 
+  /** 端末の画面のセル（col, row）にあるペインを選ぶ。ペインが1つだけのウィンドウでは何もしない。 */
+  function selectPaneAt(col: number, row: number) {
+    const active = windows.find((w) => w.active);
+    if (!active || active.panes < 2 || active.zoomed) return;
+    run("select-pane-at", undefined, { col, row });
+  }
+
   opts.bind(button, () => (panel.hidden ? open() : close()), false);
 
-  return { close, refresh, outputSeen };
+  return { close, refresh, outputSeen, selectPaneAt };
 }
