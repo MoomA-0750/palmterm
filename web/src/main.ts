@@ -50,12 +50,26 @@ applyFontSize(fontSize);
 
 // ---- 画面の高さをソフトキーボードに合わせる ----
 
-// 画面の端（ナビゲーションバーの裏）までは描かない（viewport-fit=cover にしない）。Android の Chromium 系では、
-// そうするとキーボードを出したときの高さがバーの分だけ大きく報告され、下の段がキーボードに潜る。
-// ブラウザが入力欄を見せるために見えている範囲をずらしたときも、その位置（offsetTop）に合わせる。
+// 見えている範囲（visualViewport）に合わせる。ブラウザが入力欄を見せるために見えている範囲をずらしたときも、
+// その位置（offsetTop）に合わせる。
+//
+// キーボードを出したとき、Chrome はページごと縮める（interactive-widget=resizes-content）が、ページを縮めずに
+// 見えている範囲だけを縮めるブラウザ（タブレットの Edge で確認）は、その高さをナビゲーションバーの分だけ大きく
+// 報告し、下の段がキーボードに潜る。そういうブラウザでキーボードが出ているときだけ、キーボードを閉じている
+// 間に測ったナビゲーションバーの高さを引く。
+const safeProbe = document.createElement("div");
+safeProbe.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;padding-bottom:env(safe-area-inset-bottom)";
+document.body.appendChild(safeProbe);
+let navInset = 0;
+let keyboardAdjust = 0;
+
 function fitViewport() {
   const vv = window.visualViewport;
-  const h = vv?.height ?? window.innerHeight;
+  let h = vv?.height ?? window.innerHeight;
+  const keyboardOverlaid = h < window.innerHeight - 100; // ページは縮まず、見えている範囲だけが縮んだ
+  if (!keyboardOverlaid) navInset = parseFloat(getComputedStyle(safeProbe).paddingBottom) || 0;
+  keyboardAdjust = keyboardOverlaid ? navInset : 0;
+  h -= keyboardAdjust;
   const root = document.documentElement.style;
   root.setProperty("--app-h", `${h}px`);
   window.scrollTo(0, 0);
@@ -84,6 +98,7 @@ function showViewportDebug() {
     `vv ${vv?.width.toFixed(1)}x${vv?.height.toFixed(1)} top=${vv?.offsetTop.toFixed(1)}`,
     `screen ${screen.width}x${screen.height} dpr=${devicePixelRatio}`,
     `inputbar bottom=${bar.bottom.toFixed(1)} pad=${inset}`,
+    `nav=${navInset} adjust=${keyboardAdjust}`,
   ].join("\n");
 }
 window.visualViewport?.addEventListener("resize", fitViewport);
