@@ -42,6 +42,7 @@ describe("specialKey", () => {
     ["tab", [], false, "\t"],
     ["tab", ["shift"], false, "\x1b[Z"],
     ["tab", ["alt"], false, "\x1b\t"],
+    ["tab", ["alt", "shift"], false, "\x1b\x1b[Z"],
     ["esc", [], false, "\x1b"],
     ["esc", ["alt"], false, "\x1b\x1b"],
     ["enter", [], false, "\r"],

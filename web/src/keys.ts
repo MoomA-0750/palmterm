@@ -137,7 +137,8 @@ export function specialKey(key: SpecialKey, mods: ModSet, appCursor: boolean): s
   const alt = mods.has("alt") ? "\x1b" : "";
   switch (key) {
     case "tab":
-      return mods.has("shift") ? "\x1b[Z" : alt + "\t";
+      // Shift+Tab は ESC [ Z。Alt はほかのキーと同じく前に ESC を付ける（Ctrl+Tab には広く決まった信号がない）。
+      return alt + (mods.has("shift") ? "\x1b[Z" : "\t");
     case "esc":
       return alt + "\x1b";
     case "enter":
