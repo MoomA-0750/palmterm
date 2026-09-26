@@ -189,7 +189,7 @@ button:active {
 }
 
 .tmux-tab button {
-  height: 32px;
+  height: 36px;
   border-radius: 0;
   background: transparent;
   font-size: 13px;
@@ -206,7 +206,7 @@ button:active {
 
 .tmux-tab-input {
   width: 9em;
-  height: 32px;
+  height: 36px;
   box-sizing: border-box;
   padding: 0 6px;
   border: 0;
@@ -233,8 +233,8 @@ button:active {
 
 #new-window {
   flex: none;
-  width: 40px;
-  height: 32px;
+  width: 48px; /* 下の tmux ボタンと同じ幅にして縦にそろえる */
+  height: 36px;
   font-weight: bold;
   color: #3fb950;
   box-shadow: inset 0 0 0 1px #3fb950;
