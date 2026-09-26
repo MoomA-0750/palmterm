@@ -77,18 +77,6 @@ func TestLANCertificateKeepsPreviousAddresses(t *testing.T) {
 	}
 }
 
-func TestLANURLs(t *testing.T) {
-	ips := []net.IP{net.ParseIP("192.0.2.10"), net.ParseIP("198.51.100.2")}
-	got := lanURLs(":7682", ips, "tok")
-	want := []string{"https://192.0.2.10:7682/auth?token=tok", "https://198.51.100.2:7682/auth?token=tok"}
-	if strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Fatalf("%v", got)
-	}
-	if got := lanURLs("192.0.2.10:7682", ips, "tok"); len(got) != 1 || got[0] != want[0] {
-		t.Fatalf("%v", got)
-	}
-}
-
 // ポートだけ（":7682"）なら、全部のネットワークではなく LAN のアドレスごとに待ち受ける。
 func TestLANListenAddrs(t *testing.T) {
 	ips := []net.IP{net.ParseIP("192.0.2.10"), net.ParseIP("198.51.100.2")}
@@ -115,6 +103,32 @@ func TestIsLANAddress(t *testing.T) {
 		if got := isLANAddress(net.ParseIP(addr)); got != want {
 			t.Errorf("%s: %v", addr, got)
 		}
+	}
+}
+
+// 待ち受けは開けたアドレスだけで行い、開けなかったアドレスは理由を返す（1つの失敗で全体を止めない）。重なりはまとめる。
+func TestListenAll(t *testing.T) {
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer busy.Close()
+	free, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	freeAddr := free.Addr().String()
+	free.Close()
+
+	lns, errs := listenAll([]string{busy.Addr().String(), freeAddr, freeAddr})
+	for _, ln := range lns {
+		defer ln.Close()
+	}
+	if len(lns) != 1 || lns[0].Addr().String() != freeAddr {
+		t.Fatalf("開けたもの: %v", lns)
+	}
+	if len(errs) != 1 {
+		t.Fatalf("開けなかったもの: %v", errs)
 	}
 }
 

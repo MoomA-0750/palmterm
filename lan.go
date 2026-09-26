@@ -165,11 +165,20 @@ func lanListenAddrs(listen string, ips []net.IP) []string {
 	return addrs
 }
 
-// ブラウザで開くログイン用の URL（待ち受けるアドレスごとに1つ）。
-func lanURLs(listen string, ips []net.IP, token string) []string {
-	var urls []string
-	for _, addr := range lanListenAddrs(listen, ips) {
-		urls = append(urls, "https://"+addr+"/auth?token="+token)
+// addrs で待ち受けを開く。開けたものと、開けなかったアドレスの理由を返す（同じアドレスは1回だけ開く）。
+func listenAll(addrs []string) ([]net.Listener, []error) {
+	var lns []net.Listener
+	var errs []error
+	for i, addr := range addrs {
+		if slices.Contains(addrs[:i], addr) {
+			continue
+		}
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		lns = append(lns, ln)
 	}
-	return urls
+	return lns, errs
 }

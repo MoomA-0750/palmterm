@@ -111,14 +111,22 @@ func serveLAN(addr string, handler http.Handler, token string) {
 		log.Print(tr("palmterm（LAN）: LAN のアドレスが見つからないので、LAN では待ち受けません", "palmterm (LAN): no LAN address found, so not listening on the LAN"))
 		return
 	}
-	for _, a := range addrs {
-		srv := newHTTPServer(a, handler)
-		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-		go func() { log.Fatal(srv.ListenAndServeTLS("", "")) }()
+	// 開けなかったアドレスがあっても、開けたアドレスでは受け付ける（1つの失敗で全体を止めない）。
+	lns, errs := listenAll(addrs)
+	for _, err := range errs {
+		log.Printf(tr("palmterm（LAN）: 待ち受けを開けませんでした: %v", "palmterm (LAN): could not listen: %v"), err)
 	}
-	for _, u := range lanURLs(addr, ips, token) {
+	for _, ln := range lns {
+		srv := newHTTPServer("", handler)
+		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+		go func() {
+			if err := srv.ServeTLS(ln, "", ""); err != nil {
+				log.Printf(tr("palmterm（LAN）: %s の待ち受けが止まりました: %v", "palmterm (LAN): stopped serving %s: %v"), ln.Addr(), err)
+			}
+		}()
 		log.Printf(tr("palmterm（LAN）: %s を開いてください（最初は証明書の警告が出るので、先へ進む）",
-			"palmterm (LAN): open %s (the browser warns about the certificate the first time; proceed)"), u)
+			"palmterm (LAN): open %s (the browser warns about the certificate the first time; proceed)"),
+			"https://"+ln.Addr().String()+"/auth?token="+token)
 	}
 }
 
