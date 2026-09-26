@@ -19,7 +19,7 @@ func newTestServer(t *testing.T) *server {
 	dir := t.TempDir()
 	settings = newConfigStore(filepath.Join(dir, "config.toml"))
 	t.Cleanup(func() { settings = nil })
-	return &server{token: testToken, defaultSession: "t1", uploadDir: filepath.Join(dir, "uploads")}
+	return &server{token: testToken, session: "t1", uploadDir: filepath.Join(dir, "uploads")}
 }
 
 var configWrites int

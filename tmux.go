@@ -19,11 +19,7 @@ type tmuxWindow struct {
 
 // セッションのウィンドウ一覧（tmux パネルのタブ用）。
 func (s *server) handleWindows(w http.ResponseWriter, r *http.Request) {
-	session, err := s.sessionFrom(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+	session := s.session
 	windows, err := listWindows(session)
 	if err != nil {
 		http.Error(w, tr("tmux のウィンドウを取れませんでした: ", "Could not list the tmux windows: ")+err.Error(), http.StatusInternalServerError)
@@ -56,11 +52,7 @@ func listWindows(session string) ([]tmuxWindow, error) {
 // tmux パネルのボタンから来る操作。プレフィックスキーの割り当てに左右されないよう、tmux のコマンドで直接行う。
 // 受け付ける操作は決め打ちにし、任意のコマンドは通さない。
 func (s *server) handleTmuxAction(w http.ResponseWriter, r *http.Request) {
-	session, err := s.sessionFrom(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+	session := s.session
 	var req struct {
 		Action string `json:"action"`
 		Window int    `json:"window"` // select-window・kill-window・rename-window のとき
@@ -74,6 +66,7 @@ func (s *server) handleTmuxAction(w http.ResponseWriter, r *http.Request) {
 	}
 	var args []string
 	if req.Action == "select-pane-at" {
+		var err error
 		if args, err = selectPaneAtArgs(session, req.Col, req.Row); err != nil {
 			http.Error(w, tr("tmux のペインを取れませんでした: ", "Could not list the tmux panes: ")+err.Error(), http.StatusInternalServerError)
 			return
@@ -104,12 +97,6 @@ func tmuxActionArgs(session, action string, window int) []string {
 	switch action {
 	case "new-window":
 		return append([]string{"new-window", "-t", session}, here...)
-	case "next-window":
-		return []string{"next-window", "-t", session}
-	case "previous-window":
-		return []string{"previous-window", "-t", session}
-	case "last-window":
-		return []string{"last-window", "-t", session}
 	case "select-window":
 		return []string{"select-window", "-t", session + ":" + strconv.Itoa(window)}
 	case "kill-window":

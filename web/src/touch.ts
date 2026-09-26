@@ -22,6 +22,7 @@ export interface TouchOptions {
   scrollPane: (lines: number) => void;
   appCursor: () => boolean;
   getFontSize: () => number;
+  /** 文字サイズを変える（範囲に収めるのは呼ばれた側）。save が false なら保存しない。 */
   setFontSize: (size: number, save: boolean) => void;
 }
 
@@ -33,15 +34,12 @@ interface PaneState {
 
 type ScrollMode = "pending" | "tmux" | "wheel" | "keys" | "none";
 
-const MIN_FONT = 8;
-const MAX_FONT = 32;
-
 export function setupTouch(opts: TouchOptions) {
   const { el, term } = opts;
   let endCurrent: (() => void) | null = null;
   let glideGeneration = 0;
 
-  const rowHeight = () => parseFloat(getComputedStyle(el).getPropertyValue("--term-row-height")) || 16;
+  const currentRowHeight = () => parseFloat(getComputedStyle(el).getPropertyValue("--term-row-height")) || 16;
   const mouseTracking = () => (term.bridge?.mouseTracking?.() ?? 0) !== 0;
   const inFullScreen = () => (term.bridge?.usingAltScreen() ?? false) || mouseTracking();
 
@@ -93,19 +91,15 @@ export function setupTouch(opts: TouchOptions) {
       Math.hypot(ev.touches[0].clientX - ev.touches[1].clientX, ev.touches[0].clientY - ev.touches[1].clientY);
     const d0 = dist(e);
     const size0 = opts.getFontSize();
-    let size = size0;
     track(
       e,
       (ev) => {
         if (ev.touches.length !== 2) return;
         ev.preventDefault();
-        const next = Math.min(MAX_FONT, Math.max(MIN_FONT, Math.round(size0 * (dist(ev) / d0))));
-        if (next !== size) {
-          size = next;
-          opts.setFontSize(size, false);
-        }
+        const next = Math.round(size0 * (dist(ev) / d0));
+        if (next !== opts.getFontSize()) opts.setFontSize(next, false);
       },
-      () => opts.setFontSize(size, true),
+      () => opts.setFontSize(opts.getFontSize(), true),
     );
   }
 
@@ -121,6 +115,7 @@ export function setupTouch(opts: TouchOptions) {
     let lastTime = performance.now();
     let tmuxLines = 0; // 次のフレームで tmux に送る行数
     let flushScheduled = false;
+    const rowHeight = currentRowHeight(); // 指が動くたびに測り直さない
 
     fetchPaneState().then((st) => {
       if (mode !== "pending") return;
@@ -162,7 +157,7 @@ export function setupTouch(opts: TouchOptions) {
     function apply(dy: number) {
       if (dy === 0 || mode === "pending" || mode === "none") return;
       acc += dy;
-      const step = rowHeight() * (mode === "wheel" ? 3 : 1);
+      const step = rowHeight * (mode === "wheel" ? 3 : 1);
       while (Math.abs(acc) >= step) {
         const dir = acc > 0 ? 1 : -1;
         acc -= dir * step;

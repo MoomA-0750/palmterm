@@ -82,13 +82,18 @@ function saveSetting(key: string, value: string) {
 // 比率はアイコン用フォント（tools/fit-nerd-symbols.py の LINE_HEIGHT）と同じにする。
 const LINE_HEIGHT = 1.3;
 
-function applyFontSize(size: number) {
-  termEl.style.setProperty("--term-font-size", `${size}px`);
-  termEl.style.setProperty("--term-row-height", `${Math.round(size * LINE_HEIGHT)}px`);
-}
+const MIN_FONT = 8;
+const MAX_FONT = 32;
+let fontSize = 13;
 
-let fontSize = Number(loadSetting("fontSize", "13")) || 13;
-applyFontSize(fontSize);
+/** 文字サイズを変える。save が false なら保存しない（ピンチの途中など）。 */
+function setFontSize(size: number, save = true) {
+  fontSize = Math.min(MAX_FONT, Math.max(MIN_FONT, size));
+  termEl.style.setProperty("--term-font-size", `${fontSize}px`);
+  termEl.style.setProperty("--term-row-height", `${Math.round(fontSize * LINE_HEIGHT)}px`);
+  if (save) saveSetting("fontSize", String(fontSize));
+}
+setFontSize(Number(loadSetting("fontSize", "13")) || 13, false);
 
 // ---- 画面の高さをソフトキーボードに合わせる ----
 
@@ -102,31 +107,6 @@ function fitViewport() {
   root.setProperty("--app-h", `${h}px`);
   window.scrollTo(0, 0);
   root.setProperty("--app-top", `${Math.max(0, vv?.offsetTop ?? 0)}px`);
-  showViewportDebug();
-}
-
-// ?debug=viewport で開くと、画面の寸法を右上に出す（キーボードまわりのずれを調べる用）。
-const viewportDebug = new URLSearchParams(location.search).get("debug") === "viewport";
-function showViewportDebug() {
-  if (!viewportDebug) return;
-  let el = document.getElementById("vp-debug");
-  if (!el) {
-    el = document.createElement("pre");
-    el.id = "vp-debug";
-    el.style.cssText =
-      "position:fixed;top:0;right:0;z-index:100;margin:0;padding:4px;font:11px/1.3 monospace;background:#000c;color:#0f0;pointer-events:none";
-    document.body.appendChild(el);
-  }
-  const vv = window.visualViewport;
-  const barEl = document.getElementById("inputbar")!;
-  const bar = barEl.getBoundingClientRect();
-  const inset = getComputedStyle(barEl).paddingBottom; // 4px + safe-area-inset-bottom
-  el.textContent = [
-    `inner ${window.innerWidth}x${window.innerHeight}`,
-    `vv ${vv?.width.toFixed(1)}x${vv?.height.toFixed(1)} top=${vv?.offsetTop.toFixed(1)}`,
-    `screen ${screen.width}x${screen.height} dpr=${devicePixelRatio}`,
-    `inputbar bottom=${bar.bottom.toFixed(1)} pad=${inset}`,
-  ].join("\n");
 }
 window.visualViewport?.addEventListener("resize", fitViewport);
 window.visualViewport?.addEventListener("scroll", fitViewport);
@@ -190,6 +170,13 @@ function usingLine(): boolean {
   return lastInput === "line";
 }
 
+/** テキストボックスのカーソルの所に文字を入れる（貼り付け・コピーモードから）。 */
+function insertIntoLine(text: string) {
+  line.setRangeText(text, line.selectionStart, line.selectionEnd, "end");
+  autosizeLine();
+  line.focus();
+}
+
 // 1行のときはボタンと同じ高さ、改行したら 200px まで伸ばす。
 const LINE_MIN_HEIGHT = 36;
 function autosizeLine() {
@@ -206,6 +193,11 @@ function autosizeLine() {
  * だけの貼り付けを添付として扱う）。添付の処理は少し遅れて進むので、1枚ごとに待つ。
  * 送れたら true。
  */
+let sending = false;
+// Claude Code は画像のパスの貼り付けを少し遅れて添付に変えるので、1枚ごとにこれだけ待つ。
+const PASTE_SETTLE_MS = 400;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function flushLine(withEnter: boolean): Promise<boolean> {
   if (withEnter && attachments.count > 0) {
     if (sending) return false;
@@ -233,11 +225,6 @@ async function flushLine(withEnter: boolean): Promise<boolean> {
   if (withEnter) conn.send("\r");
   return true;
 }
-
-let sending = false;
-const PASTE_SETTLE_MS = 400;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 
 line.addEventListener("input", autosizeLine);
 line.addEventListener("beforeinput", (e) => {
@@ -340,7 +327,7 @@ const tmuxPanel = setupTmuxPanel({
   button: $("tmux-btn"),
   panel: $("tmuxpanel"),
   sendPrefix: () => conn.send("\x02"),
-  fontSize: { get: () => fontSize, change: changeFontSize },
+  fontSize: { get: () => fontSize, change: (delta) => setFontSize(fontSize + delta) },
   toast,
   bind: bindKeyButton,
 });
@@ -441,12 +428,6 @@ function bindKeyButton(btn: HTMLButtonElement, fire: () => void, repeat: boolean
   });
 }
 
-function changeFontSize(delta: number) {
-  fontSize = Math.min(32, Math.max(8, fontSize + delta));
-  applyFontSize(fontSize);
-  saveSetting("fontSize", String(fontSize));
-}
-
 // ---- コピー・貼り付け ----
 
 function toast(message: string, ms = 2500) {
@@ -525,9 +506,7 @@ $("paste").addEventListener("click", async () => {
     return;
   }
   if (usingLine()) {
-    line.setRangeText(text, line.selectionStart, line.selectionEnd, "end");
-    autosizeLine();
-    line.focus();
+    insertIntoLine(text);
   } else {
     conn.send(bracketedPaste(text));
   }
@@ -620,9 +599,13 @@ function closeCopyMode() {
   window.getSelection()?.removeAllRanges();
 }
 
+/** コピーモードで選んだ文字。選んでいなければ知らせて空を返す。 */
 function selectedCopyText(): string {
   const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || !copyTextEl.contains(sel.anchorNode)) return "";
+  if (!sel || sel.isCollapsed || !copyTextEl.contains(sel.anchorNode)) {
+    toast(t("selectFirst"));
+    return "";
+  }
   return sel.toString();
 }
 
@@ -631,22 +614,14 @@ $("copy-close").addEventListener("click", closeCopyMode);
 $("copy-refresh").addEventListener("click", openCopyMode);
 $("copy-selection").addEventListener("click", async () => {
   const text = selectedCopyText();
-  if (!text) {
-    toast(t("selectFirst"));
-    return;
-  }
+  if (!text) return;
   toast((await copyText(text)) ? t("copied") : t("copyFailed"));
 });
 $("copy-to-line").addEventListener("click", () => {
   const text = selectedCopyText();
-  if (!text) {
-    toast(t("selectFirst"));
-    return;
-  }
+  if (!text) return;
   closeCopyMode();
-  line.setRangeText(text, line.selectionStart, line.selectionEnd, "end");
-  autosizeLine();
-  line.focus();
+  insertIntoLine(text);
 });
 
 // ---- 起動 ----
@@ -668,10 +643,6 @@ setupTouch({
   scrollPane: (lines) => conn.scroll(lines),
   appCursor,
   getFontSize: () => fontSize,
-  setFontSize: (size, save) => {
-    fontSize = size;
-    applyFontSize(size);
-    if (save) saveSetting("fontSize", String(size));
-  },
+  setFontSize,
 });
 conn.connect();

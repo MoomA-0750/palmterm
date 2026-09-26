@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"flag"
-	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -24,7 +23,7 @@ var webDist embed.FS
 
 type server struct {
 	token          string
-	defaultSession string
+	session        string // つなぐ tmux のセッション
 	origins        []string
 	uploadDir      string
 }
@@ -63,7 +62,7 @@ func main() {
 		}
 	}
 
-	s := &server{token: tok, defaultSession: *session, uploadDir: *uploadDir}
+	s := &server{token: tok, session: *session, uploadDir: *uploadDir}
 	if s.uploadDir == "" {
 		cache, err := os.UserCacheDir()
 		if err != nil {
@@ -120,18 +119,6 @@ func loadOrCreateToken() (string, error) {
 		return "", err
 	}
 	return t, nil
-}
-
-// セッション名は URL で指定でき、なければ既定のものを使う。
-func (s *server) sessionFrom(r *http.Request) (string, error) {
-	name := r.URL.Query().Get("session")
-	if name == "" {
-		return s.defaultSession, nil
-	}
-	if !sessionNamePattern.MatchString(name) {
-		return "", fmt.Errorf(tr("セッション名に使えない文字があります: %q", "Invalid session name: %q"), name)
-	}
-	return name, nil
 }
 
 // /assets/ のファイル名には中身のハッシュが入っているので、長くキャッシュさせる（フォントが大きい）。

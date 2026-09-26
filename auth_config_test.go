@@ -147,11 +147,3 @@ func TestConfigErrorsFallBackToDefaults(t *testing.T) {
 		t.Fatalf("間違えた項目名が知らせにありません: %q", c.Error)
 	}
 }
-
-func TestSessionFromDefault(t *testing.T) {
-	s := newTestServer(t)
-	got, err := s.sessionFrom(httptest.NewRequest("GET", "/", nil))
-	if err != nil || got != "t1" {
-		t.Fatalf("got %q, %v", got, err)
-	}
-}

@@ -23,7 +23,15 @@ function nextCellText(span: Element): string | null {
   return next.textContent ?? "";
 }
 
+// 私用領域（U+E000〜F8FF と、U+F0000 以降の上位サロゲート）の文字を含むか。
+const MAYBE_ICON = /[\ue000-\uf8ff\udb80-\udbbf]/;
+
 function processRow(row: Element) {
+  // たいていの行にはアイコンがないので、行の文字をまとめて見て、なければ span を1つずつ調べない。
+  if (!MAYBE_ICON.test(row.textContent ?? "")) {
+    for (const span of row.querySelectorAll(".nf-wide")) span.classList.remove("nf-wide");
+    return;
+  }
   for (const span of row.querySelectorAll("span")) {
     const text = span.textContent ?? "";
     const cp = text.codePointAt(0);
