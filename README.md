@@ -1,103 +1,208 @@
 # palmterm
 
-スマホのブラウザから tmux を操作するための Web ターミナル。
-描画は [wterm](https://github.com/vercel-labs/wterm)（DOM に描くので OS の文字選択が効く）、サーバーは Go。
+**English** | [日本語](README.ja.md)
 
-## できること
+A web terminal for driving **tmux from your phone**. It is built for the things that are painful in
+xterm.js on a touch screen — selecting text, sending Ctrl/Alt, moving the cursor, scrolling — and
+for working with TUIs such as vim, lazygit and Claude Code.
 
-- 入力のしかたは2つあり、タップした所で決まる：下のテキストボックス（常に出ている）をタップすればテキストボックスに、端末をタップすれば端末に直接入力する。キーバーの Tab・貼り付け・画像は、最後に入力していた方に効く。
-- **テキストボックス**：下の入力欄で編集してから送る。OS のカーソル移動・IME・予測変換・音声入力がそのまま使える。
-  - Enter は改行。送信ボタン（紙飛行機）、Ctrl+Enter（⌘+Enter）、またはキーバーの Ctrl を押してから Enter で送る。複数行はブラケットペーストで送るので、Claude Code には複数行のまま入る。
-  - 空のときの Backspace は端末側の文字を消す。
-  - キーバーの Tab は、書きかけの文字を先に送ってから Tab を送る（補完用）。
-- **直接入力**：端末をタップするとキーボードが出て、1文字ずつすぐ送る（vim や TUI 向け）。
-- **キーバー**：Esc / Tab / 修飾キー / 矢印 / Enter / ^C / ^D / Home / End / PgUp / PgDn / 記号など（並びは設定ファイルで変えられる）。矢印・PgUp/PgDn は押し続けると繰り返す。矢印・Enter はアイコンで表す。押してもソフトキーボードは出さない（出ているときは閉じない）。
-- **ウィンドウのタブ**（キーバーの上に常に出す）：tmux のウィンドウをタブで並べる。タップで切り替え、右端の ＋ で今のディレクトリに新しいウィンドウ、各タブの × で閉じる（誤操作しないよう2回押しで閉じる）。今いるタブをもう一度タップすると名前を変えられる（Enter で決定、Esc でやめる、空にすると tmux の自動の名前に戻す）。キーで作ったウィンドウや名前の変化も、画面の出力があれば少しあとに映る。
-- **tmux ボタン**（キーバーの右端に固定した緑のボタン）：押すとペインを操作するパネルが出る。
-  - 左右・上下に分割、拡大/戻す、閉じる（2回押し）、上下左右の矢印・次でペインを移る。
-  - tmux のコピーモード、Ctrl+B（プレフィックスを送り、続けて任意のキーを押す）。
-  - 文字サイズ（A− / A+、今の大きさも出す）。続けて押せるよう、押してもパネルは閉じない。
-  - ペインの移動も、パネルを開いたまま続けて押せる。端末に触れると閉じる。
-- **タップでペインを選ぶ**：ペインが複数あるウィンドウで、端末のどこかを短くタップすると、その位置のペインに移る（tmux の `mouse` 設定が off でも動く）。スワイプ・長押しの選択・ピンチでは移らない。
-- タブとパネルの操作はサーバーが tmux のコマンドで直接行うので、プレフィックスやキーの割り当てを変えていても動く。
-  - Ctrl / Alt / Shift は、1回タップすると次のキーに1回だけ効く（緑の枠）。すばやく2回タップすると固定（緑の塗りつぶし）。1回の状態でも固定の状態でも、もう一度タップすると解除。
-  - 矢印はアプリのカーソルキーのモード（DECCKM）に合わせて送る。
-- **コピーモード**（重なった2枚の紙のボタン）：tmux の履歴（3000行）を普通のテキストとして出す。長押しで選んで「選択をコピー」または「入力欄へ」。
-- **スワイプ**：全画面のアプリの上で縦にスワイプすると、始めた時点の tmux の状態で動きを変える。指を離したあとは慣性で少し続く。
-  - シェルや Claude Code など（マウスも全画面も使っていない）、tmux のコピーモード中：tmux のコピーモードで1行ずつスクロールする（tmux の `mouse` 設定に関係なく動く）。一番下まで戻すとコピーモードを抜ける。
-  - vim・lazygit などマウスを使うアプリ：ホイールを送る。
-  - less など全画面でマウスを使わないアプリ：↑↓ を送る。
-- **画像のアップロード**：画像のボタン（写真のアイコン）で写真を選ぶか、入力欄・端末に画像を貼り付けると、サーバーに保存する（保存先は `~/.cache/palmterm/uploads`、`-upload-dir` で変更可）。
-  - Claude Code が読めない形式（HEIC・AVIF など）は、ffmpeg で JPEG に変換して渡す。
-  - テキストボックスに入力しているとき：その上の添付欄にサムネイルが並び、× で外せる。送信すると、アップロードが終わるのを待ってから画像を1枚ずつ貼り付け、文章、Enter の順に送る。Claude Code では `[Image #1]` のように画像として添付される。アップロードに失敗した画像が残っていたら送らずに知らせる。
-  - 端末に直接入力しているとき：アップロードしたらすぐにパスを貼り付ける。
-- **ピンチ**：2本指で文字サイズを変える（8〜32px）。
-- 切断されても tmux のセッションは残り、つなぎ直すと続きから表示される。
-- **フォント**：JetBrains Mono ＋ Symbols Nerd Font Mono（Nerd Fonts v3.5.1、MIT）をサーバーから配る。日本語は端末のフォントで表示する。
-  - アイコンは WezTerm・kitty・Ghostty と同じく、次のマスが空白なら2マス分の大きさで描き、そうでなければ1マスに収める。Powerline の区切りは1マスいっぱいに引き伸ばす。フォントは `tools/fit-nerd-symbols.py` で作り直したもの。
+<p align="center"><img src="docs/screenshot.png" width="360" alt="palmterm on a phone: tmux window tabs, a key bar and a text box"></p>
 
-## 使い方
+- Rendering uses [wterm](https://github.com/vercel-labs/wterm), which draws the terminal as DOM, so the
+  OS's native text selection works.
+- The server is a single Go binary with the web UI embedded. Each browser gets its own tmux client
+  attached to one tmux session, so you can pick up on your phone where you left off on your PC.
+
+## Features
+
+### Typing
+
+- **Text box** (always shown at the bottom): edit with the OS keyboard — cursor movement, IME,
+  predictions and voice input all work.
+  - Enter inserts a newline. Send with the send button, Ctrl+Enter (⌘+Enter), or the key bar's Ctrl
+    followed by Enter. Multi-line text is sent as a bracketed paste, so Claude Code receives it as-is.
+  - Backspace on an empty text box deletes in the terminal.
+- **Direct input**: tap the terminal and type; every key goes straight to the terminal (for vim and TUIs).
+- Whichever you typed in last receives Tab, paste and images.
+
+### Key bar
+
+- Esc, Tab, Ctrl/Alt/Shift, arrows, Enter, ^C, ^D, Home/End, PgUp/PgDn and a few symbols by default.
+  The keys and their order are configurable (see [Configuration](#configuration)).
+- **Modifiers**: one tap applies the modifier to the next key (outlined); a quick double tap locks it
+  (filled); tap again to release. They also apply to keys typed on the soft keyboard.
+- Arrows and PgUp/PgDn repeat while held. Arrow keys follow the application cursor mode (DECCKM).
+- Pressing the key bar never pops up the soft keyboard, and never closes it while it is open.
+
+### tmux windows and panes
+
+- **Window tabs** are always shown above the key bar: tap to switch, **+** opens a new window in the
+  current directory, **×** closes one (tap twice to confirm), and tapping the current tab renames it
+  (an empty name restores tmux's automatic name).
+- **The green tmux button**, pinned to the right of the key bar, opens a panel to split panes, zoom,
+  close a pane (tap twice), move between panes, enter tmux copy mode, send the prefix (Ctrl+B), and
+  change the font size.
+- **Tap a pane** to select it.
+- These actions run tmux commands on the server, so they work regardless of your prefix and key
+  bindings, and with tmux's `mouse` option off.
+
+### Scrolling and gestures
+
+- **Swipe** vertically to scroll. palmterm checks the pane when the swipe starts:
+  - a shell or Claude Code (no mouse, no alternate screen), or tmux copy mode: scrolls through tmux's
+    history; scrolling back to the bottom leaves copy mode
+  - apps that use the mouse (vim, lazygit, …): sends wheel events
+  - full-screen apps without the mouse (less, …): sends ↑/↓
+  - scrolling continues with momentum after you lift your finger
+- **Pinch** to change the font size (8–32px).
+
+### Copy and paste
+
+- **Copy** (the two-sheets button) shows tmux's history (3000 lines) as plain text. Long-press to
+  select, then “Copy selection” or “To input”.
+- **Paste** (the clipboard button) pastes into the text box or the terminal. Browsers only allow this
+  over HTTPS; over plain HTTP, long-press the text box and paste instead.
+
+### Images (for Claude Code)
+
+- Pick photos with the image button, or paste images into the text box or the terminal. They are saved
+  on the server (`~/.cache/palmterm/uploads` by default).
+- Formats Claude Code cannot read (HEIC, AVIF, …) are converted to JPEG with ffmpeg.
+- While you type in the text box, images appear as thumbnails above it (remove one with ×). Sending
+  waits for the uploads, pastes each image path, then the text and Enter — Claude Code attaches them as
+  `[Image #1]`, …. If an upload failed, nothing is sent and you are told why.
+- While you type directly in the terminal, each path is pasted as soon as its upload finishes.
+
+### Fonts
+
+- palmterm serves JetBrains Mono and Symbols Nerd Font Mono, so Nerd Font icons work on phones.
+- As in WezTerm, kitty and Ghostty, an icon followed by a space is drawn two cells wide; otherwise it
+  fits in one cell. Powerline separators are stretched to fill their cell.
+
+### Other
+
+- If the connection drops, the tmux session stays; reconnecting shows where you left off.
+- The UI is available in English and Japanese.
+
+## Requirements
+
+- Linux (tested on Fedora) or another Unix with PTYs
+- tmux 3.x
+- Go 1.26+ and Node.js 22+ to build
+- ffmpeg (optional; converts HEIC and other images for Claude Code)
+- Chromium (only for the end-to-end tests)
+
+## Getting started
 
 ```sh
-make            # web をビルドして ./palmterm を作る（Go と Node が必要）
-./palmterm      # 127.0.0.1:7681 で待ち受け。表示される /auth?token=… の URL を開く
+git clone https://github.com/MoomA-0750/palmterm.git
+cd palmterm
+make          # builds the web UI and ./palmterm
+./palmterm    # listens on 127.0.0.1:7681 and prints a login URL
 ```
 
-オプション：`-listen`（待ち受けるアドレス）、`-session`（tmux のセッション名、既定 `main`）、`-token`（省略時は `~/.config/palmterm/token` を使い、なければ作る）、`-upload-dir`（アップロードの保存先）、`-config`（設定ファイル）、`-lan`（LAN から HTTPS でつなぐときのアドレス。下記）。
+Open the printed `http://127.0.0.1:7681/auth?token=…` URL once; the browser then stays logged in.
+palmterm attaches to the tmux session `main` (creating it if needed).
 
-スマホからは、Tailscale の中だけで公開するのがおすすめ。
-`tailscale serve --bg 7681` にすると HTTPS になり、貼り付けボタン（クリップボードのアイコン、clipboard API）も使える。
-HTTP のままだと貼り付けボタンは使えないので、入力欄を長押しして貼り付ける。
+### From your phone
 
-### LAN から直接つなぐ
+**Tailscale (recommended).** Keep palmterm on 127.0.0.1 and let Tailscale serve it over HTTPS inside
+your tailnet:
 
 ```sh
-./palmterm -lan :7682   # 127.0.0.1:7681 に加えて、LAN 向けに 7682 番で HTTPS も待ち受ける
+tailscale serve --bg 7681
 ```
 
-- 起動時に、この PC の LAN のアドレスごとに `https://192.168.x.x:7682/auth?token=…` を表示するので、スマホで開く。
-- 証明書は自分で署名したもの（`~/.config/palmterm/lan-cert.pem`・`lan-key.pem`）を自動で作る。ブラウザは最初に警告を出すので、「詳細設定」から先へ進む。PC の IP アドレスが変わったら作り直す（そのときはまた警告が出る）。
-- LAN 側を HTTPS にしているのは、平文の HTTP だと LAN の中でトークンが見えてしまうのと、貼り付けボタンが使えないため。
-- Tailscale の中継（7681）はそのまま使える。
+**Local network.** Also listen on the LAN over HTTPS:
 
-tmux の `mouse` 設定は off のままでよい（タップでのペインの切り替えも、スワイプでのスクロールも palmterm が行う）。
+```sh
+./palmterm -lan :7682
+```
 
-## 設定ファイル
+palmterm prints `https://<LAN address>:7682/auth?token=…` for each LAN address. It uses a self-signed
+certificate that it creates in `~/.config/palmterm/` (and recreates when the PC's IP addresses change),
+so the browser warns you the first time — choose “Advanced” and proceed. The LAN side uses HTTPS so the
+token is not sent in clear text and the paste button works.
 
-`~/.config/palmterm/config.toml`（TOML）で、画面の言語とキーバーのキーを決められる。書き換えたら、ブラウザでページを読み込み直せば反映される（サーバーの再起動は要らない）。書き方は [config.example.toml](config.example.toml) を参照（既定の並びがそのまま書いてあるので、コピーして編集するとよい）。
+### Options
+
+| Flag | Default | |
+|---|---|---|
+| `-listen` | `127.0.0.1:7681` | address to listen on (HTTP) |
+| `-lan` | off | also listen on this address over HTTPS for the local network, e.g. `:7682` |
+| `-session` | `main` | tmux session to attach to |
+| `-token` | `~/.config/palmterm/token` | login token (also `PALMTERM_TOKEN`); a random one is created on first run |
+| `-config` | `~/.config/palmterm/config.toml` | configuration file |
+| `-upload-dir` | `~/.cache/palmterm/uploads` | where uploaded images are saved |
+| `-allow-origin` | | extra WebSocket origins (for the Vite dev server) |
+
+## Configuration
+
+`~/.config/palmterm/config.toml` sets the UI language and the key bar. Reload the page to apply
+changes; no restart is needed. [config.example.toml](config.example.toml) contains the default key bar,
+so it is a good starting point.
 
 ```toml
-language = "ja"   # "en"（既定）か "ja"
+language = "en"        # "en" (default) or "ja"
 
 [[keys]]
 key = "esc"
 
 [[keys]]
-mod = "ctrl"          # 修飾キー（1回押すと次のキーに1回、すばやく2回で固定）
+mod = "ctrl"           # sticky modifier
 
 [[keys]]
-key = "shift+tab"     # 組み合わせ（ctrl / alt / shift を + でつなぐ）
+key = "shift+tab"      # a key combination
 label = "S-Tab"
 
 [[keys]]
-text = ":wq\r"        # 文字をそのまま送る
+text = ":wq\r"         # sent as is
 label = ":wq"
 ```
 
-- `[[keys]]` は書いた順に左から並ぶ。1つでも書くと既定の並びを丸ごと置き換える。
-- 書き間違い（知らない項目・キー・アイコン）は、画面を開いたときに知らせる。おかしいキーだけ飛ばし、ファイル全体が読めないときは既定の設定を使う。
-- 言語は画面の文言と、サーバーから画面に届くエラーに効く（サーバーのログは日本語のまま）。
+Each `[[keys]]` entry has exactly one of:
 
-## 開発
+| | |
+|---|---|
+| `key` | a special key or a single character, optionally with modifiers joined by `+`. Special keys: `esc` `tab` `enter` `backspace` `delete` `insert` `up` `down` `left` `right` `home` `end` `pageup` `pagedown` `f1`–`f12` `space`. Modifiers: `ctrl`, `alt` (or `meta`), `shift`. Examples: `ctrl+c`, `alt+left`, `ctrl+space`, `ctrl++` |
+| `mod` | `ctrl`, `alt` or `shift`: a sticky modifier button |
+| `text` | text sent as is (TOML escapes such as `\r` and `\u001b` work) |
+
+Optional fields: `label`, `icon` (`left` `right` `up` `down` `backspace` `enter` `close` `plus`
+`splitH` `splitV` `maximize` `cycle` `panes` `textSmaller` `textLarger`) and `repeat`.
+Keys appear left to right in the order written, and any `[[keys]]` entry replaces the whole default set.
+Mistakes (unknown fields, keys or icons) are reported when the page opens; everything else still works.
+
+## Security
+
+Whoever logs in to palmterm gets **a shell on your machine**. Keep it private.
+
+- There is a single token, stored in `~/.config/palmterm/token` (mode 0600). It survives restarts.
+- `/auth?token=…` sets an HttpOnly, SameSite=Lax cookie valid for a year (Secure over HTTPS). Every
+  page, API call and the WebSocket require it, and the WebSocket also checks the Origin.
+- The token is compared in constant time. There is no logout or per-device revocation: to log every
+  device out, delete the token file (or pass a new `-token`) and restart.
+- By default palmterm only listens on 127.0.0.1. Do not expose it to the internet; use Tailscale or
+  your LAN.
+
+## Development
 
 ```sh
-make dev   # Go のサーバー（7681）と Vite（5173）を起動する。
-           # 最初に http://localhost:5173/auth?token=… を開く
+make dev    # Go server on 7681 and Vite on 5173; open http://localhost:5173/auth?token=…
+make test   # Go tests, web unit tests (vitest), end-to-end tests in Chromium (playwright-core)
 ```
 
-```sh
-make test  # Go のテスト、画面の単体テスト（vitest）、ブラウザでの通しのテスト（playwright-core + chromium）
-```
+- Tests that use tmux run their own tmux server (separate `TMUX_TMPDIR`, `/bin/sh`), so your own
+  sessions are not touched. The end-to-end tests use `/usr/bin/chromium` (override with `CHROMIUM=…`).
+- `cd web && npm run screenshot` regenerates `docs/screenshot.png` in the same isolated way.
+- `tools/fit-nerd-symbols.py` rebuilds the icon fonts in `web/src/fonts/` from Symbols Nerd Font Mono.
 
-- tmux を使うテストは、テスト専用の tmux サーバー（`TMUX_TMPDIR` を分け、シェルは `/bin/sh`）で動かすので、ふだんのセッションには触れない。
-- 通しのテストは `/usr/bin/chromium` を使う（`CHROMIUM=…` で変えられる）。
+## License
+
+[MIT](LICENSE)
+
+Third-party components: [wterm](https://github.com/vercel-labs/wterm) (Apache-2.0),
+[JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) (OFL-1.1),
+[Nerd Fonts](https://github.com/ryanoasis/nerd-fonts) symbols (MIT; see
+`web/src/fonts/SymbolsNerdFont-LICENSE`), [coder/websocket](https://github.com/coder/websocket) (ISC),
+[creack/pty](https://github.com/creack/pty) (MIT) and [BurntSushi/toml](https://github.com/BurntSushi/toml) (MIT).
