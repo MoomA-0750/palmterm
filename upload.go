@@ -97,6 +97,9 @@ func (s *server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "private, max-age=3600")
+	// HTML や SVG を上げても、palmterm のページの中でスクリプトとして動かないようにする。
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "sandbox")
 	http.ServeFile(w, r, filepath.Join(s.uploadDir, name))
 }
 

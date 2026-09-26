@@ -88,6 +88,22 @@ func TestUploadSavesClaudeReadableImagesAsIs(t *testing.T) {
 	}
 }
 
+// 上げたファイルは、palmterm のページの中でスクリプトとして動かないようにして返す（HTML や SVG を上げても）。
+func TestUploadedFilesAreServedInertly(t *testing.T) {
+	s := newTestServer(t)
+	f := decodeUploaded(t, do(s.handleUpload, uploadRequest(t, map[string][]byte{"x.png": []byte("\x89PNG")})))[0]
+	evil := filepath.Join(s.uploadDir, "evil.html")
+	os.WriteFile(evil, []byte("<script>alert(1)</script>"), 0o600)
+	for _, name := range []string{f.Name, "evil.html"} {
+		r := httptest.NewRequest("GET", "/api/upload/"+name, nil)
+		r.SetPathValue("name", name)
+		w := do(s.handleUploadFile, r)
+		if w.Code != http.StatusOK || w.Header().Get("X-Content-Type-Options") != "nosniff" || w.Header().Get("Content-Security-Policy") != "sandbox" {
+			t.Errorf("%s: code=%d headers=%v", name, w.Code, w.Header())
+		}
+	}
+}
+
 func TestUploadRejectsBadRequests(t *testing.T) {
 	s := newTestServer(t)
 	if w := do(s.handleUpload, uploadRequest(t, nil)); w.Code != http.StatusBadRequest {
