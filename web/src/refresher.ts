@@ -12,6 +12,7 @@ export class Refresher {
   private interval = MIN_INTERVAL_MS;
   private running: Promise<void> | null = null;
   private again = false;
+  private generation = 0; // reset のたびに進める。前に始めた取り直しの結果では間隔を変えない
 
   /** fetch は取り直しを行い、前と結果が変わったら true を返す。 */
   constructor(private fetch: () => Promise<boolean>) {}
@@ -28,6 +29,7 @@ export class Refresher {
 
   /** 間隔を最短に戻す（操作したあとなど、変化がありそうなとき）。 */
   reset() {
+    this.generation++;
     this.interval = MIN_INTERVAL_MS;
     // 広い間隔で予約してあった取り直しは、次の出力で組み直す。
     clearTimeout(this.timer);
@@ -41,9 +43,11 @@ export class Refresher {
       return this.running;
     }
     this.last = Date.now();
+    const generation = this.generation;
     this.running = this.fetch()
       .then(
         (changed) => {
+          if (generation !== this.generation) return;
           this.interval = changed ? MIN_INTERVAL_MS : Math.min(this.interval * 2, MAX_INTERVAL_MS);
         },
         () => {},

@@ -82,4 +82,32 @@ describe("Refresher", () => {
     await pump(1500);
     expect(calls).toHaveLength(4); // 8 秒待たずに取り直す
   });
+
+  it("取り直している最中に reset したら、その取り直しの結果では間隔を広げない", async () => {
+    let finish!: (changed: boolean) => void;
+    let calls = 0;
+    const r = new Refresher(
+      () =>
+        new Promise<boolean>((resolve) => {
+          calls++;
+          finish = resolve;
+        }),
+    );
+    // 変わらない結果を重ねて、間隔を 8 秒まで広げる
+    for (let i = 0; i < 3; i++) {
+      const p = r.refresh();
+      finish(false);
+      await p;
+    }
+    const inFlight = r.refresh();
+    r.reset(); // 操作した（間隔は 1 秒に戻るはず）
+    finish(false); // 操作の前に始めた取り直しが「変わらない」で終わる
+    await inFlight;
+    const before = calls;
+    for (let t = 0; t < 1500; t += 50) {
+      r.outputSeen();
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    expect(calls).toBe(before + 1); // 1 秒あまりで次を取り直す
+  });
 });
