@@ -21,8 +21,12 @@ func TestAuthSetsCookieOnlyForTheRightToken(t *testing.T) {
 		t.Fatalf("正しいトークン: code=%d location=%q", w.Code, w.Header().Get("Location"))
 	}
 	c := w.Result().Cookies()
-	if len(c) != 1 || c[0].Name != cookieName || c[0].Value != testToken || !c[0].HttpOnly || c[0].SameSite != http.SameSiteLaxMode {
+	if len(c) != 1 || c[0].Name != cookieName || !c[0].HttpOnly || c[0].SameSite != http.SameSiteLaxMode {
 		t.Fatalf("Cookie が違います: %+v", c)
+	}
+	// Cookie にはトークンそのものではなく、トークンから計算した値を入れる（Cookie が漏れてもトークンは分からない）。
+	if c[0].Value == testToken || strings.Contains(c[0].Value, testToken) || c[0].Value != s.cookieValue() {
+		t.Fatalf("Cookie の値: %q", c[0].Value)
 	}
 }
 
@@ -30,7 +34,8 @@ func TestRequireAuth(t *testing.T) {
 	s := newTestServer(t)
 	h := s.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) }))
 
-	for name, cookie := range map[string]string{"Cookie なし": "", "違う値": "nope"} {
+	// トークンそのものを Cookie に入れても通さない（通すのはトークンから計算した値だけ）。
+	for name, cookie := range map[string]string{"Cookie なし": "", "違う値": "nope", "トークンそのもの": testToken} {
 		r := httptest.NewRequest("GET", "/", nil)
 		if cookie != "" {
 			r.AddCookie(&http.Cookie{Name: cookieName, Value: cookie})
@@ -43,7 +48,7 @@ func TestRequireAuth(t *testing.T) {
 	}
 
 	r := httptest.NewRequest("GET", "/", nil)
-	r.AddCookie(&http.Cookie{Name: cookieName, Value: testToken})
+	r.AddCookie(&http.Cookie{Name: cookieName, Value: s.cookieValue()})
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusOK || w.Body.String() != "ok" {
