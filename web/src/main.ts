@@ -114,8 +114,11 @@ function setMode(next: InputMode, focus = true) {
   mode = next;
   saveSetting("inputMode", next);
   document.body.dataset.mode = next;
-  modeBtn.textContent = next === "line" ? "行" : "直";
-  modeBtn.setAttribute("aria-label", next === "line" ? "入力欄モード（タップで直接入力へ）" : "直接入力モード（タップで入力欄へ）");
+  // テキストボックスを出しているときは押された見た目にする。
+  modeBtn.setAttribute("aria-pressed", String(next === "line"));
+  const label = next === "line" ? "テキストボックスを閉じる（端末に直接入力）" : "テキストボックスを出す";
+  modeBtn.setAttribute("aria-label", label);
+  modeBtn.title = label;
   if (!focus) return;
   if (next === "line") line.focus();
   else term.focus();

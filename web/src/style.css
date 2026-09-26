@@ -269,9 +269,28 @@ button:active {
   font-size: 14px;
 }
 
-#mode {
-  min-width: 40px;
-  font-weight: bold;
+#inputbar #mode {
+  width: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: #bbb;
+}
+
+#inputbar #mode[aria-pressed="true"] {
+  color: #000;
+  background: var(--accent);
+}
+
+#direct-hint {
+  flex: 1;
+  align-self: center;
+  font-size: 12px;
+  color: #999;
+}
+
+body[data-mode="line"] #direct-hint {
+  display: none;
 }
 
 #line {
@@ -293,13 +312,6 @@ body[data-mode="direct"] #send {
   display: none;
 }
 
-body[data-mode="direct"] #inputbar::before {
-  content: "直接入力：端末をタップしてキーボードを出す";
-  flex: 1;
-  align-self: center;
-  font-size: 12px;
-  color: #999;
-}
 
 #copymode {
   position: fixed;

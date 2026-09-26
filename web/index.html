@@ -31,7 +31,13 @@
       </div>
       <div id="attachments" aria-label="添付する画像" hidden></div>
       <div id="inputbar">
-        <button id="mode" type="button"></button>
+        <button id="mode" type="button" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="6" width="20" height="12" rx="2" />
+            <path d="M8 9.5v5M6.5 9.5h3M6.5 14.5h3" />
+          </svg>
+        </button>
+        <span id="direct-hint">端末をタップして入力</span>
         <textarea id="line" rows="1" placeholder="Ctrl+Enter か送信ボタンで送る" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="enter"></textarea>
         <button id="send" type="button">送信</button>
         <button id="copy" type="button">コピー</button>
