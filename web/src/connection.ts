@@ -60,17 +60,19 @@ export class Connection {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  /** キーなどの入力を送る直前に呼ばれる（サイズ変更では呼ばれない）。 */
-  onInput: () => void = () => {};
-
   send(data: string | Uint8Array) {
     if (!this.isOpen() || data.length === 0) return;
-    this.onInput();
     this.ws!.send(typeof data === "string" ? encoder.encode(data) : (data as Uint8Array<ArrayBuffer>));
   }
 
   resize(cols: number, rows: number) {
     if (!this.isOpen()) return;
     this.ws!.send(JSON.stringify({ type: "resize", cols, rows }));
+  }
+
+  /** tmux のコピーモードでペインをスクロールする。lines が負なら古い方（上）へ。 */
+  scroll(lines: number) {
+    if (!this.isOpen() || lines === 0) return;
+    this.ws!.send(JSON.stringify({ type: "scroll", lines }));
   }
 }

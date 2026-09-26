@@ -13,10 +13,8 @@ const (
 	maxHistoryLines     = 50000
 )
 
-// 今のペインの履歴を、スクロールバックも含めて返す。tmux の中では画面が描き直されるだけで
-// ブラウザ側に履歴がたまらないので、tmux から取る。
-// - 既定: 普通のテキスト。折り返された行はつなぐ（コピーモード用）
-// - color=1: 色などのエスケープ付きで、ペインの幅の行のまま（スクロール用の履歴表示に流し込む）
+// 今のペインの履歴を、スクロールバックも含めて普通のテキストで返す（コピーモード用）。
+// tmux の中では画面が描き直されるだけでブラウザ側に履歴がたまらないので、tmux から取る。
 func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	session, err := s.sessionFrom(r)
 	if err != nil {
@@ -27,14 +25,8 @@ func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	if v, err := strconv.Atoi(r.URL.Query().Get("lines")); err == nil && v > 0 {
 		lines = min(v, maxHistoryLines)
 	}
-	args := []string{"capture-pane", "-p", "-S", "-" + strconv.Itoa(lines), "-t", session}
-	if r.URL.Query().Get("color") == "1" {
-		args = append(args, "-e")
-	} else {
-		// -J は折り返された行をつなぐ。代わりに行末の空白が残るので後で落とす。
-		args = append(args, "-J")
-	}
-	out, err := exec.Command("tmux", args...).Output()
+	// -J は折り返された行をつなぐ。代わりに行末の空白が残るので後で落とす。
+	out, err := exec.Command("tmux", "capture-pane", "-p", "-J", "-S", "-"+strconv.Itoa(lines), "-t", session).Output()
 	if err != nil {
 		http.Error(w, "tmux の履歴を取れませんでした: "+err.Error(), http.StatusInternalServerError)
 		return

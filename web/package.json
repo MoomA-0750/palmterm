@@ -9,8 +9,7 @@
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@wterm/core": "^0.5.1",
-    "@wterm/dom": "^0.5.1",
-    "@wterm/ghostty": "^0.5.1"
+    "@wterm/dom": "^0.5.1"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

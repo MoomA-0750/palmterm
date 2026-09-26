@@ -5,7 +5,6 @@ import "./style.css";
 import { Connection } from "./connection";
 import { applyToChar, isSingleChar, Modifiers, type ModName, specialKey, type SpecialKey } from "./keys";
 import { setupNerdIcons } from "./nerd";
-import { HistoryView } from "./history";
 import { setupTouch } from "./touch";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -417,14 +416,11 @@ termInput?.addEventListener("focus", (e) => {
   else termInput.blur();
 });
 setupNerdIcons(termEl);
-const history = new HistoryView($("term-wrap"), termEl);
-// 何か入力したら、履歴表示を閉じて今の画面に戻る。
-conn.onInput = () => history.close();
 setupTouch({
   el: termEl,
   term,
-  history,
   send: (data) => conn.send(data),
+  scrollPane: (lines) => conn.scroll(lines),
   appCursor,
   getFontSize: () => fontSize,
   setFontSize: (size, save) => {

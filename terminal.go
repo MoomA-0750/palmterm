@@ -17,9 +17,10 @@ import (
 
 // 画面からの制御メッセージ（テキストのフレーム）。キー入力はバイナリのフレームで生のまま届く。
 type controlMessage struct {
-	Type string `json:"type"`
-	Cols uint16 `json:"cols"`
-	Rows uint16 `json:"rows"`
+	Type  string `json:"type"`
+	Cols  uint16 `json:"cols"`
+	Rows  uint16 `json:"rows"`
+	Lines int    `json:"lines"` // scroll: 負なら古い方（上）へ、正なら新しい方（下）へ
 }
 
 // 接続ごとに tmux のクライアントを1つ起動する。切断してもセッションは tmux に残る。
@@ -91,8 +92,11 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			continue
 		}
-		if msg.Type == "resize" && msg.Cols > 0 && msg.Rows > 0 {
+		switch {
+		case msg.Type == "resize" && msg.Cols > 0 && msg.Rows > 0:
 			pty.Setsize(ptmx, &pty.Winsize{Cols: msg.Cols, Rows: msg.Rows})
+		case msg.Type == "scroll" && msg.Lines != 0:
+			scrollPane(session, msg.Lines)
 		}
 	}
 }
@@ -116,4 +120,25 @@ func queryUint16(r *http.Request, key string, def uint16) uint16 {
 		return def
 	}
 	return uint16(v)
+}
+
+// tmux のコピーモードでペインを行単位でスクロールする（スワイプ用）。
+// 上へはコピーモードに入ってから動かす。-e を付けるので、一番下まで戻すとコピーモードを抜ける。
+// 下へはコピーモード中だけ動く（入っていなければ tmux がエラーを返すので無視する）。
+func scrollPane(session string, lines int) {
+	n := strconv.Itoa(min(abs(lines), 500))
+	var args []string
+	if lines < 0 {
+		args = []string{"copy-mode", "-e", "-t", session, ";", "send-keys", "-X", "-N", n, "-t", session, "scroll-up"}
+	} else {
+		args = []string{"send-keys", "-X", "-N", n, "-t", session, "scroll-down"}
+	}
+	exec.Command("tmux", args...).Run()
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
 }

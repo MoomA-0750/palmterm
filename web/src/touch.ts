@@ -1,13 +1,13 @@
 import type { WTerm } from "@wterm/dom";
-import type { HistoryView } from "./history";
 
 /**
  * 端末の上での指の操作。
  * - 2本指のピンチ: 文字サイズを変える
  * - 1本指の縦のスワイプ（tmux などの全画面の上）: 始めた時点の tmux の状態で動きを決める
- *   - 中のアプリがマウスを受け取る・tmux のコピーモード中: ホイール（wterm が信号にする）
+ *   - シェルや Claude Code など、tmux のコピーモード中: tmux のコピーモードで行単位にスクロール
+ *   - 中のアプリがマウスを受け取る（vim・lazygit など）: ホイール（wterm が信号にする）
  *   - 全画面のアプリでマウスなし（less など）: ↑↓ キー
- *   - シェルや Claude Code など: tmux の履歴を重ねて表示し、普通のスクロールで動かす
+ *   どれも、指を離したあとは速度に応じて減速しながら続ける。
  * 通常の画面（tmux を使っていない）では、ブラウザの普通のスクロールに任せる。
  *
  * wterm は描き直しのたびに行の要素を差し替えるので、指を置いた要素が外れると
@@ -17,8 +17,9 @@ import type { HistoryView } from "./history";
 export interface TouchOptions {
   el: HTMLElement;
   term: WTerm;
-  history: HistoryView;
   send: (data: string) => void;
+  /** tmux のコピーモードでスクロールする。負なら古い方（上）へ。 */
+  scrollPane: (lines: number) => void;
   appCursor: () => boolean;
   getFontSize: () => number;
   setFontSize: (size: number, save: boolean) => void;
@@ -30,14 +31,15 @@ interface PaneState {
   inMode: boolean;
 }
 
-type ScrollMode = "pending" | "wheel" | "keys" | "history" | "none";
+type ScrollMode = "pending" | "tmux" | "wheel" | "keys" | "none";
 
 const MIN_FONT = 8;
 const MAX_FONT = 32;
 
 export function setupTouch(opts: TouchOptions) {
-  const { el, term, history } = opts;
+  const { el, term } = opts;
   let endCurrent: (() => void) | null = null;
+  let glideGeneration = 0;
 
   const rowHeight = () => parseFloat(getComputedStyle(el).getPropertyValue("--term-row-height")) || 16;
   const mouseTracking = () => (term.bridge?.mouseTracking?.() ?? 0) !== 0;
@@ -77,6 +79,7 @@ export function setupTouch(opts: TouchOptions) {
   el.addEventListener(
     "touchstart",
     (e) => {
+      glideGeneration++; // 慣性で動いている途中なら止める
       if (e.touches.length === 2) startPinch(e);
       else if (e.touches.length === 1 && inFullScreen()) startScroll(e);
     },
@@ -86,7 +89,6 @@ export function setupTouch(opts: TouchOptions) {
   // ---- ピンチで文字サイズ ----
 
   function startPinch(e: TouchEvent) {
-    history.close();
     const dist = (ev: TouchEvent) =>
       Math.hypot(ev.touches[0].clientX - ev.touches[1].clientX, ev.touches[0].clientY - ev.touches[1].clientY);
     const d0 = dist(e);
@@ -113,16 +115,16 @@ export function setupTouch(opts: TouchOptions) {
     let mode: ScrollMode = "pending";
     let lastY = e.touches[0].clientY;
     let lastX = e.touches[0].clientX;
-    let acc = 0; // まだ反映していない指の移動（新しい方へが正）
+    let acc = 0; // まだ行に換算していない指の移動（新しい方へが正）
     let pendingDy = 0; // 状態を問い合わせている間の移動
-    let velocity = 0; // 履歴表示の慣性用（px/ms、新しい方へが正）
+    let velocity = 0; // 慣性用（px/ms、新しい方へが正）
     let lastTime = performance.now();
+    let tmuxLines = 0; // 次のフレームで tmux に送る行数
+    let flushScheduled = false;
 
     fetchPaneState().then((st) => {
       if (mode !== "pending") return;
-      if (!st || st.mouse || st.inMode) mode = mouseTracking() ? "wheel" : "keys";
-      else if (st.altScreen) mode = "keys";
-      else mode = "history";
+      mode = decide(st);
       apply(pendingDy);
       pendingDy = 0;
     });
@@ -144,35 +146,21 @@ export function setupTouch(opts: TouchOptions) {
       },
       () => {
         if (mode === "pending") mode = "none";
-        if (mode !== "history") return;
-        if (history.isOpen() && performance.now() - lastTime < 80) glide(velocity, () => history.setHolding(false));
-        else history.setHolding(false);
+        // 動かしながら離したときだけ慣性を付ける（止めてから離したら付けない）。
+        if (mode !== "none" && performance.now() - lastTime < 80) glide(velocity, apply);
       },
     );
 
+    function decide(st: PaneState | null): ScrollMode {
+      if (!st) return mouseTracking() ? "wheel" : "keys";
+      if (st.inMode) return "tmux";
+      if (st.mouse) return mouseTracking() ? "wheel" : "keys";
+      if (st.altScreen) return "keys";
+      return "tmux";
+    }
+
     function apply(dy: number) {
-      if (dy === 0) return;
-      if (mode === "history") {
-        if (history.isOpen()) {
-          history.scrollBy(dy);
-          return;
-        }
-        acc += dy;
-        // 古い方へ（指を下へ）動かしたときだけ開く。開いたら、それまでの移動も反映する。
-        if (acc < -8) {
-          const moved = acc;
-          acc = 0;
-          history.setHolding(true);
-          history.open(term.cols, term.rows).then((ok) => {
-            if (ok) history.scrollBy(moved);
-            else mode = mouseTracking() ? "wheel" : "keys";
-          });
-        } else if (acc > 0) {
-          acc = 0;
-        }
-        return;
-      }
-      if (mode !== "wheel" && mode !== "keys") return;
+      if (dy === 0 || mode === "pending" || mode === "none") return;
       acc += dy;
       const step = rowHeight() * (mode === "wheel" ? 3 : 1);
       while (Math.abs(acc) >= step) {
@@ -184,7 +172,18 @@ export function setupTouch(opts: TouchOptions) {
 
     // dir: 1 は下へ（新しい方）、-1 は上へ。
     function scrollOnce(dir: number) {
-      if (mode === "wheel") {
+      if (mode === "tmux") {
+        // 1行ごとに tmux を呼ばず、1フレーム分まとめて送る。
+        tmuxLines += dir;
+        if (!flushScheduled) {
+          flushScheduled = true;
+          requestAnimationFrame(() => {
+            flushScheduled = false;
+            opts.scrollPane(tmuxLines);
+            tmuxLines = 0;
+          });
+        }
+      } else if (mode === "wheel") {
         el.dispatchEvent(
           new WheelEvent("wheel", {
             deltaY: dir * 100,
@@ -202,17 +201,15 @@ export function setupTouch(opts: TouchOptions) {
     }
   }
 
-  /** 指を離したあとの慣性。速度を少しずつ落としながら動かす。 */
-  function glide(v: number, done: () => void) {
+  /** 指を離したあとの慣性。速度を少しずつ落としながら move を呼び続ける。次に触れたら止まる。 */
+  function glide(v: number, move: (dy: number) => void) {
+    const gen = glideGeneration;
     let last = performance.now();
     const frame = (now: number) => {
-      if (!history.isOpen() || Math.abs(v) < 0.02) {
-        done();
-        return;
-      }
+      if (gen !== glideGeneration || Math.abs(v) < 0.05) return;
       const dt = now - last;
       last = now;
-      history.scrollBy(v * dt);
+      move(v * dt);
       v *= Math.pow(0.995, dt);
       requestAnimationFrame(frame);
     };

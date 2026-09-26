@@ -208,32 +208,3 @@ body[data-mode="direct"] #inputbar::before {
   font-family: "Nerd Symbols Wide", var(--mono-font);
 }
 
-/* スクロール用の履歴表示（history.ts）。端末の上に重ねる。 */
-#history {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  background: var(--bg);
-}
-
-#history[hidden] {
-  display: none;
-}
-
-.history-term {
-  position: absolute;
-  inset: 0;
-  --term-font-family: var(--mono-font);
-}
-
-.history-badge {
-  position: absolute;
-  top: 6px;
-  right: 10px;
-  padding: 3px 8px;
-  border-radius: 10px;
-  background: rgba(86, 156, 214, 0.85);
-  color: #000;
-  font-size: 12px;
-  pointer-events: none;
-}
