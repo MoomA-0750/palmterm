@@ -65,7 +65,7 @@ func (c *configStore) get() (config, error) {
 	}
 	cfg := c.cfg
 	if cfg.Language == "" {
-		cfg.Language = "ja"
+		cfg.Language = "en"
 	}
 	return cfg, c.err
 }
@@ -92,14 +92,14 @@ func loadConfig(path string) (config, error) {
 
 var settings *configStore
 
-// 画面に出す文言を、設定の言語で選ぶ。
+// 画面に出す文言を、設定の言語で選ぶ（既定は英語）。
 func tr(ja, en string) string {
 	if settings != nil {
-		if cfg, _ := settings.get(); cfg.Language == "en" {
-			return en
+		if cfg, _ := settings.get(); cfg.Language == "ja" {
+			return ja
 		}
 	}
-	return ja
+	return en
 }
 
 // 画面の設定（言語とキーバー）を返す。設定ファイルを読めなかったときは、既定の設定と理由を返す。

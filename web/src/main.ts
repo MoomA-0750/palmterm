@@ -32,7 +32,7 @@ interface ServerConfig {
 }
 const serverConfig: ServerConfig = (await fetch("/api/config", { cache: "no-store" })
   .then((r) => (r.ok ? r.json() : null))
-  .catch(() => null)) ?? { language: "ja", path: "" };
+  .catch(() => null)) ?? { language: "en", path: "" };
 setLang(serverConfig.language);
 applyStaticTexts();
 

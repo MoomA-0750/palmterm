@@ -4,8 +4,8 @@
 # 書き換えたら、ブラウザでページを読み込み直せば反映される（サーバーの再起動は要らない）。
 # Put this at ~/.config/palmterm/config.toml (or pass -config). Reload the page to apply changes.
 
-# 画面の言語 / UI language: "ja" or "en"
-language = "ja"
+# 画面の言語 / UI language: "en"（既定 / default）or "ja"
+language = "en"
 
 # キーバーのキー。書いた順に左から並ぶ。[[keys]] を1つでも書くと、既定の並びを丸ごと置き換える。
 # Keys on the key bar, left to right. Any [[keys]] entry replaces the whole default set.
@@ -57,16 +57,13 @@ key = "up"
 key = "right"
 
 [[keys]]
+key = "enter"
+
+[[keys]]
 key = "ctrl+c"
 
 [[keys]]
 key = "ctrl+d"
-
-[[keys]]
-key = "backspace"
-
-[[keys]]
-key = "enter"
 
 [[keys]]
 key = "home"
