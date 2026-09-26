@@ -271,18 +271,17 @@ button:active {
   background: var(--bar-bg);
 }
 
+/* 下の段のボタンはどれもアイコンだけで、同じ大きさ。 */
 #inputbar button {
   flex: none;
-  height: 36px;
-  padding: 0 10px;
-  font-size: 14px;
-}
-
-#inputbar #mode {
   width: 44px;
+  height: 36px;
   padding: 0;
   display: grid;
   place-items: center;
+}
+
+#inputbar #mode {
   color: #bbb;
 }
 
