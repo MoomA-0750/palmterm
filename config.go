@@ -26,7 +26,7 @@ type config struct {
 type keyConfig struct {
 	Label  string `toml:"label" json:"label,omitempty"`
 	Key    string `toml:"key" json:"key,omitempty"`   // "esc"、"ctrl+c"、"alt+shift+left" など
-	Mod    string `toml:"mod" json:"mod,omitempty"`   // "ctrl"・"alt"・"shift"（押すたびに 1回 → 固定 → 切）
+	Mod    string `toml:"mod" json:"mod,omitempty"`   // "ctrl"・"alt"・"shift"（1回押すと次のキーに1回、すばやく2回で固定）
 	Text   string `toml:"text" json:"text,omitempty"` // そのまま送る文字
 	Icon   string `toml:"icon" json:"icon,omitempty"`
 	Repeat *bool  `toml:"repeat" json:"repeat,omitempty"` // 押し続けたら繰り返す（省略時はキーによる）

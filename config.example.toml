@@ -17,8 +17,8 @@ language = "en"
 #                                   home end pageup pagedown f1 … f12 space
 #          修飾キー / modifiers: ctrl alt shift（meta は alt と同じ / meta = alt）
 #   mod  = "ctrl" / "alt" / "shift"
-#          押すたびに 1回 → 固定 → 切。次に押したキー（キーボードの文字も）に効く。
-#          Sticky modifier: each tap cycles once → locked → off, and applies to the next key.
+#          1回押すと次のキー（キーボードの文字も）に1回だけ効く。すばやく2回押すと固定、もう一度押すと解除。
+#          Sticky modifier: one tap applies it to the next key; a quick double tap locks it; tap again to release.
 #   text = そのまま送る文字 / text sent as is（"\u001b" のようなエスケープも書ける / escapes allowed）
 #
 # 省略できるもの / Optional:

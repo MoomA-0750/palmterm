@@ -21,6 +21,9 @@ export function withMods(base: ModSet, extra: readonly ModName[]): ModSet {
   return { has, param: () => modParam({ has }) };
 }
 
+// 修飾キーをこの間隔（ms）以内に2回押したら「固定」にする。
+const DOUBLE_TAP_MS = 350;
+
 export class Modifiers implements ModSet {
   private state: Record<ModName, ModState> = { ctrl: "off", alt: "off", shift: "off" };
   onChange: () => void = () => {};
@@ -29,10 +32,18 @@ export class Modifiers implements ModSet {
     return this.state[name];
   }
 
-  /** タップするたびに 切 → 1回 → 固定 → 切 と進む。 */
+  private lastTap: Record<ModName, number> = { ctrl: 0, alt: 0, shift: 0 };
+
+  /**
+   * 1回押すと「1回」。すばやく続けてもう一度押すと「固定」、間を空けて押すと解除。
+   * 「固定」のときは押すと解除。
+   */
   tap(name: ModName) {
-    const next: Record<ModState, ModState> = { off: "once", once: "lock", lock: "off" };
-    this.state[name] = next[this.state[name]];
+    const now = performance.now();
+    const quick = now - this.lastTap[name] <= DOUBLE_TAP_MS;
+    this.lastTap[name] = now;
+    const state = this.state[name];
+    this.state[name] = state === "off" ? "once" : state === "once" && quick ? "lock" : "off";
     this.onChange();
   }
 
