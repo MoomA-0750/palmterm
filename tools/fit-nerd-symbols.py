@@ -26,10 +26,13 @@ UPM = 1000
 ADVANCE = 600
 ASCENT = 1020
 DESCENT = -300
-# wterm の行の高さは 1.2em。JetBrains Mono ではベースラインから上に 960、下に 240 が行の範囲になる
-# （内容の高さ 1320 が行 1200 より大きいので、上下に 60 ずつはみ出す分を引く）。
-ROW_TOP = 960
-ROW_BOTTOM = -240
+# 行の高さ（文字サイズに対する比率）。画面側の LINE_HEIGHT（web/src/main.ts）と合わせる。
+# 行の中では内容の高さ（ASCENT - DESCENT = 1320）が上下中央に置かれるので、
+# ベースラインから見た行の上端・下端はそこから求まる。
+LINE_HEIGHT = 1.3
+_HALF_LEADING = (LINE_HEIGHT * UPM - (ASCENT - DESCENT)) / 2
+ROW_TOP = ASCENT + _HALF_LEADING
+ROW_BOTTOM = DESCENT - _HALF_LEADING
 ROW_CENTER = (ROW_TOP + ROW_BOTTOM) / 2
 
 POWERLINE = range(0xE0B0, 0xE0D8)

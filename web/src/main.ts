@@ -34,8 +34,17 @@ function saveSetting(key: string, value: string) {
   }
 }
 
+// wterm は行の高さを --term-row-height で決め、文字サイズに合わせては変えないので、ここで合わせる。
+// 比率はアイコン用フォント（tools/fit-nerd-symbols.py の LINE_HEIGHT）と同じにする。
+const LINE_HEIGHT = 1.3;
+
+function applyFontSize(size: number) {
+  termEl.style.setProperty("--term-font-size", `${size}px`);
+  termEl.style.setProperty("--term-row-height", `${Math.round(size * LINE_HEIGHT)}px`);
+}
+
 let fontSize = Number(loadSetting("fontSize", "13")) || 13;
-termEl.style.setProperty("--term-font-size", `${fontSize}px`);
+applyFontSize(fontSize);
 
 // ---- 画面の高さをソフトキーボードに合わせる ----
 
@@ -283,7 +292,7 @@ function bindKeyButton(btn: HTMLButtonElement, fire: () => void, repeat: boolean
 
 function changeFontSize(delta: number) {
   fontSize = Math.min(24, Math.max(8, fontSize + delta));
-  termEl.style.setProperty("--term-font-size", `${fontSize}px`);
+  applyFontSize(fontSize);
   saveSetting("fontSize", String(fontSize));
 }
 
