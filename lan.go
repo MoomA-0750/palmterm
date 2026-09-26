@@ -110,6 +110,7 @@ func certCovers(leaf *x509.Certificate, ips []net.IP) bool {
 }
 
 // LAN から見えるこの PC の IPv4 アドレス（ループバックと、Docker などの仮想の橋渡しは除く）。
+// インターネットに開かないよう、LAN・リンクローカル・Tailscale のアドレスだけにする（isLANAddress）。
 func lanAddresses() []net.IP {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -122,12 +123,20 @@ func lanAddresses() []net.IP {
 		}
 		addrs, _ := ifc.Addrs()
 		for _, a := range addrs {
-			if n, ok := a.(*net.IPNet); ok && n.IP.To4() != nil {
+			if n, ok := a.(*net.IPNet); ok && n.IP.To4() != nil && isLANAddress(n.IP) {
 				ips = append(ips, n.IP.To4())
 			}
 		}
 	}
 	return ips
+}
+
+// Tailscale などが使う 100.64.0.0/10（CGNAT の範囲。インターネットからは届かない）。
+var cgnat = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+
+// LAN（プライベート）・リンクローカル・Tailscale のアドレスか。グローバルなアドレスは false。
+func isLANAddress(ip net.IP) bool {
+	return ip.IsPrivate() || ip.IsLinkLocalUnicast() || cgnat.Contains(ip)
 }
 
 func isVirtualBridge(name string) bool {
