@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 //go:embed all:web/dist
@@ -82,7 +83,13 @@ func main() {
 		go serveLAN(*lan, handler, tok)
 	}
 	log.Printf(tr("palmterm: http://%s/auth?token=%s を開いてください", "palmterm: open http://%s/auth?token=%s"), *listen, tok)
-	log.Fatal(http.ListenAndServe(*listen, handler))
+	log.Fatal(newHTTPServer(*listen, handler).ListenAndServe())
+}
+
+// 見出しを送りきらずに居座る接続を切る時間切れを付ける。端末の WebSocket はずっと開いているので、
+// 読み書き全体の時間切れ（ReadTimeout・WriteTimeout）は付けない。
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second}
 }
 
 // LAN 向けに HTTPS で待ち受ける（証明書は自分で署名したもの）。
@@ -97,7 +104,8 @@ func serveLAN(addr string, handler http.Handler, token string) {
 	if err != nil {
 		log.Fatalf(tr("LAN 用の証明書を用意できませんでした: %v", "Could not prepare the LAN certificate: %v"), err)
 	}
-	srv := &http.Server{Addr: addr, Handler: handler, TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}}}
+	srv := newHTTPServer(addr, handler)
+	srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
 	for _, u := range lanURLs(addr, ips, token) {
 		log.Printf(tr("palmterm（LAN）: %s を開いてください（最初は証明書の警告が出るので、先へ進む）",
 			"palmterm (LAN): open %s (the browser warns about the certificate the first time; proceed)"), u)

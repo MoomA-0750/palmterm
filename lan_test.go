@@ -109,3 +109,14 @@ func TestLoginOverHTTPS(t *testing.T) {
 		t.Fatalf("code=%d", resp.StatusCode)
 	}
 }
+
+// 見出しを送りきらずに居座る接続を切る時間切れを付ける。WebSocket を切ってしまう読み書き全体の時間切れは付けない。
+func TestNewHTTPServerHasTimeouts(t *testing.T) {
+	srv := newHTTPServer(":0", http.NotFoundHandler())
+	if srv.ReadHeaderTimeout == 0 || srv.IdleTimeout == 0 {
+		t.Fatalf("時間切れがありません: %+v", srv)
+	}
+	if srv.ReadTimeout != 0 || srv.WriteTimeout != 0 {
+		t.Fatal("読み書き全体の時間切れは付けない（WebSocket が切れる）")
+	}
+}
