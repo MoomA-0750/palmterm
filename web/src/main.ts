@@ -17,7 +17,6 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const termEl = $<HTMLDivElement>("term");
 const keybar = $<HTMLDivElement>("keybar");
 const line = $<HTMLTextAreaElement>("line");
-const modeBtn = $<HTMLButtonElement>("mode");
 const sendBtn = $<HTMLButtonElement>("send");
 const statusEl = $<HTMLDivElement>("status");
 const toastEl = $<HTMLDivElement>("toast");
@@ -51,7 +50,6 @@ function applyStaticTexts() {
   label("tmux-btn", t("tmuxButton"));
   $("tmux-btn").title = t("tmuxButtonTitle");
   label("attachments", t("attachments"), false);
-  $("direct-hint").textContent = t("directHint");
   $<HTMLTextAreaElement>("line").placeholder = t("linePlaceholder");
   label("send", t("send"));
   label("copy", t("copy"));
@@ -176,41 +174,20 @@ function bracketedPaste(text: string): string {
   return term.bridge?.bracketedPaste() ? `\x1b[200~${body}\x1b[201~` : body;
 }
 
-// ---- 入力のモード ----
-// line: 下の入力欄で編集してから送る（OS のカーソル移動・IME・予測変換が使える）。
-//       Enter は改行で、送信ボタンか Ctrl+Enter で送る（Claude Code への複数行の指示など）
-// direct: 1文字ずつすぐ送る（vim や TUI 向け）。既定はこちら。
-// 保存の名前は既定を line から direct に変えたときに inputMode へ改めた（前の保存を引き継がないため）。
-
-type InputMode = "line" | "direct";
-let mode: InputMode = loadSetting("inputMode", "direct") === "line" ? "line" : "direct";
-
-function setMode(next: InputMode, focus = true) {
-  mode = next;
-  saveSetting("inputMode", next);
-  document.body.dataset.mode = next;
-  // テキストボックスを出しているときは押された見た目にする。
-  modeBtn.setAttribute("aria-pressed", String(next === "line"));
-  const label = next === "line" ? t("modeClose") : t("modeOpen");
-  modeBtn.setAttribute("aria-label", label);
-  modeBtn.title = label;
-  if (!focus) return;
-  if (next === "line") line.focus();
-  else term.focus();
-}
-
-// ---- 下の入力欄 ----
+// ---- 入力 ----
+// 下のテキストボックス（常に出す）：編集してから送る（OS のカーソル移動・IME・予測変換が使える）。
+//   Enter は改行で、送信ボタンか Ctrl+Enter で送る（Claude Code への複数行の指示など）
+// 端末をタップすると、端末に1文字ずつすぐ送る（vim や TUI 向け）。
 
 /**
- * 今テキストボックスに入力しているか。テキストボックスを出していても、端末をタップすれば端末に直接
- * 入力できるので、出しているかどうかではなく、最後に文字を入れる所としてフォーカスしたのがどちらかで決める
+ * 今テキストボックスに入力しているか。最後に文字を入れる所としてフォーカスしたのがどちらかで決める
  * （下の段のボタンを押すとフォーカスがボタンに移るので、今のフォーカスでは決められない）。
  */
 let lastInput: "line" | "term" = "line";
 line.addEventListener("focus", () => (lastInput = "line"));
 termEl.addEventListener("focusin", () => (lastInput = "term"));
 function usingLine(): boolean {
-  return mode === "line" && lastInput === "line";
+  return lastInput === "line";
 }
 
 // 1行のときはボタンと同じ高さ、改行したら 200px まで伸ばす。
@@ -297,7 +274,6 @@ line.addEventListener("keydown", (e) => {
   }
 });
 sendBtn.addEventListener("click", () => flushLine(true));
-modeBtn.addEventListener("click", () => setMode(mode === "line" ? "direct" : "line"));
 
 // ---- キーバー ----
 
@@ -668,7 +644,6 @@ $("copy-to-line").addEventListener("click", () => {
     return;
   }
   closeCopyMode();
-  setMode("line", false);
   line.setRangeText(text, line.selectionStart, line.selectionEnd, "end");
   autosizeLine();
   line.focus();
@@ -677,7 +652,6 @@ $("copy-to-line").addEventListener("click", () => {
 // ---- 起動 ----
 
 await term.init();
-setMode(mode, false);
 
 // 設定ファイルの書き間違いは、読める所だけ使って知らせる（長めに出す）。
 const configProblems = [

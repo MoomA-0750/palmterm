@@ -308,26 +308,6 @@ button:active {
   place-items: center;
 }
 
-#inputbar #mode {
-  color: #bbb;
-}
-
-#inputbar #mode[aria-pressed="true"] {
-  color: #000;
-  background: var(--accent);
-}
-
-#direct-hint {
-  flex: 1;
-  align-self: center;
-  font-size: 12px;
-  color: #999;
-}
-
-body[data-mode="line"] #direct-hint {
-  display: none;
-}
-
 #line {
   flex: 1;
   min-width: 0;
@@ -346,11 +326,6 @@ body[data-mode="line"] #direct-hint {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-body[data-mode="direct"] #line,
-body[data-mode="direct"] #send {
-  display: none;
 }
 
 
@@ -433,8 +408,7 @@ body[data-mode="direct"] #send {
   background: var(--bar-bg);
 }
 
-#attachments[hidden],
-body[data-mode="direct"] #attachments {
+#attachments[hidden] {
   display: none;
 }
 
