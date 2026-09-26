@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -19,6 +20,14 @@ import (
 const maxUploadBytes = 64 << 20
 
 var unsafeNameChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+
+// Claude Code が画像として読める形式。これ以外の画像（HEIC など）は JPEG に変換してから渡す。
+var claudeImageExts = map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true}
+
+type uploadedFile struct {
+	Path string `json:"path"` // 端末に入れるパス（変換したときは JPEG のほう）
+	Name string `json:"name"` // GET /api/upload/{name} で取るときの名前
+}
 
 // 画面から送られたファイル（フォームの file、複数可）を保存し、保存したパスを返す。
 // スマホの写真を Claude Code などに渡すため。パスはそのまま端末に入力できるよう、空白などを含まない名前にする。
@@ -38,18 +47,57 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "保存先を作れませんでした: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	paths := make([]string, 0, len(files))
+	saved := make([]uploadedFile, 0, len(files))
 	for _, fh := range files {
 		path, err := s.saveUpload(fh)
+		if err == nil && !claudeImageExts[strings.ToLower(filepath.Ext(path))] {
+			var jpeg string
+			if jpeg, err = convertToJPEG(path); err != nil {
+				os.Remove(path) // 使えないものは残さない
+			}
+			path = jpeg
+		}
 		if err != nil {
-			log.Printf("アップロードを保存できませんでした: %v", err)
-			http.Error(w, "保存できませんでした: "+err.Error(), http.StatusInternalServerError)
+			log.Printf("アップロードを保存できませんでした（%s）: %v", fh.Filename, err)
+			http.Error(w, fh.Filename+" を保存できませんでした: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		paths = append(paths, path)
+		saved = append(saved, uploadedFile{Path: path, Name: filepath.Base(path)})
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string][]string{"paths": paths})
+	json.NewEncoder(w).Encode(map[string][]uploadedFile{"files": saved})
+}
+
+// ffmpeg で JPEG に変換し、変換後のパスを返す（元のファイルは残す）。
+// ImageMagick は HEIC を読めない環境があり、ffmpeg ならタイル分割された HEIC もつないで出せる。
+func convertToJPEG(src string) (string, error) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return "", fmt.Errorf("%s は Claude Code が読めない形式で、変換に使う ffmpeg が見つかりません", filepath.Ext(src))
+	}
+	dst := strings.TrimSuffix(src, filepath.Ext(src)) + ".jpg"
+	out, err := exec.Command("ffmpeg", "-v", "error", "-n", "-i", src, "-frames:v", "1", "-q:v", "2", dst).CombinedOutput()
+	if err != nil {
+		os.Remove(dst)
+		log.Printf("ffmpeg で %s を変換できませんでした: %v\n%s", src, err, out)
+		// 画面に出すのは最後の1行（原因の要約）だけにする。
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		return "", fmt.Errorf("JPEG に変換できませんでした（%s）", lines[len(lines)-1])
+	}
+	return dst, nil
+}
+
+var uploadNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+// 保存した画像を返す（添付欄のプレビュー用。HEIC はブラウザで表示できないことがあるので、変換後の JPEG を見せる）。
+// 名前は保存先の直下のファイルに限る。
+func (s *server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if !uploadNamePattern.MatchString(name) || strings.Contains(name, "..") {
+		http.Error(w, "名前が正しくありません", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	http.ServeFile(w, r, filepath.Join(s.uploadDir, name))
 }
 
 func (s *server) saveUpload(fh *multipart.FileHeader) (string, error) {

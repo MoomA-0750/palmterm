@@ -2,6 +2,7 @@ import { WTerm } from "@wterm/dom";
 import "@wterm/dom/css";
 import "./fonts.css";
 import "./style.css";
+import { Attachments, uploadFile } from "./attachments";
 import { Connection } from "./connection";
 import { applyToChar, isSingleChar, Modifiers, type ModName, specialKey, type SpecialKey } from "./keys";
 import { setupNerdIcons } from "./nerd";
@@ -122,37 +123,45 @@ function autosizeLine() {
   line.style.height = `${Math.min(line.scrollHeight, 200)}px`;
 }
 
-/** 入力欄の文字を送る。withEnter が false なら Enter を付けない（Tab 補完の前など）。 */
-async function flushLine(withEnter: boolean) {
+/**
+ * 入力欄の文字を送る。withEnter が false なら Enter を付けない（Tab 補完の前など）。
+ * Enter を付けるときは、添付欄の画像を先に送る：アップロードが終わるのを待ち、1枚でも失敗して
+ * いたら何も送らずに知らせる。画像のパスは1枚ずつ貼り付けとして送る（Claude Code は画像のパス
+ * だけの貼り付けを添付として扱う）。添付の処理は少し遅れて進むので、1枚ごとに待つ。
+ * 送れたら true。
+ */
+async function flushLine(withEnter: boolean): Promise<boolean> {
+  if (withEnter && attachments.count > 0) {
+    if (sending) return false;
+    sending = true;
+    try {
+      if (attachments.uploading) toast("画像のアップロードを待っています…");
+      const result = await attachments.waitAll();
+      if (!result.ok) {
+        toast(`アップロードできなかった画像が${result.failed}枚あるので、送っていません。× で外すか選び直してください（${result.error}）`);
+        return false;
+      }
+      for (const path of result.paths) {
+        conn.send(bracketedPaste(path));
+        await sleep(PASTE_SETTLE_MS);
+      }
+      attachments.clear();
+    } finally {
+      sending = false;
+    }
+  }
   const text = line.value;
   line.value = "";
   autosizeLine();
-  for (const part of splitUploadedPaths(text)) {
-    if (uploadedPaths.has(part)) {
-      // アップロードしたパスは1つずつ貼り付けとして送る。Claude Code は画像のパスだけの貼り付けを
-      // 画像の添付として扱う（文章と混ざった貼り付けでは扱わない）。添付の処理は少し遅れて進むので、
-      // 続きの文字や Enter が先に届かないよう待つ。
-      conn.send(bracketedPaste(part));
-      await sleep(PASTE_SETTLE_MS);
-    } else if (part) {
-      conn.send(part.includes("\n") ? bracketedPaste(part) : part);
-    }
-  }
+  if (text) conn.send(text.includes("\n") ? bracketedPaste(text) : text);
   if (withEnter) conn.send("\r");
+  return true;
 }
 
+let sending = false;
 const PASTE_SETTLE_MS = 400;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// このページでアップロードしたファイルのパス。
-const uploadedPaths = new Set<string>();
-
-function splitUploadedPaths(text: string): string[] {
-  const known = [...uploadedPaths].filter((p) => text.includes(p));
-  if (known.length === 0) return [text];
-  const pattern = new RegExp(`(${known.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
-  return text.split(pattern);
-}
 
 line.addEventListener("input", autosizeLine);
 line.addEventListener("beforeinput", (e) => {
@@ -370,51 +379,41 @@ $("paste").addEventListener("click", async () => {
 });
 
 // ---- 画像のアップロード ----
-// サーバーに保存し、保存したパスを入力欄（直接入力なら端末）に入れる。Claude Code などに画像を渡すため。
+// 入力欄モードでは添付欄に並べて、送信のときに渡す（プレビューで確かめてから送れる）。
+// 直接入力モードでは、アップロードしたらすぐパスを貼り付ける。
+// どちらも Claude Code などに画像を渡すため。HEIC などはサーバーが JPEG に変換してから返す。
 
 const uploadInput = $<HTMLInputElement>("upload-input");
+const attachments = new Attachments($("attachments"));
 
-async function uploadFiles(files: File[]) {
+async function addImages(files: File[]) {
   if (files.length === 0) return;
-  const form = new FormData();
-  for (const f of files) form.append("file", f, f.name || "image.png");
-  toast(`アップロード中…（${files.length}件）`);
-  let paths: string[];
-  try {
-    const res = await fetch("/api/upload", { method: "POST", body: form });
-    if (!res.ok) throw new Error(await res.text());
-    paths = (await res.json()).paths;
-  } catch (e) {
-    toast(`アップロードできませんでした: ${e instanceof Error ? e.message : e}`);
+  if (mode === "line") {
+    attachments.add(files);
     return;
   }
-  for (const p of paths) uploadedPaths.add(p);
-  insertPaths(paths);
-  toast(`アップロードしました（${paths.length}件）`);
-}
-
-function insertPaths(paths: string[]) {
-  const text = paths.join(" ");
-  if (mode === "line") {
-    const before = line.value.slice(0, line.selectionStart);
-    const sep = before && !/\s$/.test(before) ? " " : "";
-    line.setRangeText(sep + text + " ", line.selectionStart, line.selectionEnd, "end");
-    autosizeLine();
-    line.focus();
-  } else {
-    // 貼り付けとして送る。Claude Code は画像のパスの貼り付けを画像の添付として扱う。
-    conn.send(bracketedPaste(text));
+  toast(`アップロード中…（${files.length}件）`);
+  for (const file of files) {
+    try {
+      const { path } = await uploadFile(file);
+      conn.send(bracketedPaste(path));
+      await sleep(PASTE_SETTLE_MS);
+    } catch (e) {
+      toast(`${file.name} をアップロードできませんでした: ${e instanceof Error ? e.message : e}`);
+      return;
+    }
   }
+  toast(`アップロードしました（${files.length}件）`);
 }
 
 $("upload").addEventListener("click", () => uploadInput.click());
 uploadInput.addEventListener("change", () => {
   const files = [...(uploadInput.files ?? [])];
   uploadInput.value = "";
-  uploadFiles(files);
+  addImages(files);
 });
 
-// 画像の貼り付け（入力欄・端末）も、アップロードしてパスを入れる。
+// 画像の貼り付け（入力欄・端末）も同じように扱う。
 function pastedFiles(e: ClipboardEvent): File[] {
   return [...(e.clipboardData?.files ?? [])];
 }
@@ -422,7 +421,7 @@ line.addEventListener("paste", (e) => {
   const files = pastedFiles(e);
   if (files.length === 0) return;
   e.preventDefault();
-  uploadFiles(files);
+  addImages(files);
 });
 termEl.addEventListener(
   "paste",
@@ -431,7 +430,7 @@ termEl.addEventListener(
     if (files.length === 0) return;
     e.preventDefault();
     e.stopPropagation();
-    uploadFiles(files);
+    addImages(files);
   },
   true,
 );
