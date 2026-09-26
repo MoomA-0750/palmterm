@@ -21,7 +21,7 @@ func TestAuthSetsCookieOnlyForTheRightToken(t *testing.T) {
 		t.Fatalf("正しいトークン: code=%d location=%q", w.Code, w.Header().Get("Location"))
 	}
 	c := w.Result().Cookies()
-	if len(c) != 1 || c[0].Name != cookieName || c[0].Value != testToken || !c[0].HttpOnly || c[0].SameSite != http.SameSiteStrictMode {
+	if len(c) != 1 || c[0].Name != cookieName || c[0].Value != testToken || !c[0].HttpOnly || c[0].SameSite != http.SameSiteLaxMode {
 		t.Fatalf("Cookie が違います: %+v", c)
 	}
 }

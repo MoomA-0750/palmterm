@@ -20,7 +20,10 @@ func (s *server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   365 * 24 * 60 * 60,
 		HttpOnly: true,
 		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
-		SameSite: http.SameSiteStrictMode,
+		// Strict だと、ほかのアプリ（チャットなど）から開いたリンクや、証明書の警告の画面から進んだときに
+		// Cookie が送られず、ログイン済みでもログインを求める画面になる。Lax でも、別のサイトからの POST
+		// （tmux の操作・アップロード）には付かず、WebSocket は Origin を確かめるので、勝手には操作されない。
+		SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
