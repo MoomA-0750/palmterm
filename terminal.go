@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/creack/pty"
@@ -40,9 +41,9 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	// （以後に作るウィンドウのシェルに渡さない）。サーバーがまだ無ければ何もしない。
 	exec.Command("tmux", "set-environment", "-g", "-u", "PALMTERM_TOKEN").Run()
 
-	startTmuxOutsideService(session)
+	startTmuxOutsideService(session, s.tmuxEnv())
 	cmd := exec.Command("tmux", "new-session", "-A", "-s", session)
-	cmd.Env = terminalEnv()
+	cmd.Env = s.tmuxEnv()
 	if home, err := os.UserHomeDir(); err == nil {
 		cmd.Dir = home
 	}
@@ -62,6 +63,18 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
+
+	// この画面を、ブラウザで開く URL を届ける先として登録する。tmux のサーバーの環境にも BROWSER を入れる
+	// （以後に作るウィンドウ・ペインのプログラムが使う）。
+	tc := &termClient{
+		send:      func(ctx context.Context, msg []byte) error { return conn.Write(ctx, websocket.MessageText, msg) },
+		lastInput: time.Now(),
+	}
+	s.clients.add(tc)
+	defer s.clients.remove(tc)
+	if s.openCommand != "" {
+		exec.Command("tmux", "set-environment", "-g", "BROWSER", s.openCommand).Run()
+	}
 
 	go func() {
 		defer cancel()
@@ -86,6 +99,7 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if typ == websocket.MessageBinary {
+			s.clients.touch(tc)
 			if _, err := ptmx.Write(data); err != nil {
 				return
 			}
@@ -153,7 +167,7 @@ func abs(n int) int {
 // Fedora などの tmux は、ペインのシェルを tmux のサーバーが属する単位に結びついた scope に入れるので、
 // サービスの中でサーバーを起動すると、サービスを止めたり再起動したりしたときにペインが全部止められ、
 // セッションが消えてしまう。セッションがもうあるとき、systemd の外で動いているときは何もしない。
-func startTmuxOutsideService(session string) {
+func startTmuxOutsideService(session string, env []string) {
 	if os.Getenv("INVOCATION_ID") == "" {
 		return
 	}
@@ -161,7 +175,7 @@ func startTmuxOutsideService(session string) {
 		return
 	}
 	cmd := exec.Command("systemd-run", tmuxScopeArgs(session)...)
-	cmd.Env = terminalEnv()
+	cmd.Env = env
 	if home, err := os.UserHomeDir(); err == nil {
 		cmd.Dir = home
 	}

@@ -21,7 +21,8 @@ const tmuxDir = mkdtempSync("/tmp/pt-e2e-"); // tmux のソケットのパスは
 const configPath = join(dir, "config.toml");
 const uploadDir = join(dir, "uploads");
 // XDG_CONFIG_HOME も一時ディレクトリにする（LAN 用の証明書をふだんの ~/.config に作らない）。
-const env = { ...process.env, TMUX_TMPDIR: tmuxDir, TMUX: "", SHELL: "/bin/sh", ENV: "", PS1: "$ ", XDG_CONFIG_HOME: dir };
+// XDG_RUNTIME_DIR も分ける（ブラウザの受け渡しのソケットと palmterm-open をそこに作る）。
+const env = { ...process.env, TMUX_TMPDIR: tmuxDir, TMUX: "", SHELL: "/bin/sh", ENV: "", PS1: "$ ", XDG_CONFIG_HOME: dir, XDG_RUNTIME_DIR: tmuxDir };
 
 let server: ChildProcess;
 let browser: Browser;
@@ -519,6 +520,29 @@ describe("別のサイトから", () => {
     await other.close();
     expect(status === 401 || status === "blocked").toBe(true);
     expect(tmux("list-windows", "-t", SESSION).split("\n")).toHaveLength(before);
+  });
+});
+
+describe("ブラウザの受け渡し", () => {
+  it("tmux の中のプログラムが開こうとした URL を画面に知らせ、押すと新しいタブで開く", async () => {
+    // tmux の中のプログラムは BROWSER（palmterm-open）でブラウザを開く
+    expect(tmux("show-environment", "-g", "BROWSER")).toMatch(/^BROWSER=.*\/palmterm-open$/);
+    const target = `${base}/nothing?from=relay`;
+    execFileSync(BINARY, ["open", target], { env });
+    const bar = page.locator("#linkbar");
+    await waitUntil("知らせが出る", async () => bar.isVisible());
+    expect(await bar.textContent()).toContain(target);
+
+    const [opened] = await Promise.all([page.context().waitForEvent("page"), page.locator("#linkbar-open").click()]);
+    expect(opened.url()).toBe(target);
+    await opened.close();
+    expect(await bar.isHidden()).toBe(true);
+
+    // × で閉じられる
+    execFileSync(BINARY, ["open", target], { env });
+    await waitUntil("知らせが出る", async () => bar.isVisible());
+    await page.locator("#linkbar-close").click();
+    expect(await bar.isHidden()).toBe(true);
   });
 });
 

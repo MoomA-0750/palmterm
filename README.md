@@ -79,6 +79,15 @@ for working with TUIs such as vim, lazygit and Claude Code.
 - As in WezTerm, kitty and Ghostty, an icon followed by a space is drawn two cells wide; otherwise it
   fits in one cell. Powerline separators are stretched to fill their cell.
 
+### Opening links on your phone
+
+- When a program in tmux opens a browser — for example `gh auth login` — the link appears at the top of
+  the palmterm page with an **Open** button, instead of a browser window opening on the PC.
+- palmterm sets `BROWSER` in tmux's environment to its `palmterm-open` helper (new windows and panes pick
+  it up). The link goes to the palmterm page that was used most recently; if no page is connected, it
+  opens in the PC's browser as before. Only http and https links are passed. Turn this off with
+  `-relay-browser=false`.
+
 ### Other
 
 - If the connection drops, the tmux session stays; reconnecting shows where you left off.
@@ -152,6 +161,7 @@ journalctl --user -u palmterm                  # shows the login URL
 | `-token` | `~/.config/palmterm/token` | login token (also `PALMTERM_TOKEN`); a random one is created on first run |
 | `-config` | `~/.config/palmterm/config.toml` | configuration file |
 | `-upload-dir` | `~/.cache/palmterm/uploads` | where uploaded images are saved |
+| `-relay-browser` | `true` | show links that programs in tmux open on the palmterm page (see above) |
 | `-allow-origin` | | extra WebSocket origins (for the Vite dev server) |
 
 ## Configuration

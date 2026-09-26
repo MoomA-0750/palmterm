@@ -77,6 +77,14 @@ Ctrl や Alt の入力、カーソル移動、スクロールを使いやすく�
 - WezTerm・kitty・Ghostty と同じく、次のマスが空白のアイコンは2マス分の大きさで描き、そうでなければ
   1マスに収める。Powerline の区切りは1マスいっぱいに引き伸ばす。
 
+### リンクをスマホで開く
+
+- tmux の中のプログラムがブラウザを開こうとすると（たとえば `gh auth login`）、PC でブラウザが開く代わりに、
+  palmterm の画面の上にそのリンクと「開く」ボタンを出す。
+- palmterm は tmux の環境の `BROWSER` を、付属の `palmterm-open` にする（以後に作るウィンドウ・ペインで効く）。
+  リンクは最後に使っていた palmterm の画面に届き、画面がつながっていなければ今までどおり PC のブラウザで開く。
+  渡すのは http と https のリンクだけ。使わないときは `-relay-browser=false`。
+
 ### その他
 
 - 切断されても tmux のセッションは残り、つなぎ直すと続きから表示される。
@@ -149,6 +157,7 @@ journalctl --user -u palmterm                  # ログイン用の URL が出�
 | `-token` | `~/.config/palmterm/token` | ログイン用のトークン（`PALMTERM_TOKEN` でも可）。最初の起動でランダムに作る |
 | `-config` | `~/.config/palmterm/config.toml` | 設定ファイル |
 | `-upload-dir` | `~/.cache/palmterm/uploads` | アップロードした画像の保存先 |
+| `-relay-browser` | `true` | tmux の中のプログラムが開こうとしたリンクを palmterm の画面に出す（上記） |
 | `-allow-origin` | | WebSocket を許す別の Origin（開発用の Vite など） |
 
 ## 設定ファイル

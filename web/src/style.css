@@ -31,6 +31,38 @@ body {
   box-sizing: border-box;
 }
 
+/* 端末のプログラムが開こうとしたリンクの知らせ（押すと新しいタブで開く）。 */
+#linkbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--accent-dim);
+  border-bottom: 2px solid var(--accent);
+  font-size: 13px;
+}
+
+#linkbar[hidden] {
+  display: none;
+}
+
+#linkbar-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#linkbar button {
+  flex: none;
+  height: 32px;
+  padding: 0 12px;
+}
+
+#linkbar-open {
+  color: #000;
+  background: var(--accent);
+}
+
 #status {
   background: #6b3a00;
   font-size: 13px;

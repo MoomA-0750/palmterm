@@ -11,6 +11,8 @@ export class Connection {
   private retryTimer: number | undefined;
 
   onOutput: (data: Uint8Array) => void = () => {};
+  /** サーバーからの知らせ（テキストのフレーム。今は {type: "open", url}：ブラウザで開く URL）。 */
+  onNotice: (msg: { type: string; url?: string }) => void = () => {};
   onOpen: () => void = () => {};
   onStatus: (status: ConnectionStatus) => void = () => {};
 
@@ -45,7 +47,15 @@ export class Connection {
       if (now.cols !== cols || now.rows !== rows) this.resize(now.cols, now.rows);
     };
     ws.onmessage = (e) => {
-      if (e.data instanceof ArrayBuffer) this.onOutput(new Uint8Array(e.data));
+      if (e.data instanceof ArrayBuffer) {
+        this.onOutput(new Uint8Array(e.data));
+        return;
+      }
+      try {
+        this.onNotice(JSON.parse(e.data));
+      } catch {
+        // 知らない形の知らせは捨てる
+      }
     };
     ws.onclose = () => {
       if (this.ws !== ws) return;

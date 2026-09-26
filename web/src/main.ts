@@ -57,6 +57,8 @@ function applyStaticTexts() {
   label("copy", t("copy"));
   label("paste", t("paste"));
   label("upload", t("upload"));
+  $("linkbar-open").textContent = t("linkOpen");
+  $("linkbar-close").textContent = t("linkDismiss");
   $("copy-close").textContent = t("copyClose");
   $("copy-refresh").textContent = t("copyRefresh");
   $("copy-to-line").textContent = t("copyToLine");
@@ -154,6 +156,22 @@ conn.onOpen = () => {
   term.write("\x1bc");
   tmuxPanel.refresh();
 };
+// tmux の中のプログラムが開こうとした URL（palmterm-open 経由）。ブラウザは押されていないのに新しいタブを
+// 開くことを許さないので、知らせを出して、押したら開く。
+const linkbar = $<HTMLDivElement>("linkbar");
+let pendingLink = "";
+conn.onNotice = (msg) => {
+  if (msg.type !== "open" || !msg.url || !/^https?:\/\//.test(msg.url)) return;
+  pendingLink = msg.url;
+  $("linkbar-text").textContent = `${t("linkRequest")} ${msg.url}`;
+  linkbar.hidden = false;
+};
+$("linkbar-open").addEventListener("click", () => {
+  window.open(pendingLink, "_blank", "noopener");
+  linkbar.hidden = true;
+});
+$("linkbar-close").addEventListener("click", () => (linkbar.hidden = true));
+
 conn.onStatus = (status) => {
   statusEl.hidden = status === "open";
   statusEl.textContent = status === "connecting" ? t("connecting") : t("disconnected");

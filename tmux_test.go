@@ -374,7 +374,7 @@ func TestTmuxScopeArgs(t *testing.T) {
 func TestStartTmuxOutsideServiceDoesNothingOutsideSystemd(t *testing.T) {
 	isolateTmux(t, "")
 	t.Setenv("INVOCATION_ID", "")
-	startTmuxOutsideService("t1")
+	startTmuxOutsideService("t1", terminalEnv())
 	if out, err := exec.Command("tmux", "ls").CombinedOutput(); err == nil {
 		t.Fatalf("tmux を起動しました: %s", out)
 	}

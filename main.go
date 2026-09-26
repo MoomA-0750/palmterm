@@ -28,11 +28,22 @@ type server struct {
 	session   string // つなぐ tmux のセッション
 	origins   []string
 	uploadDir string
+	clients   clientSet // つながっている画面（ブラウザで開く URL を届ける先）
+	// tmux の BROWSER に入れる palmterm-open のパス（空なら渡さない）
+	openCommand string
 }
 
 var sessionNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 func main() {
+	// palmterm-open として呼ばれたら（tmux の中のプログラムがブラウザを開こうとした）、URL を画面に渡す。
+	if filepath.Base(os.Args[0]) == openCommandName {
+		os.Exit(runOpen(os.Args[1:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "open" {
+		os.Exit(runOpen(os.Args[2:]))
+	}
+
 	// 説明は設定ファイル（言語）を読む前に出るので、既定の言語の英語で書く。
 	listen := flag.String("listen", "127.0.0.1:7681", "address to listen on (HTTP)")
 	session := flag.String("session", "main", "tmux session to attach to")
@@ -40,6 +51,7 @@ func main() {
 	allowOrigin := flag.String("allow-origin", "", "extra WebSocket origins, comma-separated (e.g. for the Vite dev server)")
 	uploadDir := flag.String("upload-dir", "", "where uploaded files are saved (default: ~/.cache/palmterm/uploads)")
 	configPath := flag.String("config", "", "configuration file (default: ~/.config/palmterm/config.toml)")
+	relayBrowser := flag.Bool("relay-browser", true, "open URLs that programs in tmux try to open in a browser (BROWSER) on the palmterm page instead")
 	lan := flag.String("lan", "", "also listen on this address over HTTPS for the local network, e.g. :7682 (self-signed certificate in ~/.config/palmterm)")
 	flag.Parse()
 
@@ -78,6 +90,9 @@ func main() {
 		s.origins = strings.Split(*allowOrigin, ",")
 	}
 
+	if *relayBrowser {
+		s.setupBrowserRelay()
+	}
 	handler := s.routes()
 	if *lan != "" {
 		serveLAN(*lan, handler, tok)
