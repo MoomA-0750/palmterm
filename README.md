@@ -111,6 +111,8 @@ make          # builds the web UI and ./palmterm
 ```
 
 Open the printed `http://127.0.0.1:7681/auth?token=…` URL once; the browser then stays logged in.
+`palmterm url` prints the login URLs of the running palmterm (including the Tailscale one, if `tailscale serve`
+points to it) and a QR code you can scan with your phone.
 palmterm attaches to the tmux session `main` (creating it if needed).
 
 ### From your phone
@@ -143,7 +145,7 @@ palmterm comes with a systemd user service ([contrib/systemd/palmterm.service](c
 make install                                   # ~/.local/bin/palmterm and ~/.config/systemd/user/palmterm.service
 echo 'PALMTERM_ARGS="-lan :7682"' > ~/.config/palmterm/env   # optional: extra options
 systemctl --user enable --now palmterm
-journalctl --user -u palmterm                  # shows the login URL
+palmterm url                                   # login URLs and a QR code to scan with your phone
 ```
 
 - To start it at boot without logging in, run `loginctl enable-linger $USER` once.
@@ -152,6 +154,9 @@ journalctl --user -u palmterm                  # shows the login URL
 - After updating, run `make install && systemctl --user restart palmterm`. `make uninstall` removes both files.
 
 ### Options
+
+`palmterm url [-no-qr]` prints the login URLs and a QR code; `palmterm open URL` hands a URL to the palmterm page
+(see [Opening links on your phone](#opening-links-on-your-phone)).
 
 | Flag | Default | |
 |---|---|---|

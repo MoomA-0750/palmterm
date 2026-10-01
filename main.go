@@ -12,6 +12,7 @@ import (
 	"flag"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -44,6 +45,10 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "open" {
 		os.Exit(runOpen(os.Args[2:]))
+	}
+	// palmterm url：動いている palmterm のログイン用の URL と QR コードを出す。
+	if len(os.Args) > 1 && os.Args[1] == "url" {
+		os.Exit(runURL(os.Stdout, os.Args[2:]))
 	}
 
 	// 説明は設定ファイル（言語）を読む前に出るので、既定の言語の英語で書く。
@@ -96,10 +101,15 @@ func main() {
 		s.setupBrowserRelay()
 	}
 	handler := s.routes()
+	loginURLs := []string{"http://" + localAddr(*listen) + "/auth?token=" + tok}
 	if *lan != "" {
-		serveLAN(*lan, handler, tok)
+		loginURLs = append(loginURLs, serveLAN(*lan, handler, tok)...)
 	}
-	log.Printf(tr("palmterm: http://%s/auth?token=%s を開いてください", "palmterm: open http://%s/auth?token=%s"), *listen, tok)
+	// palmterm url が読む控え（サービスとして動かしていても、ログイン用の URL をすぐ出せるように）。
+	if err := writeLoginURLs(loginURLs); err != nil {
+		log.Printf(tr("ログイン用の URL の控えを書けませんでした: %v", "Could not save the login URLs: %v"), err)
+	}
+	log.Printf(tr("palmterm: http://%s/auth?token=%s を開いてください（palmterm url でも出せます）", "palmterm: open http://%s/auth?token=%s (or run: palmterm url)"), localAddr(*listen), tok)
 	log.Fatal(newHTTPServer(*listen, handler).ListenAndServe())
 }
 
@@ -111,8 +121,18 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 
 var readHeaderTimeout = 10 * time.Second // テストで短くする
 
+// 待ち受けるアドレスを、この PC から開くときのアドレスにする（":7681" なら 127.0.0.1:7681）。
+func localAddr(listen string) string {
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil || (host != "" && host != "0.0.0.0" && host != "::") {
+		return listen
+	}
+	return net.JoinHostPort("127.0.0.1", port)
+}
+
 // LAN 向けに HTTPS で待ち受ける（証明書は自分で署名したもの）。ポートだけなら LAN のアドレスごとに待ち受ける。
-func serveLAN(addr string, handler http.Handler, token string) {
+// 待ち受けられたアドレスのログイン用の URL を返す。
+func serveLAN(addr string, handler http.Handler, token string) []string {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		log.Fatal(err)
@@ -126,8 +146,9 @@ func serveLAN(addr string, handler http.Handler, token string) {
 	addrs := lanListenAddrs(addr, ips)
 	if len(addrs) == 0 {
 		log.Print(tr("palmterm（LAN）: LAN のアドレスが見つからないので、LAN では待ち受けません", "palmterm (LAN): no LAN address found, so not listening on the LAN"))
-		return
+		return nil
 	}
+	var urls []string
 	// 開けなかったアドレスがあっても、開けたアドレスでは受け付ける（1つの失敗で全体を止めない）。
 	lns, errs := listenAll(addrs)
 	for _, err := range errs {
@@ -141,10 +162,12 @@ func serveLAN(addr string, handler http.Handler, token string) {
 				log.Printf(tr("palmterm（LAN）: %s の待ち受けが止まりました: %v", "palmterm (LAN): stopped serving %s: %v"), ln.Addr(), err)
 			}
 		}()
+		u := "https://" + ln.Addr().String() + "/auth?token=" + token
+		urls = append(urls, u)
 		log.Printf(tr("palmterm（LAN）: %s を開いてください（最初は証明書の警告が出るので、先へ進む）",
-			"palmterm (LAN): open %s (the browser warns about the certificate the first time; proceed)"),
-			"https://"+ln.Addr().String()+"/auth?token="+token)
+			"palmterm (LAN): open %s (the browser warns about the certificate the first time; proceed)"), u)
 	}
+	return urls
 }
 
 func (s *server) routes() http.Handler {

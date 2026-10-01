@@ -108,6 +108,8 @@ make          # 画面をビルドして ./palmterm を作る
 ```
 
 表示された `http://127.0.0.1:7681/auth?token=…` を一度開けば、以後そのブラウザはログインしたままになる。
+`palmterm url` で、動いている palmterm のログイン用の URL（`tailscale serve` が中継していればその URL も）と、
+スマホのカメラで読める QR コードを出せる。
 つなぐ tmux のセッションは `main`（なければ作る）。
 
 ### スマホから
@@ -139,7 +141,7 @@ systemd のユーザーサービスのファイル（[contrib/systemd/palmterm.s
 make install                                   # ~/.local/bin/palmterm と ~/.config/systemd/user/palmterm.service を置く
 echo 'PALMTERM_ARGS="-lan :7682"' > ~/.config/palmterm/env   # 任意：オプションを足す
 systemctl --user enable --now palmterm
-journalctl --user -u palmterm                  # ログイン用の URL が出ている
+palmterm url                                   # ログイン用の URL と、スマホで読む QR コード
 ```
 
 - ログインしなくても PC の起動時に動かすには、一度 `loginctl enable-linger $USER` を実行する。
@@ -148,6 +150,9 @@ journalctl --user -u palmterm                  # ログイン用の URL が出�
 - 更新したら `make install && systemctl --user restart palmterm`。`make uninstall` で2つとも取り除く。
 
 ### オプション
+
+`palmterm url [-no-qr]` はログイン用の URL と QR コードを出す。`palmterm open URL` は URL を palmterm の画面に渡す
+（[リンクをスマホで開く](#リンクをスマホで開く)）。
 
 | オプション | 既定 | |
 |---|---|---|

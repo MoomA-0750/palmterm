@@ -2,10 +2,10 @@
 #   make install
 #   systemctl --user enable --now palmterm
 # オプション（-lan など）は ~/.config/palmterm/env に書く。例：PALMTERM_ARGS="-lan :7682"
-# ログイン用の URL は journalctl --user -u palmterm で見られる。
+# ログイン用の URL と QR コードは palmterm url で出せる。
 #
 # Run palmterm as a systemd user service. Put options such as -lan in ~/.config/palmterm/env,
-# e.g. PALMTERM_ARGS="-lan :7682". The login URL is printed to journalctl --user -u palmterm.
+# e.g. PALMTERM_ARGS="-lan :7682". Run palmterm url for the login URLs and a QR code.
 
 [Unit]
 Description=palmterm, a web terminal for driving tmux from your phone
