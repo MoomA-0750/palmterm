@@ -60,6 +60,14 @@ Ctrl や Alt の入力、カーソル移動、スクロールを使いやすく�
   選び、「選択をコピー」か「入力欄へ」。
 - **貼り付け**（クリップボードのボタン）：テキストボックスか端末に貼り付ける。ブラウザは HTTPS のとき
   しか許さないので、HTTP のときはテキストボックスを長押しして貼り付ける。
+- **palmterm のクリップボード**：tmux の中でコピーした文字（tmux のコピーモード、Claude Code、herdr など
+  OSC 52 でコピーするプログラム）は、PC のクリップボードだけでなく、tmux のバッファとしてサーバーに残る。
+  - コピーされると、上に「スマホにコピー」の知らせを出す（15 秒）。ブラウザは押されたときしか
+    クリップボードへの書き込みを許さないので、押してもらう。
+  - コピーの画面の「クリップボード」のタブに、新しい順に並べる。項目ごとに「コピー」「入力欄へ」
+    「削除」（2回押し）。
+  - tmux の中のプログラムのコピーも受け取れるよう、tmux の `set-clipboard` を `on` にする（tmux の既定の
+    `external` では捨てられる）。使わないときは `-capture-clipboard=false`。
 
 ### 画像（Claude Code 向け）
 
@@ -163,6 +171,7 @@ palmterm url                                   # ログイン用の URL と、�
 | `-config` | `~/.config/palmterm/config.toml` | 設定ファイル |
 | `-upload-dir` | `~/.cache/palmterm/uploads` | アップロードした画像の保存先 |
 | `-relay-browser` | `true` | tmux の中のプログラムが開こうとしたリンクを palmterm の画面に出す（上記） |
+| `-capture-clipboard` | `true` | tmux の `set-clipboard` を `on` にし、tmux の中のプログラムのコピーも palmterm のクリップボードに入れる（上記） |
 | `-allow-origin` | | WebSocket を許す別の Origin（開発用の Vite など） |
 
 ## 設定ファイル

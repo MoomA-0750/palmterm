@@ -17,6 +17,11 @@
         <button id="linkbar-open" type="button"></button>
         <button id="linkbar-close" type="button"></button>
       </div>
+      <div id="clipbar" role="status" hidden>
+        <span id="clipbar-text"></span>
+        <button id="clipbar-copy" type="button"></button>
+        <button id="clipbar-close" type="button"></button>
+      </div>
       <div id="term-wrap">
         <div id="term" aria-label="端末"></div>
         <div id="tmuxpanel" role="toolbar" aria-label="tmux のウィンドウとペイン" hidden></div>
@@ -50,12 +55,20 @@
     <div id="copymode" hidden>
       <div class="copy-bar">
         <button id="copy-close" type="button">閉じる</button>
+        <div class="copy-tabs" role="tablist">
+          <button id="tab-history" type="button" role="tab">履歴</button>
+          <button id="tab-clips" type="button" role="tab">クリップボード</button>
+        </div>
+        <span class="spacer"></span>
         <button id="copy-refresh" type="button">更新</button>
+      </div>
+      <div class="copy-bar" id="history-bar">
         <span class="spacer"></span>
         <button id="copy-to-line" type="button">入力欄へ</button>
         <button id="copy-selection" type="button">選択をコピー</button>
       </div>
       <pre id="copy-text"></pre>
+      <ul id="clips" hidden></ul>
     </div>
 
     <div id="toast" hidden></div>

@@ -11,7 +11,7 @@ export class Connection {
   private retryTimer: number | undefined;
 
   onOutput: (data: Uint8Array) => void = () => {};
-  /** サーバーからの知らせ（テキストのフレーム。今は {type: "open", url}：ブラウザで開く URL）。 */
+  /** サーバーからの知らせ（テキストのフレーム。{type: "open", url}：ブラウザで開く URL、{type: "clipboard"}：tmux でコピーされた）。 */
   onNotice: (msg: { type: string; url?: string }) => void = () => {};
   onOpen: () => void = () => {};
   onStatus: (status: ConnectionStatus) => void = () => {};

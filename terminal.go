@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log"
@@ -81,11 +82,22 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer cancel()
 		buf := make([]byte, 32*1024)
+		started := false
 		for {
 			n, err := ptmx.Read(buf)
 			if n > 0 {
+				// tmux のサーバーが動き出してから（最初の出力が来てから）設定する。
+				if !started && s.captureClipboard {
+					captureClipboard()
+				}
+				started = true
 				if werr := conn.Write(ctx, websocket.MessageBinary, buf[:n]); werr != nil {
 					return
+				}
+				// tmux がバッファにコピーした（OSC 52 を送ってきた）ら、画面に知らせる。画面は一覧を読み直す。
+				// 読み込みの切れ目で OSC 52 が分かれたときは知らせ損なうが、一覧には入っている。
+				if bytes.Contains(buf[:n], osc52) {
+					conn.Write(ctx, websocket.MessageText, []byte(`{"type":"clipboard"}`))
 				}
 			}
 			if err != nil {

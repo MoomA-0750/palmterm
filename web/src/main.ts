@@ -3,6 +3,7 @@ import "@wterm/dom/css";
 import "./fonts.css";
 import "./style.css";
 import { Attachments, uploadFile } from "./attachments";
+import { type ClipItem, clipPreview, deleteClip, fetchClips, renderClips } from "./clips";
 import { Connection } from "./connection";
 import { type Lang, setLang, t } from "./i18n";
 import { icon } from "./icons";
@@ -63,6 +64,10 @@ function applyStaticTexts() {
   $("copy-refresh").textContent = t("copyRefresh");
   $("copy-to-line").textContent = t("copyToLine");
   $("copy-selection").textContent = t("copySelection");
+  $("tab-history").textContent = t("tabHistory");
+  $("tab-clips").textContent = t("tabClips");
+  $("clipbar-copy").textContent = t("clipNoticeCopy");
+  $("clipbar-close").textContent = t("clipNoticeDismiss");
 }
 
 // ---- 設定（この端末のブラウザにだけ保存） ----
@@ -159,8 +164,15 @@ conn.onOpen = () => {
 // tmux の中のプログラムが開こうとした URL（palmterm-open 経由）。ブラウザは押されていないのに新しいタブを
 // 開くことを許さないので、知らせを出して、押したら開く。
 const linkbar = $<HTMLDivElement>("linkbar");
+const copyMode = $<HTMLDivElement>("copymode");
+/** コピーの画面で最後に開いていたタブ（ボタンで開き直したときもそのタブにする）。 */
+let copyTab: "history" | "clips" = "history";
 let pendingLink = "";
 conn.onNotice = (msg) => {
+  if (msg.type === "clipboard") {
+    clipboardChanged();
+    return;
+  }
   if (msg.type !== "open" || !msg.url || !/^https?:\/\//.test(msg.url)) return;
   pendingLink = msg.url;
   $("linkbar-text").textContent = `${t("linkRequest")} ${msg.url}`;
@@ -171,6 +183,39 @@ $("linkbar-open").addEventListener("click", () => {
   linkbar.hidden = true;
 });
 $("linkbar-close").addEventListener("click", () => (linkbar.hidden = true));
+
+// tmux でコピーされた（tmux がバッファにコピーして OSC 52 を送ってきた）ときの知らせ。押すとスマホの
+// クリップボードに入れる（ブラウザは押されていないのにクリップボードへ書くことを許さないため）。
+const clipbar = $<HTMLDivElement>("clipbar");
+const CLIPBAR_MS = 15_000;
+let pendingClip: ClipItem | null = null;
+let clipbarTimer: number | undefined;
+let clipsSeen = "";
+
+async function clipboardChanged() {
+  let items: ClipItem[];
+  try {
+    items = await fetchClips();
+  } catch {
+    return; // 一覧を開けば読み直せる
+  }
+  if (!copyMode.hidden && copyTab === "clips") showClips(items);
+  const latest = items[0];
+  // 同じ文字をもう一度コピーしたときも知らせる（一覧ではまとめているので、バッファの名前で見分ける）
+  const key = latest ? latest.names.join(",") : "";
+  if (!latest || key === clipsSeen) return;
+  clipsSeen = key;
+  pendingClip = latest;
+  $("clipbar-text").textContent = `${t("clipNotice")} ${clipPreview(latest.text)}`;
+  clipbar.hidden = false;
+  window.clearTimeout(clipbarTimer);
+  clipbarTimer = window.setTimeout(() => (clipbar.hidden = true), CLIPBAR_MS);
+}
+$("clipbar-copy").addEventListener("click", async () => {
+  clipbar.hidden = true;
+  if (pendingClip) toast((await copyText(pendingClip.text)) ? t("copied") : t("copyFailed"));
+});
+$("clipbar-close").addEventListener("click", () => (clipbar.hidden = true));
 
 conn.onStatus = (status) => {
   statusEl.hidden = status === "open";
@@ -619,9 +664,10 @@ termEl.addEventListener(
 );
 
 // ---- コピーモード：履歴を普通のテキストとして出し、OS の選択でコピーする ----
+// 「クリップボード」のタブでは、palmterm のクリップボード（tmux のバッファ）を一覧にする。
 
-const copyMode = $<HTMLDivElement>("copymode");
 const copyTextEl = $<HTMLPreElement>("copy-text");
+const clipsEl = $<HTMLUListElement>("clips");
 
 async function loadHistory(): Promise<string> {
   try {
@@ -634,12 +680,48 @@ async function loadHistory(): Promise<string> {
   return term.readText();
 }
 
-async function openCopyMode() {
+async function openCopyMode(tab: "history" | "clips" = copyTab) {
   copyMode.hidden = false;
+  copyTab = tab;
+  $("tab-history").setAttribute("aria-selected", String(tab === "history"));
+  $("tab-clips").setAttribute("aria-selected", String(tab === "clips"));
+  $("history-bar").hidden = tab !== "history";
+  copyTextEl.hidden = tab !== "history";
+  clipsEl.hidden = tab !== "clips";
+  if (tab === "clips") {
+    await loadClips();
+    return;
+  }
   copyTextEl.textContent = t("loading");
   const text = await loadHistory();
   copyTextEl.textContent = text;
   copyTextEl.scrollTop = copyTextEl.scrollHeight;
+}
+
+async function loadClips() {
+  if (clipsEl.childElementCount === 0) clipsEl.textContent = t("loading");
+  try {
+    showClips(await fetchClips());
+  } catch (e) {
+    clipsEl.textContent = t("clipsError", { error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+function showClips(items: ClipItem[]) {
+  renderClips(clipsEl, items, {
+    copy: async (item) => toast((await copyText(item.text)) ? t("copied") : t("copyFailed")),
+    toLine: (item) => {
+      closeCopyMode();
+      insertIntoLine(item.text);
+    },
+    remove: async (item) => {
+      try {
+        showClips(await deleteClip(item));
+      } catch (e) {
+        toast(t("clipsError", { error: e instanceof Error ? e.message : String(e) }));
+      }
+    },
+  });
 }
 
 function closeCopyMode() {
@@ -658,9 +740,11 @@ function selectedCopyText(): string {
   return sel.toString();
 }
 
-$("copy").addEventListener("click", openCopyMode);
+$("copy").addEventListener("click", () => openCopyMode());
 $("copy-close").addEventListener("click", closeCopyMode);
-$("copy-refresh").addEventListener("click", openCopyMode);
+$("copy-refresh").addEventListener("click", () => openCopyMode());
+$("tab-history").addEventListener("click", () => openCopyMode("history"));
+$("tab-clips").addEventListener("click", () => openCopyMode("clips"));
 $("copy-selection").addEventListener("click", async () => {
   const text = selectedCopyText();
   if (!text) return;

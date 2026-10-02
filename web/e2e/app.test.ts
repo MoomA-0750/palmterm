@@ -546,3 +546,45 @@ describe("ブラウザの受け渡し", () => {
   });
 });
 
+
+describe("palmterm のクリップボード", () => {
+  it("tmux の中のプログラムがコピーした文字を知らせ、押すとスマホのクリップボードに入れる。一覧からも使える", async () => {
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
+    await page.evaluate(() => navigator.clipboard.writeText(""));
+    // OSC 52 で "from app\nline 2"（tmux の set-clipboard を on にしているのでバッファに入る）
+    tmux("send-keys", "-t", SESSION, `printf '\\033]52;c;%s\\a' "$(printf 'from app\\nline 2' | base64)"`, "Enter");
+    const bar = page.locator("#clipbar");
+    await waitUntil("知らせが出る", async () => bar.isVisible());
+    expect(await bar.textContent()).toContain("from app");
+    await page.locator("#clipbar-copy").click();
+    await waitUntil("スマホのクリップボードに入る", async () => (await page.evaluate(() => navigator.clipboard.readText())) === "from app\nline 2");
+    expect(await bar.isHidden()).toBe(true);
+
+    // 一覧：新しい順に並び、入力欄へ入れられ、2回押しで消せる
+    tmux("set-buffer", "second");
+    await page.locator("#copy").click();
+    await page.locator("#tab-clips").click();
+    const texts = () => page.$$eval("#clips .clip-text", (els) => els.map((e) => e.textContent));
+    await waitUntil("一覧が出る", async () => (await texts()).length === 2);
+    expect(await texts()).toEqual(["second", "from app\nline 2"]);
+    expect(await page.locator("#copy-text").isHidden()).toBe(true);
+
+    await page.locator("#clips li").nth(0).locator(".clip-delete").click();
+    await page.locator("#clips li").nth(0).locator(".clip-delete").click();
+    await waitUntil("消える", async () => (await texts()).length === 1);
+    expect(tmux("list-buffers", "-F", "#{buffer_sample}")).toBe("from app\\nline 2");
+
+    await page.locator("#line").fill("");
+    await page.locator("#clips li").nth(0).locator(".clip-to-line").click();
+    expect(await page.locator("#copymode").isHidden()).toBe(true);
+    expect(await page.inputValue("#line")).toBe("from app\nline 2");
+
+    // ボタンで開き直すと、最後のタブ（クリップボード）で開く
+    await page.locator("#copy").click();
+    expect(await page.locator("#tab-clips").getAttribute("aria-selected")).toBe("true");
+    await page.locator("#tab-history").click();
+    expect(await page.locator("#clips").isHidden()).toBe(true);
+    await page.locator("#copy-close").click();
+    await page.locator("#line").fill("");
+  });
+});

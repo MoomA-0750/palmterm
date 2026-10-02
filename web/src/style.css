@@ -31,8 +31,10 @@ body {
   box-sizing: border-box;
 }
 
-/* 端末のプログラムが開こうとしたリンクの知らせ（押すと新しいタブで開く）。 */
-#linkbar {
+/* 端末のプログラムが開こうとしたリンクの知らせ（押すと新しいタブで開く）と、
+   tmux でコピーした文字の知らせ（押すとスマホのクリップボードに入れる）。 */
+#linkbar,
+#clipbar {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -42,23 +44,33 @@ body {
   font-size: 13px;
 }
 
-#linkbar[hidden] {
+#linkbar[hidden],
+#clipbar[hidden] {
   display: none;
 }
 
-#linkbar-text {
+#linkbar-text,
+#clipbar-text {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-#linkbar button {
+#clipbar-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#linkbar button,
+#clipbar button {
   flex: none;
   height: 32px;
   padding: 0 12px;
 }
 
-#linkbar-open {
+#linkbar-open,
+#clipbar-copy {
   color: #000;
   background: var(--accent);
 }
@@ -304,7 +316,8 @@ button:active {
 }
 
 #tmuxpanel button.armed,
-.tmux-tab button.armed {
+.tmux-tab button.armed,
+.clip-actions button.armed {
   color: #fff;
   background: #b3261e;
 }
@@ -373,6 +386,8 @@ button:active {
 }
 
 #copymode[hidden],
+#history-bar[hidden],
+#clips[hidden],
 #status[hidden],
 #toast[hidden] {
   display: none;
@@ -392,6 +407,78 @@ button:active {
 
 .copy-bar .spacer {
   flex: 1;
+}
+
+.copy-tabs {
+  display: flex;
+}
+
+.copy-tabs button {
+  border-radius: 0;
+}
+
+.copy-tabs button:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.copy-tabs button:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.copy-tabs button[aria-selected="true"] {
+  color: #000;
+  background: var(--accent);
+}
+
+/* palmterm のクリップボード（tmux のバッファ）の一覧。 */
+#clips {
+  flex: 1;
+  margin: 0;
+  padding: 4px 8px;
+  overflow: auto;
+  list-style: none;
+}
+
+#clips li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--btn-bg);
+}
+
+.clip-text {
+  margin: 0 0 6px;
+  max-height: 7.5em;
+  overflow: hidden;
+  font: 13px/1.35 var(--mono-font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.clip-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.clip-meta {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.clip-actions button {
+  height: 32px;
+  padding: 0 10px;
+}
+
+.clip-actions .clip-copy {
+  color: #000;
+  background: var(--accent);
+}
+
+.clips-empty {
+  padding: 16px 0;
+  opacity: 0.7;
 }
 
 #copy-text {

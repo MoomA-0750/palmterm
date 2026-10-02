@@ -33,7 +33,9 @@ type server struct {
 	clients   clientSet // つながっている画面（ブラウザで開く URL を届ける先）
 	// tmux の BROWSER に入れる palmterm-open のパス（空なら渡さない）
 	openCommand string
-	terminals   sync.WaitGroup // 動いている端末の中継（テストで終わりを待つ）
+	// tmux の中のプログラムが OSC 52 でコピーした文字も tmux のバッファに入れる（set-clipboard on）
+	captureClipboard bool
+	terminals        sync.WaitGroup // 動いている端末の中継（テストで終わりを待つ）
 }
 
 var sessionNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -59,6 +61,7 @@ func main() {
 	uploadDir := flag.String("upload-dir", "", "where uploaded files are saved (default: ~/.cache/palmterm/uploads)")
 	configPath := flag.String("config", "", "configuration file (default: ~/.config/palmterm/config.toml)")
 	relayBrowser := flag.Bool("relay-browser", true, "open URLs that programs in tmux try to open in a browser (BROWSER) on the palmterm page instead")
+	captureClip := flag.Bool("capture-clipboard", true, "set tmux's set-clipboard to on, so text that programs in tmux copy (OSC 52) also goes to the tmux buffers listed on the palmterm page")
 	lan := flag.String("lan", "", "also listen on this address over HTTPS for the local network, e.g. :7682 (self-signed certificate in ~/.config/palmterm)")
 	flag.Parse()
 
@@ -85,7 +88,7 @@ func main() {
 		}
 	}
 
-	s := &server{token: tok, session: *session, uploadDir: *uploadDir}
+	s := &server{token: tok, session: *session, uploadDir: *uploadDir, captureClipboard: *captureClip}
 	if s.uploadDir == "" {
 		cache, err := os.UserCacheDir()
 		if err != nil {
@@ -183,6 +186,8 @@ func (s *server) routes() http.Handler {
 	mux.Handle("GET /api/pane", s.requireAuth(http.HandlerFunc(s.handlePane)))
 	mux.Handle("GET /api/windows", s.requireAuth(http.HandlerFunc(s.handleWindows)))
 	mux.Handle("POST /api/tmux", s.requireAuth(http.HandlerFunc(s.handleTmuxAction)))
+	mux.Handle("GET /api/clipboard", s.requireAuth(http.HandlerFunc(s.handleClipboard)))
+	mux.Handle("POST /api/clipboard/delete", s.requireAuth(http.HandlerFunc(s.handleClipboardDelete)))
 	mux.Handle("POST /api/upload", s.requireAuth(http.HandlerFunc(s.handleUpload)))
 	mux.Handle("GET /api/upload/{name}", s.requireAuth(http.HandlerFunc(s.handleUploadFile)))
 	mux.Handle("GET /", s.requireAuth(cacheAssets(http.FileServerFS(dist))))

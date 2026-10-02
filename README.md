@@ -62,6 +62,14 @@ for working with TUIs such as vim, lazygit and Claude Code.
   select, then “Copy selection” or “To input”.
 - **Paste** (the clipboard button) pastes into the text box or the terminal. Browsers only allow this
   over HTTPS; over plain HTTP, long-press the text box and paste instead.
+- **palmterm's clipboard**: text copied inside tmux (tmux copy mode, Claude Code, herdr and other programs
+  that copy with OSC 52) stays on the server as tmux buffers, not just on the PC's clipboard.
+  - When something is copied, a notice with **Copy to phone** appears at the top (for 15 seconds).
+    Browsers only let a page write to the clipboard when you press something, so it waits for the tap.
+  - The **Clipboard** tab of the copy screen lists recent copies, newest first, each with **Copy**,
+    **To input** and **Delete** (press twice).
+  - To catch copies from programs inside tmux, palmterm sets tmux's `set-clipboard` to `on` (tmux's default,
+    `external`, drops them). Turn this off with `-capture-clipboard=false`.
 
 ### Images (for Claude Code)
 
@@ -167,6 +175,7 @@ palmterm url                                   # login URLs and a QR code to sca
 | `-config` | `~/.config/palmterm/config.toml` | configuration file |
 | `-upload-dir` | `~/.cache/palmterm/uploads` | where uploaded images are saved |
 | `-relay-browser` | `true` | show links that programs in tmux open on the palmterm page (see above) |
+| `-capture-clipboard` | `true` | set tmux's `set-clipboard` to `on` so copies from programs in tmux reach palmterm's clipboard (see above) |
 | `-allow-origin` | | extra WebSocket origins (for the Vite dev server) |
 
 ## Configuration
