@@ -56,7 +56,6 @@ function applyStaticTexts() {
   $<HTMLTextAreaElement>("line").placeholder = t("linePlaceholder");
   label("send", t("send"));
   label("copy", t("copy"));
-  label("paste", t("paste"));
   label("upload", t("upload"));
   $("linkbar-open").textContent = t("linkOpen");
   $("linkbar-close").textContent = t("linkDismiss");
@@ -165,8 +164,8 @@ conn.onOpen = () => {
 // 開くことを許さないので、知らせを出して、押したら開く。
 const linkbar = $<HTMLDivElement>("linkbar");
 const copyMode = $<HTMLDivElement>("copymode");
-/** コピーの画面で最後に開いていたタブ（ボタンで開き直したときもそのタブにする）。 */
-let copyTab: "history" | "clips" = "history";
+/** コピーの画面で最後に開いていたタブ（ボタンで開き直したときもそのタブにする）。最初はクリップボード。 */
+let copyTab: "history" | "clips" = "clips";
 let pendingLink = "";
 conn.onNotice = (msg) => {
   if (msg.type === "clipboard") {
@@ -522,7 +521,7 @@ function bindKeyButton(btn: HTMLButtonElement, fire: () => void, repeat: boolean
   });
 }
 
-// ---- コピー・貼り付け ----
+// ---- 知らせとコピー ----
 
 function toast(message: string, ms = 2500) {
   toastEl.textContent = message;
@@ -549,62 +548,6 @@ async function copyText(text: string): Promise<boolean> {
     return ok;
   }
 }
-
-/**
- * クリップボードの文字を読む。読めなかったら理由を知らせて null を返す。
- * 許可を求める画面が出た最初の1回は、許可しても失敗することがあるので、許可済みならもう一度読む。
- */
-async function readClipboard(): Promise<string | null> {
-  if (!window.isSecureContext || !navigator.clipboard?.readText) {
-    toast(t("pasteNeedsHttps"));
-    return null;
-  }
-  let error: unknown;
-  try {
-    return await navigator.clipboard.readText();
-  } catch (e) {
-    error = e;
-  }
-  const state = await clipboardPermission();
-  if (state === "granted") {
-    try {
-      return await navigator.clipboard.readText();
-    } catch (e) {
-      error = e;
-    }
-  }
-  if (state === "denied") {
-    toast(t("clipboardDenied"));
-  } else if (error instanceof DOMException && error.name === "NotAllowedError") {
-    toast(t("clipboardRetry"));
-  } else {
-    const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-    toast(t("clipboardError", { detail }));
-  }
-  return null;
-}
-
-async function clipboardPermission(): Promise<PermissionState | null> {
-  try {
-    return (await navigator.permissions.query({ name: "clipboard-read" as PermissionName })).state;
-  } catch {
-    return null; // Safari などは clipboard-read を問い合わせられない
-  }
-}
-
-$("paste").addEventListener("click", async () => {
-  const text = await readClipboard();
-  if (text === null) return;
-  if (!text) {
-    toast(t("clipboardEmpty"));
-    return;
-  }
-  if (usingLine()) {
-    insertIntoLine(text);
-  } else {
-    conn.send(bracketedPaste(text));
-  }
-});
 
 // ---- 画像のアップロード ----
 // テキストボックスに入力しているときは添付欄に並べて、送信のときに渡す（プレビューで確かめてから送れる）。

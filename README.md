@@ -23,7 +23,7 @@ for working with TUIs such as vim, lazygit and Claude Code.
     followed by Enter. Multi-line text is sent as a bracketed paste, so Claude Code receives it as-is.
   - Backspace on an empty text box deletes in the terminal.
 - **Direct input**: tap the terminal and type; every key goes straight to the terminal (for vim and TUIs).
-- Whichever you typed in last receives Tab, paste and images.
+- Whichever you typed in last receives Tab and images.
 
 ### Key bar
 
@@ -58,15 +58,16 @@ for working with TUIs such as vim, lazygit and Claude Code.
 
 ### Copy and paste
 
-- **Copy** (the two-sheets button) shows tmux's history (3000 lines) as plain text. Long-press to
-  select, then “Copy selection” or “To input”.
-- **Paste** (the clipboard button) pastes into the text box or the terminal. Browsers only allow this
-  over HTTPS; over plain HTTP, long-press the text box and paste instead.
+- **The clipboard button** opens a screen with palmterm's clipboard (below) and tmux's history, switched by
+  tabs. It reopens on the tab you used last (the clipboard at first).
+  - The **History** tab shows tmux's history (3000 lines) as plain text. Long-press to select, then
+    “Copy selection” or “To input”.
+- To paste from the phone's clipboard, long-press the text box.
 - **palmterm's clipboard**: text copied inside tmux (tmux copy mode, Claude Code, herdr and other programs
   that copy with OSC 52) stays on the server as tmux buffers, not just on the PC's clipboard.
   - When something is copied, a notice with **Copy to phone** appears at the top (for 15 seconds).
     Browsers only let a page write to the clipboard when you press something, so it waits for the tap.
-  - The **Clipboard** tab of the copy screen lists recent copies, newest first, each with **Copy**,
+  - The **Clipboard** tab (the clipboard button) lists recent copies, newest first, each with **Copy**,
     **To input** and **Delete** (press twice).
   - To catch copies from programs inside tmux, palmterm sets tmux's `set-clipboard` to `on` (tmux's default,
     `external`, drops them). Turn this off with `-capture-clipboard=false`.
@@ -143,7 +144,7 @@ palmterm listens on each of the PC's private LAN IPv4 addresses (and its Tailsca
 listen on that one only. It uses a self-signed certificate that it creates in `~/.config/palmterm/`
 (recreated when a new IP address appears, keeping the old ones), so the browser warns you the first
 time — choose “Advanced” and proceed. The LAN side uses HTTPS so the
-token is not sent in clear text and the paste button works.
+token is not sent in clear text and copying to the phone's clipboard uses the browser's clipboard API.
 
 ### Run as a service
 

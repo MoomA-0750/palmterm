@@ -331,30 +331,15 @@ text = ":wq"
   });
 });
 
-describe("貼り付けボタン", () => {
-  async function setClipboard(text: string) {
-    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
-    await page.evaluate((t) => navigator.clipboard.writeText(t), text);
-  }
-
-  it("端末に打っているときは端末へ。中に終わりの印を仕込まれても貼り付けから抜け出せない", async () => {
+describe("複数行の送信", () => {
+  it("ブラケットペーストで送り、中に終わりの印を仕込まれても貼り付けから抜け出せない", async () => {
     // 抜け出せてしまうと、続くコマンド（ここでは何もしない ":"）が実行される
-    await setClipboard("echo safe\x1b[201~\r: injected\r");
-    await page.mouse.click(200, 150); // 端末に入力している
+    await page.locator("#line").fill("echo safe\x1b[201~\n: injected\n");
     await clearSent();
-    await page.locator("#paste").click();
-    await waitUntil("貼り付けを送る", async () => (await sent()).length === 1);
-    const [seq] = await sent();
+    await page.locator("#send").click();
+    await waitUntil("送る", async () => (await sent()).includes("\r"));
     // tmux はブラケットペーストを有効にしている。印は最初と最後の1組だけ
-    expect(seq).toBe("\x1b[200~echo safe[201~\r: injected\r\x1b[201~");
-  });
-
-  it("テキストボックスに入力しているときはテキストボックスへ", async () => {
-    await setClipboard("hello\nworld");
-    await page.locator("#line").click();
-    await page.locator("#paste").click();
-    await waitUntil("入る", async () => (await page.inputValue("#line")) === "hello\nworld");
-    expect(await sent()).toEqual([]);
+    expect(await sent()).toEqual(["\x1b[200~echo safe[201~\r: injected\r\x1b[201~", "\r"]);
   });
 });
 
@@ -391,6 +376,7 @@ describe("画像とコピー", () => {
     tmux("send-keys", "-t", SESSION, "echo history$((2+3))", "Enter");
     await waitUntil("出力", () => paneText().includes("history5"));
     await page.locator("#copy").click();
+    await page.locator("#tab-history").click();
     await waitUntil("履歴が出る", async () => (await page.locator("#copy-text").textContent())?.includes("\nhistory5\n") ?? false);
     await page.locator("#copy-close").click();
     expect(await page.locator("#copymode").isHidden()).toBe(true);
@@ -562,8 +548,9 @@ describe("palmterm のクリップボード", () => {
 
     // 一覧：新しい順に並び、入力欄へ入れられ、2回押しで消せる
     tmux("set-buffer", "second");
+    // ボタンで開くと、最初はクリップボードのタブ
     await page.locator("#copy").click();
-    await page.locator("#tab-clips").click();
+    expect(await page.locator("#tab-clips").getAttribute("aria-selected")).toBe("true");
     const texts = () => page.$$eval("#clips .clip-text", (els) => els.map((e) => e.textContent));
     await waitUntil("一覧が出る", async () => (await texts()).length === 2);
     expect(await texts()).toEqual(["second", "from app\nline 2"]);
@@ -579,11 +566,13 @@ describe("palmterm のクリップボード", () => {
     expect(await page.locator("#copymode").isHidden()).toBe(true);
     expect(await page.inputValue("#line")).toBe("from app\nline 2");
 
-    // ボタンで開き直すと、最後のタブ（クリップボード）で開く
+    // ボタンで開き直すと、最後に開いていたタブで開く
     await page.locator("#copy").click();
-    expect(await page.locator("#tab-clips").getAttribute("aria-selected")).toBe("true");
     await page.locator("#tab-history").click();
     expect(await page.locator("#clips").isHidden()).toBe(true);
+    await page.locator("#copy-close").click();
+    await page.locator("#copy").click();
+    expect(await page.locator("#tab-history").getAttribute("aria-selected")).toBe("true");
     await page.locator("#copy-close").click();
     await page.locator("#line").fill("");
   });
