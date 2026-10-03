@@ -8,6 +8,7 @@ import type { WTerm } from "@wterm/dom";
  *   - 中のアプリがマウスを受け取る（vim・lazygit など）: ホイール（wterm が信号にする）
  *   - 全画面のアプリでマウスなし（less など）: ↑↓ キー
  *   どれも、指を離したあとは速度に応じて減速しながら続ける。
+ * マウスのホイール・トラックパッドも、中のアプリがマウスを受け取っていなければ同じ決め方で動かす。
  * 通常の画面（tmux を使っていない）では、ブラウザの普通のスクロールに任せる。
  * 長押しから文字を選んでいる間（dragselect.ts）は、スクロールしない。
  *
@@ -87,6 +88,15 @@ export function setupTouch(opts: TouchOptions) {
     { passive: true },
   );
 
+  /** スクロールの仕方を、tmux の今のペインの状態で決める。 */
+  function decide(st: PaneState | null): ScrollMode {
+    if (!st) return mouseTracking() ? "wheel" : "keys";
+    if (st.inMode) return "tmux";
+    if (st.mouse) return mouseTracking() ? "wheel" : "keys";
+    if (st.altScreen) return "keys";
+    return "tmux";
+  }
+
   // ---- ピンチで文字サイズ ----
 
   function startPinch(e: TouchEvent) {
@@ -153,14 +163,6 @@ export function setupTouch(opts: TouchOptions) {
       },
     );
 
-    function decide(st: PaneState | null): ScrollMode {
-      if (!st) return mouseTracking() ? "wheel" : "keys";
-      if (st.inMode) return "tmux";
-      if (st.mouse) return mouseTracking() ? "wheel" : "keys";
-      if (st.altScreen) return "keys";
-      return "tmux";
-    }
-
     function apply(dy: number) {
       if (dy === 0 || mode === "pending" || mode === "none") return;
       acc += dy;
@@ -196,6 +198,74 @@ export function setupTouch(opts: TouchOptions) {
             cancelable: true,
           }),
         );
+      } else {
+        const final = dir > 0 ? "B" : "A";
+        opts.send(opts.appCursor() ? `\x1bO${final}` : `\x1b[${final}`);
+      }
+    }
+  }
+
+  // ---- マウスのホイール・トラックパッド ----
+  // 中のアプリがマウスを受け取っているときは、wterm がホイールを信号にして送る。受け取っていないとき
+  // （シェルなど）は何も起きないので、指のスワイプと同じ決め方で、tmux のコピーモードか ↑↓ キーで動かす。
+  // 状態の問い合わせは、続けて回している間（WHEEL_GAP_MS 以内）は最初の1回の答えを使う。
+
+  const WHEEL_GAP_MS = 300;
+  let wheelMode: ScrollMode = "none";
+  let wheelAcc = 0; // まだ行に換算していない移動（新しい方へが正、px）
+  let wheelLast = 0;
+  let wheelPending = 0; // 状態を問い合わせている間の移動
+  let wheelTmuxLines = 0;
+  let wheelFlush = false;
+
+  el.addEventListener(
+    "wheel",
+    (e) => {
+      if (!e.isTrusted || mouseTracking() || !inFullScreen() || e.shiftKey) return;
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      const rowHeight = currentRowHeight();
+      const scale = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? rowHeight : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? el.clientHeight : 1;
+      const dy = e.deltaY * scale;
+      const now = performance.now();
+      const fresh = now - wheelLast > WHEEL_GAP_MS;
+      wheelLast = now;
+      if (fresh) {
+        wheelMode = "pending";
+        wheelAcc = 0;
+        wheelPending = 0;
+        fetchPaneState().then((st) => {
+          if (wheelMode !== "pending") return;
+          wheelMode = decide(st);
+          if (wheelMode === "wheel") wheelMode = "keys"; // ここに来るのはマウスを受け取っていないとき
+          const pending = wheelPending;
+          wheelPending = 0;
+          wheelApply(pending);
+        });
+      }
+      if (wheelMode === "pending") wheelPending += dy;
+      else wheelApply(dy);
+    },
+    { passive: false },
+  );
+
+  function wheelApply(dy: number) {
+    if (dy === 0 || wheelMode === "pending" || wheelMode === "none") return;
+    wheelAcc += dy;
+    const step = currentRowHeight();
+    while (Math.abs(wheelAcc) >= step) {
+      const dir = wheelAcc > 0 ? 1 : -1;
+      wheelAcc -= dir * step;
+      if (wheelMode === "tmux") {
+        wheelTmuxLines += dir;
+        if (!wheelFlush) {
+          wheelFlush = true;
+          requestAnimationFrame(() => {
+            wheelFlush = false;
+            opts.scrollPane(wheelTmuxLines);
+            wheelTmuxLines = 0;
+          });
+        }
       } else {
         const final = dir > 0 ? "B" : "A";
         opts.send(opts.appCursor() ? `\x1bO${final}` : `\x1b[${final}`);

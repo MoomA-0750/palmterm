@@ -500,6 +500,18 @@ describe("タッチ操作", () => {
     });
     tmux("send-keys", "-t", SESSION, "-X", "cancel");
   });
+
+  it("シェルの上でマウスのホイールを回しても tmux の履歴をさかのぼる（シェルはマウスを受け取らない）", async () => {
+    for (let i = 0; i < 40; i++) tmux("send-keys", "-t", SESSION, `echo wheel${i}`, "Enter");
+    await waitUntil("出力", () => paneText().includes("wheel39"));
+    await page.mouse.move(200, 200);
+    for (let i = 0; i < 5; i++) await page.mouse.wheel(0, -100);
+    await waitUntil("コピーモードでさかのぼる", () => {
+      const [mode, pos] = tmux("display-message", "-p", "-t", SESSION, "#{pane_in_mode} #{scroll_position}").split(" ");
+      return mode === "1" && Number(pos) > 5;
+    });
+    tmux("send-keys", "-t", SESSION, "-X", "cancel");
+  });
 });
 
 describe("LAN（HTTPS）", () => {
