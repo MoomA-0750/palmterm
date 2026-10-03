@@ -5,6 +5,7 @@ import "./style.css";
 import { Attachments, uploadFile } from "./attachments";
 import { type ClipItem, clipPreview, deleteClip, fetchClips, renderClips } from "./clips";
 import { Connection } from "./connection";
+import { setupDragSelect } from "./dragselect";
 import { type Lang, setLang, t } from "./i18n";
 import { icon } from "./icons";
 import { DEFAULT_KEYS, type KeyButton, type KeyConfig, parseKey } from "./keyconfig";
@@ -429,6 +430,7 @@ onTap(termEl, (x, y) => {
   const cell = cellAt(x, y);
   if (cell) tmuxPanel.selectPaneAt(cell.col, cell.row);
 });
+const dragSelect = setupDragSelect(termEl, term);
 
 /** 動かさずに短く触れて離したとき（スワイプ・長押しの選択・ピンチは除く）。 */
 function onTap(el: HTMLElement, fire: (x: number, y: number) => void) {
@@ -722,5 +724,6 @@ setupTouch({
   appCursor,
   getFontSize: () => fontSize,
   setFontSize,
+  selecting: () => dragSelect.selecting(),
 });
 conn.connect();

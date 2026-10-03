@@ -198,7 +198,29 @@ describe("キーバー", () => {
   });
 });
 
+/** 印の文字を打ち、それが出ている端末の行の位置を返す。 */
+async function markerRow(marker: string) {
+  tmux("send-keys", "-t", SESSION, "clear", "Enter");
+  tmux("send-keys", "-t", SESSION, `echo ${marker}`, "Enter");
+  const row = page.locator(".term-row", { hasText: `echo ${marker}` }).first();
+  await row.waitFor();
+  return (await row.boundingBox())!;
+}
+
 describe("入力", () => {
+  it("入力欄にフォーカスがあっても、マウスでなぞると端末の文字を選べる", async () => {
+    const box = await markerRow("MOUSESELECT");
+    await page.locator("#line").focus();
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + 2, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 90, y, { steps: 8 });
+    await page.mouse.up();
+    expect(await page.evaluate(() => getSelection()!.toString())).toContain("echo MOUSE");
+    expect(await page.evaluate(() => document.activeElement?.id)).not.toBe("line");
+    await page.evaluate(() => getSelection()!.removeAllRanges());
+  });
+
   it("テキストボックスは Enter で改行、Ctrl+Enter で送る", async () => {
     await page.locator("#line").click();
     await page.keyboard.type("echo one");
@@ -447,6 +469,20 @@ describe("タッチ操作", () => {
     } finally {
       await page.setViewportSize({ width: 400, height: 760 });
     }
+  });
+
+  it("入力欄にフォーカスがあっても、長押ししてから指を動かすと端末の文字を選べる（スクロールしない）", async () => {
+    const box = await markerRow("TOUCHSELECT");
+    await page.locator("#line").focus();
+    const y = box.y + box.height / 2;
+    await touch("touchStart", [[box.x + 2, y]]);
+    await page.waitForTimeout(600); // 長押し
+    expect(await focused()).toBe("BODY"); // 選んだ文字をコピーできるように入力欄から外す
+    for (let x = box.x + 20; x <= box.x + 90; x += 10) await touch("touchMove", [[x, y]]);
+    await touch("touchEnd", []);
+    expect(await page.evaluate(() => getSelection()!.toString())).toContain("echo TOUCH");
+    expect(tmux("display-message", "-p", "-t", SESSION, "#{pane_in_mode}")).toBe("0");
+    await page.evaluate(() => getSelection()!.removeAllRanges());
   });
 
   it("シェルの上で下へスワイプすると tmux の履歴をさかのぼる", async () => {

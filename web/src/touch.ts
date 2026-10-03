@@ -9,6 +9,7 @@ import type { WTerm } from "@wterm/dom";
  *   - 全画面のアプリでマウスなし（less など）: ↑↓ キー
  *   どれも、指を離したあとは速度に応じて減速しながら続ける。
  * 通常の画面（tmux を使っていない）では、ブラウザの普通のスクロールに任せる。
+ * 長押しから文字を選んでいる間（dragselect.ts）は、スクロールしない。
  *
  * wterm は描き直しのたびに行の要素を差し替えるので、指を置いた要素が外れると
  * touchmove が el まで届かなくなる。指を置いた要素そのものに、その間だけ付ける。
@@ -24,6 +25,8 @@ export interface TouchOptions {
   getFontSize: () => number;
   /** 文字サイズを変える（範囲に収めるのは呼ばれた側）。save が false なら保存しない。 */
   setFontSize: (size: number, save: boolean) => void;
+  /** 長押しから文字を選んでいる途中か。その間はスクロールしない。 */
+  selecting: () => boolean;
 }
 
 interface PaneState {
@@ -129,6 +132,10 @@ export function setupTouch(opts: TouchOptions) {
       (ev) => {
         if (ev.touches.length !== 1) return;
         ev.preventDefault();
+        if (opts.selecting()) {
+          mode = "none";
+          return;
+        }
         const t = ev.touches[0];
         const dy = lastY - t.clientY; // 指を上に動かすと正（新しい方へ）
         const now = performance.now();
