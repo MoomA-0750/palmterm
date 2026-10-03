@@ -53,8 +53,10 @@ function applyStaticTexts() {
   label("tmux-btn", t("tmuxButton"));
   $("tmux-btn").title = t("tmuxButtonTitle");
   label("attachments", t("attachments"), false);
-  $<HTMLTextAreaElement>("line").placeholder = t("linePlaceholder");
-  label("send", t("send"));
+  // Mac や iPad（iPadOS は MacIntel と名乗る）のキーボードでは ⌘+Return と案内する
+  const sendKey = /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? "⌘+Return" : "Ctrl+Enter";
+  $<HTMLTextAreaElement>("line").placeholder = t("linePlaceholder", { sendKey });
+  label("send", t("send", { sendKey }));
   label("copy", t("copy"));
   label("upload", t("upload"));
   $("linkbar-open").textContent = t("linkOpen");

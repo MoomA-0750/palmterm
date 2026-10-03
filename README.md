@@ -19,7 +19,7 @@ for working with TUIs such as vim, lazygit and Claude Code.
 
 - **Text box** (always shown at the bottom): edit with the OS keyboard — cursor movement, IME,
   predictions and voice input all work.
-  - Enter inserts a newline. Send with the send button, Ctrl+Enter (⌘+Enter), or the key bar's Ctrl
+  - Enter inserts a newline. Send with the send button, Ctrl+Enter (⌘+Return on Mac/iPad), or the key bar's Ctrl
     followed by Enter. Multi-line text is sent as a bracketed paste, so Claude Code receives it as-is.
   - Backspace on an empty text box deletes in the terminal.
 - **Direct input**: tap the terminal and type; every key goes straight to the terminal (for vim and TUIs).
