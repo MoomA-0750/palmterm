@@ -317,7 +317,8 @@ button:active {
 
 #tmuxpanel button.armed,
 .tmux-tab button.armed,
-.clip-actions button.armed {
+.clip-actions button.armed,
+.device button.armed {
   color: #fff;
   background: #b3261e;
 }
@@ -373,7 +374,8 @@ button:active {
 }
 
 
-#copymode {
+#copymode,
+#devices {
   position: fixed;
   inset: 0 0 auto 0;
   height: var(--app-h);
@@ -386,6 +388,7 @@ button:active {
 }
 
 #copymode[hidden],
+#devices[hidden],
 #history-bar[hidden],
 #clips[hidden],
 #status[hidden],
@@ -474,6 +477,47 @@ button:active {
 .clip-actions .clip-copy {
   color: #000;
   background: var(--accent);
+}
+
+/* ログイン中の端末の一覧。 */
+#devices-title {
+  align-self: center;
+  padding: 0 8px;
+}
+
+#device-list {
+  flex: 1;
+  margin: 0;
+  padding: 4px 8px;
+  overflow: auto;
+  list-style: none;
+}
+
+.device {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--btn-bg);
+}
+
+.device-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.device.current .device-name {
+  color: var(--accent);
+}
+
+.device-meta {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.device button {
+  height: 36px;
+  padding: 0 12px;
 }
 
 .clips-empty {

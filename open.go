@@ -32,6 +32,8 @@ const (
 type termClient struct {
 	send      func(ctx context.Context, msg []byte) error
 	lastInput time.Time
+	device    string // ログインした端末の ID（取り消したら切る）
+	close     func() // 接続を切る
 }
 
 type clientSet struct {
@@ -52,6 +54,17 @@ func (c *clientSet) remove(tc *termClient) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.clients, tc)
+}
+
+// device の端末の接続を全部切る（ログインを取り消したとき）。
+func (c *clientSet) closeDevice(device string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for tc := range c.clients {
+		if tc.device == device && tc.close != nil {
+			go tc.close() // 閉じるやりとりを待つので、鍵を持ったまま待たない
+		}
+	}
 }
 
 func (c *clientSet) touch(tc *termClient) {

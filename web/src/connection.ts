@@ -15,6 +15,8 @@ export class Connection {
   onNotice: (msg: { type: string; url?: string }) => void = () => {};
   onOpen: () => void = () => {};
   onStatus: (status: ConnectionStatus) => void = () => {};
+  /** ログインが取り消された（つなぎ直しても通らない）。 */
+  onLoggedOut: () => void = () => {};
 
   constructor(private size: () => { cols: number; rows: number }) {
     // 裏から戻ったとき、切れていればすぐつなぎ直す（スマホは裏で通信が切られる）。
@@ -57,13 +59,28 @@ export class Connection {
         // 知らない形の知らせは捨てる
       }
     };
-    ws.onclose = () => {
+    ws.onclose = async (e) => {
       if (this.ws !== ws) return;
       this.ws = null;
       this.onStatus("closed");
+      // 取り消されて切られた（1008）か、つなぎ直しが断られたのがログインのせいなら、つなぎ直さない。
+      if (e.code === 1008 || (await this.loggedOut())) {
+        this.onLoggedOut();
+        return;
+      }
+      if (this.ws) return; // 確かめている間に、表に戻るなどでつなぎ直した
       this.retryTimer = window.setTimeout(() => this.connectNow(), this.retryDelay);
       this.retryDelay = Math.min(this.retryDelay * 2, 10_000);
     };
+  }
+
+  /** サーバーには届くが、ログインが通らないか（届かなければ false）。 */
+  private async loggedOut(): Promise<boolean> {
+    try {
+      return (await fetch("/api/config", { cache: "no-store" })).status === 401;
+    } catch {
+      return false;
+    }
   }
 
   isOpen(): boolean {

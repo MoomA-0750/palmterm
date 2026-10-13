@@ -557,6 +557,52 @@ describe("別のサイトから", () => {
   });
 });
 
+describe("ログイン中の端末", () => {
+  it("一覧からほかの端末を取り消すとその端末はつながらなくなり、自分はログアウトできる", async () => {
+    const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+    const phoneContext = await browser.newContext({ viewport: { width: 400, height: 760 }, userAgent: IPHONE });
+    const pcContext = await browser.newContext({ viewport: { width: 400, height: 760 } });
+    try {
+      const phone = await phoneContext.newPage();
+      await phone.goto(`${base}/auth?token=${TOKEN}`);
+      await waitUntil("スマホがつながる", async () => (await phone.locator(".term-row").count()) > 0 && (await phone.locator("#status").isHidden()));
+      const pc = await pcContext.newPage();
+      await pc.goto(`${base}/auth?token=${TOKEN}`);
+      await pc.waitForFunction(() => document.querySelector(".term-row") !== null);
+
+      // tmux ボタンのパネルから一覧を開く。自分には印が付き、ボタンはログアウト
+      await pc.locator("#tmux-btn").click();
+      await pc.locator("#tmuxpanel button", { hasText: "Devices" }).click();
+      const phoneRow = pc.locator(".device", { hasText: "iPhone · Safari" });
+      await waitUntil("一覧が出る", async () => (await phoneRow.count()) === 1);
+      const me = pc.locator(".device.current");
+      expect(await me.count()).toBe(1);
+      expect(await me.locator("button").textContent()).toBe("Log out");
+
+      // スマホを2回押しで取り消す。スマホはつなぎ直さず、ログインし直す案内になる
+      await phoneRow.locator("button").click();
+      expect(await phoneRow.locator("button").textContent()).toBe("Revoke?");
+      await phoneRow.locator("button").click();
+      await waitUntil("一覧から消える", async () => (await phoneRow.count()) === 0);
+      await waitUntil("スマホがログインし直す案内になる", async () => ((await phone.textContent("body").catch(() => "")) ?? "").includes("/auth?token="), 10_000);
+
+      // 自分をログアウトする
+      await me.locator("button").click();
+      await me.locator("button").click();
+      await waitUntil("ログインし直す案内になる", async () => ((await pc.textContent("body").catch(() => "")) ?? "").includes("/auth?token="));
+      expect((await pcContext.cookies()).find((c) => c.name === "palmterm_token")).toBeUndefined();
+
+      // ほかの端末（いつもの画面）はそのまま使える
+      await page.locator("#line").fill("echo still$((2+3))");
+      await page.locator("#send").click();
+      await waitUntil("still5 が出る", () => paneText().includes("\nstill5\n"));
+    } finally {
+      await phoneContext.close();
+      await pcContext.close();
+    }
+  });
+});
+
 describe("ブラウザの受け渡し", () => {
   it("tmux の中のプログラムが開こうとした URL を画面に知らせ、押すと新しいタブで開く", async () => {
     // tmux の中のプログラムは BROWSER（palmterm-open）でブラウザを開く

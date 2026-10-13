@@ -27,7 +27,8 @@ var webDist embed.FS
 
 type server struct {
 	token     string
-	session   string // つなぐ tmux のセッション
+	devices   *deviceStore // ログインした端末
+	session   string       // つなぐ tmux のセッション
 	origins   []string
 	uploadDir string
 	clients   clientSet // つながっている画面（ブラウザで開く URL を届ける先）
@@ -89,6 +90,12 @@ func main() {
 	}
 
 	s := &server{token: tok, session: *session, uploadDir: *uploadDir, captureClipboard: *captureClip}
+	// ログインした端末の記録は、トークンと同じ所に置く。
+	confDir, err := os.UserConfigDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+	s.devices = newDeviceStore(filepath.Join(confDir, "palmterm", "devices.json"), tok)
 	if s.uploadDir == "" {
 		cache, err := os.UserCacheDir()
 		if err != nil {
@@ -188,6 +195,8 @@ func (s *server) routes() http.Handler {
 	mux.Handle("POST /api/tmux", s.requireAuth(http.HandlerFunc(s.handleTmuxAction)))
 	mux.Handle("GET /api/clipboard", s.requireAuth(http.HandlerFunc(s.handleClipboard)))
 	mux.Handle("POST /api/clipboard/delete", s.requireAuth(http.HandlerFunc(s.handleClipboardDelete)))
+	mux.Handle("GET /api/devices", s.requireAuth(http.HandlerFunc(s.handleDevices)))
+	mux.Handle("POST /api/devices/revoke", s.requireAuth(http.HandlerFunc(s.handleRevokeDevice)))
 	mux.Handle("POST /api/upload", s.requireAuth(http.HandlerFunc(s.handleUpload)))
 	mux.Handle("GET /api/upload/{name}", s.requireAuth(http.HandlerFunc(s.handleUploadFile)))
 	mux.Handle("GET /", s.requireAuth(cacheAssets(http.FileServerFS(dist))))

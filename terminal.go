@@ -72,6 +72,8 @@ func (s *server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	tc := &termClient{
 		send:      func(ctx context.Context, msg []byte) error { return conn.Write(ctx, websocket.MessageText, msg) },
 		lastInput: time.Now(),
+		device:    deviceID(r),
+		close:     func() { conn.Close(websocket.StatusPolicyViolation, tr("ログアウトしました", "Logged out")) },
 	}
 	s.clients.add(tc)
 	defer s.clients.remove(tc)

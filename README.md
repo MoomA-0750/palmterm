@@ -42,6 +42,8 @@ for working with TUIs such as vim, lazygit and Claude Code.
 - **The green tmux button**, pinned to the right of the key bar, opens a panel to split panes, zoom,
   close a pane (tap twice), move between panes, enter tmux copy mode, send the prefix (Ctrl+B), and
   change the font size.
+  Its "Devices" button lists the logged-in devices: log this one out, or revoke another (both tap
+  twice) — for example a lost phone, from a device you still have.
 - **Tap a pane** to select it.
 - These actions run tmux commands on the server, so they work regardless of your prefix and key
   bindings, and with tmux's `mouse` option off.
@@ -226,14 +228,16 @@ Whoever logs in to palmterm gets **a shell on your machine**. Keep it private.
 - There is a single token, stored in `~/.config/palmterm/token` (mode 0600, fixed on startup if looser).
   It survives restarts.
   The login URL containing it is printed at startup, so it also ends up in logs such as the journal.
-- `/auth?token=…` sets an HttpOnly, SameSite=Lax cookie valid for a year (Secure over HTTPS). The cookie
-  holds a value derived from the token (HMAC-SHA256), not the token itself. Every page, API call and the
+- `/auth?token=…` records the device (browser) and sets an HttpOnly, SameSite=Lax cookie valid for a
+  year (Secure over HTTPS). The cookie holds a random per-device value, not the token; the server keeps
+  only its hash, in `~/.config/palmterm/devices.json` (mode 0600). Every page, API call and the
   WebSocket require it, and the WebSocket also checks the Origin.
 - Browsers send cookies to every port of the same host name, so other services you open on the same
   host (for example a dev server on another port of `127.0.0.1`) receive the cookie too. A leaked cookie
-  can be reused — from any device — until the token changes; it only does not reveal the token itself.
-- Comparisons are constant-time. There is no logout or per-device revocation: to log every device out,
-  delete the token file (or pass a new `-token`) and restart.
+  does not reveal the token and can be revoked on its own (revoking also closes that device's open
+  connections).
+- To log every device out at once, delete the token file (or pass a new `-token`) and restart; devices
+  recorded with the old token are dropped.
 - By default palmterm only listens on 127.0.0.1. `-lan :7682` listens only on the PC's private
   (RFC 1918), link-local and Tailscale (100.64.0.0/10) IPv4 addresses, not on every interface; give an
   address to listen elsewhere. Do not expose palmterm to the internet.

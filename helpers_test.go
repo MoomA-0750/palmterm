@@ -19,6 +19,7 @@ func newTestServer(t *testing.T) *server {
 	dir := t.TempDir()
 	settings = newConfigStore(filepath.Join(dir, "config.toml"))
 	s := &server{token: testToken, session: "t1", uploadDir: filepath.Join(dir, "uploads")}
+	s.devices = newDeviceStore(filepath.Join(dir, "devices.json"), testToken)
 	t.Cleanup(func() {
 		settings = nil
 		// 端末の中継が終わるのを待ってから、環境変数（TMUX_TMPDIR など）を戻す。待たないと、テストがすぐに

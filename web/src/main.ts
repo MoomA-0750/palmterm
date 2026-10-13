@@ -5,6 +5,7 @@ import "./style.css";
 import { Attachments, uploadFile } from "./attachments";
 import { type ClipItem, clipPreview, deleteClip, fetchClips, renderClips } from "./clips";
 import { Connection } from "./connection";
+import { type DeviceItem, fetchDevices, renderDevices, revokeDevice } from "./devices";
 import { setupDragSelect } from "./dragselect";
 import { type Lang, setLang, t } from "./i18n";
 import { icon } from "./icons";
@@ -68,6 +69,8 @@ function applyStaticTexts() {
   $("copy-selection").textContent = t("copySelection");
   $("tab-history").textContent = t("tabHistory");
   $("tab-clips").textContent = t("tabClips");
+  $("devices-close").textContent = t("copyClose");
+  $("devices-title").textContent = t("devices");
   $("clipbar-copy").textContent = t("clipNoticeCopy");
   $("clipbar-close").textContent = t("clipNoticeDismiss");
 }
@@ -422,6 +425,7 @@ const tmuxPanel = setupTmuxPanel({
   sendPrefix: () => conn.send("\x02"),
   fontSize: { get: () => fontSize, change: (delta) => setFontSize(fontSize + delta) },
   toast,
+  openDevices: () => openDevices(),
   bind: bindKeyButton,
 });
 // 端末に触れたらパネルを閉じる。
@@ -703,6 +707,37 @@ $("copy-to-line").addEventListener("click", () => {
   closeCopyMode();
   insertIntoLine(text);
 });
+
+// ---- ログイン中の端末：自分はログアウト、ほかの端末は取り消す ----
+
+const devicesEl = $<HTMLDivElement>("devices");
+const deviceList = $<HTMLUListElement>("device-list");
+
+async function openDevices() {
+  devicesEl.hidden = false;
+  if (deviceList.childElementCount === 0) deviceList.textContent = t("loading");
+  try {
+    renderDevices(deviceList, await fetchDevices(), revokeAndRefresh);
+  } catch (e) {
+    deviceList.textContent = t("devicesError", { error: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+async function revokeAndRefresh(item: DeviceItem) {
+  try {
+    await revokeDevice(item.current ? undefined : item.id);
+  } catch (e) {
+    toast(t("devicesError", { error: e instanceof Error ? e.message : String(e) }));
+  }
+  // 自分をログアウトしたら読み込み直す（ログインし直す方法の案内が出る）。
+  if (item.current) location.reload();
+  else await openDevices();
+}
+
+$("devices-close").addEventListener("click", () => (devicesEl.hidden = true));
+
+// ほかの端末から取り消されたら、つなぎ直さずに読み込み直す（ログインし直す方法の案内が出る）。
+conn.onLoggedOut = () => location.reload();
 
 // ---- 起動 ----
 

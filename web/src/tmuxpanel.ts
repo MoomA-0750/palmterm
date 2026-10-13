@@ -25,6 +25,8 @@ export interface TmuxPanelOptions {
   /** 端末の文字サイズ（パネルの「文字」の行で変える）。 */
   fontSize: { get: () => number; change: (delta: number) => void };
   toast: (message: string) => void;
+  /** ログイン中の端末の一覧を開く。 */
+  openDevices: () => void;
   /** キーバーと同じ押し方（フォーカスを奪わない、横スクロールでは押さない）でボタンをつなぐ。 */
   bind: (btn: HTMLButtonElement, fire: () => void, repeat: boolean) => void;
 }
@@ -247,6 +249,10 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
       makeBtn("Ctrl+B", t("prefixTitle"), () => {
         close();
         opts.sendPrefix();
+      }),
+      makeBtn(t("devices"), t("devicesTitle"), () => {
+        close();
+        opts.openDevices();
       }),
     ),
     row(
