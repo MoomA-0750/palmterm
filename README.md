@@ -54,6 +54,7 @@ for working with TUIs such as vim, lazygit and Claude Code.
   - apps that use the mouse (vim, lazygit, …): sends wheel events
   - full-screen apps without the mouse (less, …): sends ↑/↓
   - scrolling continues with momentum after you lift your finger
+- A **mouse wheel or trackpad** scrolls the same way as a swipe.
 - **Pinch** to change the font size (8–32px).
 
 ### Copy and paste
@@ -62,6 +63,8 @@ for working with TUIs such as vim, lazygit and Claude Code.
   tabs. It reopens on the tab you used last (the clipboard at first).
   - The **History** tab shows tmux's history (3000 lines) as plain text. Long-press to select, then
     “Copy selection” or “To input”.
+- You can select terminal text by dragging with the mouse, or by long-pressing and dragging, even while
+  the text box has focus (for Safari on iPad). While you select from a long-press, your finger does not scroll.
 - To paste from the phone's clipboard, long-press the text box.
 - **palmterm's clipboard**: text copied inside tmux (tmux copy mode, Claude Code, herdr and other programs
   that copy with OSC 52) stays on the server as tmux buffers, not just on the PC's clipboard.

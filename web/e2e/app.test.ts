@@ -525,7 +525,7 @@ describe("LAN（HTTPS）", () => {
       expect(cookie?.secure).toBe(true);
       await lan.waitForFunction(() => document.querySelector(".term-row") !== null);
       await waitUntil("つながる", async () => lan.locator("#status").isHidden());
-      // HTTPS なので、貼り付けボタンが使うクリップボードの読み取りがある
+      // HTTPS なので、ブラウザのクリップボードの機能（読み取りを含む）が使える安全な接続になっている
       expect(await lan.evaluate(() => window.isSecureContext && typeof navigator.clipboard?.readText === "function")).toBe(true);
 
       await lan.locator("#line").fill("echo lan$((1+2))");
