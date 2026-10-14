@@ -242,9 +242,10 @@ func TestTerminalRelay(t *testing.T) {
 		out, _ := exec.Command("tmux", "list-sessions", "-F", "#{session_name}").Output()
 		return string(out) == "t1\n"
 	})
-	if got := runTmux(t, "display-message", "-p", "-t", "t1", "#{window_width}x#{window_height}"); got != "90x19" {
-		t.Fatalf("最初のサイズ（ステータス行の分 1 行少ない）: %s", got)
-	}
+	// セッションができた直後は、クライアントがつながる前の既定の大きさ（80x24）のことがあるので、合うまで待つ。
+	waitFor(t, "最初のサイズ 90x19（ステータス行の分 1 行少ない）になる", func() bool {
+		return runTmux(t, "display-message", "-p", "-t", "t1", "#{window_width}x#{window_height}") == "90x19"
+	})
 
 	if err := c.Write(ctx, websocket.MessageBinary, []byte("echo relay$((6*7))\r")); err != nil {
 		t.Fatal(err)
