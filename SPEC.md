@@ -23,7 +23,9 @@
 - （確定）Cookie の中身は、ログインした端末ごとのランダムな値。サーバーは値のハッシュと、User-Agent から作った名前（例「iPhone · Safari」）、ログインした時刻、最後に使った時刻を `~/.config/palmterm/devices.json`（権限 0600）に記録する。再起動しても残る
   - 確かめ方: 自動テスト `TestDevicesSurviveRestartButNotTokenChange`（auth_config_test.go）
 - （確定）tmux ボタンのパネルの「ログイン中の端末」で一覧を出す（最後に使った順。この端末には印）。この端末は「ログアウト」、ほかの端末は「取り消す」。どちらも2回押し。取り消した端末は Cookie が通らなくなり、開いている接続もすぐ切れる。切られた画面はつなぎ直さず、ページを読み込み直してログインし直す方法の案内を出す
-  - 確かめ方: 自動テスト `TestDevicesListLogoutAndRevoke`、`TestRevokeClosesThatDevicesTerminal`（auth_config_test.go）、通しのテスト「一覧からほかの端末を取り消すとその端末はつながらなくなり、自分はログアウトできる」（web/e2e/app.test.ts）
+  - 確かめ方: 自動テスト `TestDevicesListLogoutAndRevoke`、`TestRevokeClosesThatDevicesTerminal`（auth_config_test.go）、通しのテスト「一覧で端末に名前を付けられ、ほかの端末を取り消すとその端末はつながらなくなり、自分はログアウトできる」（web/e2e/app.test.ts）
+- （仮）一覧の端末の名前を押すと、見分けやすい名前を付けられる（40 文字まで。前後の空白と制御文字は除く）。付けた名前を大きく出し、自動の名前は下の行に添える。空にすると自動の名前に戻る。名前はサーバーの記録に残るので、どの端末から付けても、再起動しても同じ
+  - 確かめ方: 自動テスト `TestRenameDevice`（auth_config_test.go）、通しのテスト「一覧で端末に名前を付けられ、ほかの端末を取り消すとその端末はつながらなくなり、自分はログアウトできる」（web/e2e/app.test.ts）
 - （確定）全端末を一度に締め出すには、トークンを変えて再起動する。前のトークンで記録した端末は全部無効になる
   - 確かめ方: 自動テスト `TestDevicesSurviveRestartButNotTokenChange`（auth_config_test.go）
 - （確定）この仕組みより前の Cookie（トークンから計算した値）は通さない。前から使っていた端末は、一度ログインし直す

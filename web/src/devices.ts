@@ -5,7 +5,10 @@ import { t } from "./i18n";
 
 export interface DeviceItem {
   id: string;
+  /** User-Agent から作った名前（例「iPhone · Safari」）。 */
   name: string;
+  /** 本人が付けた名前。 */
+  label?: string;
   created: string;
   lastSeen: string;
   /** この画面を開いている端末。 */
@@ -28,6 +31,16 @@ export async function revokeDevice(id?: string): Promise<void> {
   if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
 }
 
+/** 端末に名前を付ける。空なら付けた名前を消す（自動の名前に戻る）。 */
+export async function renameDevice(id: string, name: string): Promise<void> {
+  const res = await fetch("/api/devices/rename", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, name }),
+  });
+  if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
+}
+
 /** 時刻を短く（今日なら時:分、それより前なら年/月/日）。 */
 export function deviceTime(iso: string, now = new Date()): string {
   const at = new Date(iso);
@@ -38,30 +51,43 @@ export function deviceTime(iso: string, now = new Date()): string {
 
 const ARM_MS = 3000;
 
-export function renderDevices(list: HTMLElement, items: DeviceItem[], revoke: (item: DeviceItem) => void) {
+export interface DeviceActions {
+  /** ログアウト・取り消し（2回押し）。 */
+  revoke: (item: DeviceItem) => void;
+  /** 名前を付ける（空なら自動の名前に戻す）。 */
+  rename: (item: DeviceItem, name: string) => void;
+}
+
+export function renderDevices(list: HTMLElement, items: DeviceItem[], actions: DeviceActions) {
   list.replaceChildren(
     ...items.map((item) => {
       const li = document.createElement("li");
       li.className = item.current ? "device current" : "device";
       const info = document.createElement("div");
       info.className = "device-info";
-      const name = document.createElement("div");
+      // 名前を押すと入力欄にして名前を付けられる。付けた名前があれば、自動の名前は下の行に添える。
+      const name = document.createElement("button");
+      name.type = "button";
       name.className = "device-name";
-      name.textContent = item.current ? `${item.name}（${t("thisDevice")}）` : item.name;
+      name.textContent = (item.label || item.name) + (item.current ? `（${t("thisDevice")}）` : "");
+      name.title = t("renameDevice");
+      name.addEventListener("click", () => startRename(item, name, actions));
       const meta = document.createElement("div");
       meta.className = "device-meta";
-      meta.textContent = t("deviceMeta", { created: deviceTime(item.created), lastSeen: deviceTime(item.lastSeen) });
+      const times = t("deviceMeta", { created: deviceTime(item.created), lastSeen: deviceTime(item.lastSeen) });
+      meta.textContent = item.label ? `${item.name} · ${times}` : times;
       info.append(name, meta);
 
       const label = item.current ? t("logout") : t("revoke");
       const b = document.createElement("button");
       b.type = "button";
+      b.className = "device-revoke";
       b.textContent = label;
       let armTimer: number | undefined;
       b.addEventListener("click", () => {
         if (b.classList.contains("armed")) {
           window.clearTimeout(armTimer);
-          revoke(item);
+          actions.revoke(item);
           return;
         }
         b.classList.add("armed");
@@ -76,3 +102,40 @@ export function renderDevices(list: HTMLElement, items: DeviceItem[], revoke: (i
     }),
   );
 }
+
+/** 名前の所を入力欄にする。Enter か外をタップで決定、Esc でやめる。 */
+function startRename(item: DeviceItem, nameBtn: HTMLButtonElement, actions: DeviceActions) {
+  const input = document.createElement("input");
+  input.className = "device-name-input";
+  input.value = item.label ?? "";
+  input.placeholder = item.name;
+  input.maxLength = 40;
+  input.setAttribute("aria-label", t("renameDevice"));
+  input.enterKeyHint = "done";
+  input.autocapitalize = "off";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  let finished = false;
+  const finish = (commit: boolean) => {
+    if (finished) return;
+    finished = true;
+    const value = input.value.trim();
+    input.replaceWith(nameBtn);
+    if (commit && value !== (item.label ?? "")) actions.rename(item, value);
+  };
+  input.addEventListener("keydown", (e) => {
+    if (e.isComposing) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      finish(true);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      finish(false);
+    }
+  });
+  input.addEventListener("blur", () => finish(true));
+  nameBtn.replaceWith(input);
+  input.focus();
+  input.select();
+}
+

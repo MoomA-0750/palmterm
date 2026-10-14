@@ -5,7 +5,7 @@ import "./style.css";
 import { Attachments, uploadFile } from "./attachments";
 import { type ClipItem, clipPreview, deleteClip, fetchClips, renderClips } from "./clips";
 import { Connection } from "./connection";
-import { type DeviceItem, fetchDevices, renderDevices, revokeDevice } from "./devices";
+import { type DeviceItem, fetchDevices, renameDevice, renderDevices, revokeDevice } from "./devices";
 import { setupDragSelect } from "./dragselect";
 import { type Lang, setLang, t } from "./i18n";
 import { icon } from "./icons";
@@ -71,6 +71,7 @@ function applyStaticTexts() {
   $("tab-clips").textContent = t("tabClips");
   $("devices-close").textContent = t("copyClose");
   $("devices-title").textContent = t("devices");
+  $("devices-hint").textContent = t("devicesHint");
   $("clipbar-copy").textContent = t("clipNoticeCopy");
   $("clipbar-close").textContent = t("clipNoticeDismiss");
 }
@@ -717,7 +718,7 @@ async function openDevices() {
   devicesEl.hidden = false;
   if (deviceList.childElementCount === 0) deviceList.textContent = t("loading");
   try {
-    renderDevices(deviceList, await fetchDevices(), revokeAndRefresh);
+    renderDevices(deviceList, await fetchDevices(), { revoke: revokeAndRefresh, rename: renameAndRefresh });
   } catch (e) {
     deviceList.textContent = t("devicesError", { error: e instanceof Error ? e.message : String(e) });
   }
@@ -732,6 +733,15 @@ async function revokeAndRefresh(item: DeviceItem) {
   // 自分をログアウトしたら読み込み直す（ログインし直す方法の案内が出る）。
   if (item.current) location.reload();
   else await openDevices();
+}
+
+async function renameAndRefresh(item: DeviceItem, name: string) {
+  try {
+    await renameDevice(item.id, name);
+  } catch (e) {
+    toast(t("devicesError", { error: e instanceof Error ? e.message : String(e) }));
+  }
+  await openDevices();
 }
 
 $("devices-close").addEventListener("click", () => (devicesEl.hidden = true));

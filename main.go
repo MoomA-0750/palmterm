@@ -197,6 +197,7 @@ func (s *server) routes() http.Handler {
 	mux.Handle("POST /api/clipboard/delete", s.requireAuth(http.HandlerFunc(s.handleClipboardDelete)))
 	mux.Handle("GET /api/devices", s.requireAuth(http.HandlerFunc(s.handleDevices)))
 	mux.Handle("POST /api/devices/revoke", s.requireAuth(http.HandlerFunc(s.handleRevokeDevice)))
+	mux.Handle("POST /api/devices/rename", s.requireAuth(http.HandlerFunc(s.handleRenameDevice)))
 	mux.Handle("POST /api/upload", s.requireAuth(http.HandlerFunc(s.handleUpload)))
 	mux.Handle("GET /api/upload/{name}", s.requireAuth(http.HandlerFunc(s.handleUploadFile)))
 	mux.Handle("GET /", s.requireAuth(cacheAssets(http.FileServerFS(dist))))

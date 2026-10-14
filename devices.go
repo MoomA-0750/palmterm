@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // ログインした端末（ブラウザ）ごとの記録。/auth で正しいトークンを受け取るたびに1つ作り、ランダムな値を
@@ -28,9 +30,10 @@ const (
 )
 
 type device struct {
-	ID       string    `json:"id"`   // 一覧と取り消しで使う、外に出してよい番号
-	Hash     string    `json:"hash"` // Cookie の値の SHA-256
-	Name     string    `json:"name"` // ログインしたときの User-Agent から作った名前（例 "iPad · Safari"）
+	ID       string    `json:"id"`              // 一覧と取り消しで使う、外に出してよい番号
+	Hash     string    `json:"hash"`            // Cookie の値の SHA-256
+	Name     string    `json:"name"`            // ログインしたときの User-Agent から作った名前（例 "iPad · Safari"）
+	Label    string    `json:"label,omitempty"` // 本人が付けた名前（空なら Name で見分ける）
 	Created  time.Time `json:"created"`
 	LastSeen time.Time `json:"lastSeen"`
 	saved    time.Time // LastSeen を最後にファイルに書いた時刻
@@ -137,6 +140,31 @@ func (d *deviceStore) remove(id string) (bool, error) {
 	for h, dev := range d.devices {
 		if dev.ID == id {
 			delete(d.devices, h)
+			return true, d.saveLocked()
+		}
+	}
+	return false, nil
+}
+
+// 端末に付けた名前の長さの上限（文字数）。
+const maxDeviceLabel = 40
+
+// id の端末に名前を付ける。前後の空白と制御文字は除き、空なら付けた名前を消す。端末が無ければ false。
+func (d *deviceStore) rename(id, label string) (bool, error) {
+	label = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, label))
+	if utf8.RuneCountInString(label) > maxDeviceLabel {
+		label = string([]rune(label)[:maxDeviceLabel])
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, dev := range d.devices {
+		if dev.ID == id {
+			dev.Label = label
 			return true, d.saveLocked()
 		}
 	}

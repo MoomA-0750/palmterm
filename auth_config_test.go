@@ -377,3 +377,35 @@ func TestRevokeClosesThatDevicesTerminal(t *testing.T) {
 		}
 	}
 }
+
+// 端末に名前を付けられる。一覧に出て、再起動しても残る。前後の空白と制御文字は除き、長すぎれば切る。空にすると消える。
+func TestRenameDevice(t *testing.T) {
+	s := newTestServer(t)
+	phone := login(t, s, "iPhone")
+	id := listDevices(t, s, phone)[0].ID
+
+	if w := authed(s, "POST", "/api/devices/rename", `{"id":"`+id+`","name":"  仕事用\u001b[31m の iPhone "}`, phone); w.Code != http.StatusNoContent {
+		t.Fatalf("名前を付ける: code=%d %s", w.Code, w.Body)
+	}
+	if d := listDevices(t, s, phone)[0]; d.Label != "仕事用[31m の iPhone" || d.Name != "iPhone" {
+		t.Fatalf("一覧: %+v", d)
+	}
+	restarted := newDeviceStore(s.devices.path, testToken)
+	if l := restarted.list(); len(l) != 1 || l[0].Label != "仕事用[31m の iPhone" {
+		t.Fatalf("再起動したら名前が消えました: %+v", l)
+	}
+
+	long := strings.Repeat("あ", maxDeviceLabel+5)
+	authed(s, "POST", "/api/devices/rename", `{"id":"`+id+`","name":"`+long+`"}`, phone)
+	if d := listDevices(t, s, phone)[0]; d.Label != strings.Repeat("あ", maxDeviceLabel) {
+		t.Fatalf("長い名前: %q", d.Label)
+	}
+
+	authed(s, "POST", "/api/devices/rename", `{"id":"`+id+`","name":"  "}`, phone)
+	if d := listDevices(t, s, phone)[0]; d.Label != "" {
+		t.Fatalf("空にしても消えません: %+v", d)
+	}
+	if w := authed(s, "POST", "/api/devices/rename", `{"id":"nope","name":"x"}`, phone); w.Code != http.StatusNotFound {
+		t.Fatalf("知らない端末: code=%d", w.Code)
+	}
+}

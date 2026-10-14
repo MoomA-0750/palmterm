@@ -558,7 +558,7 @@ describe("別のサイトから", () => {
 });
 
 describe("ログイン中の端末", () => {
-  it("一覧からほかの端末を取り消すとその端末はつながらなくなり、自分はログアウトできる", async () => {
+  it("一覧で端末に名前を付けられ、ほかの端末を取り消すとその端末はつながらなくなり、自分はログアウトできる", async () => {
     const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
     const phoneContext = await browser.newContext({ viewport: { width: 400, height: 760 }, userAgent: IPHONE });
     const pcContext = await browser.newContext({ viewport: { width: 400, height: 760 } });
@@ -577,18 +577,33 @@ describe("ログイン中の端末", () => {
       await waitUntil("一覧が出る", async () => (await phoneRow.count()) === 1);
       const me = pc.locator(".device.current");
       expect(await me.count()).toBe(1);
-      expect(await me.locator("button").textContent()).toBe("Log out");
+      expect(await me.locator(".device-revoke").textContent()).toBe("Log out");
+
+      // 名前を押して付ける。付けた名前が出て、自動の名前は下の行に残る。空にすると戻る
+      await phoneRow.locator(".device-name").click();
+      await pc.locator(".device-name-input").fill("仕事用スマホ");
+      await pc.locator(".device-name-input").press("Enter");
+      await waitUntil("名前が付く", async () => (await phoneRow.locator(".device-name").textContent()) === "仕事用スマホ");
+      expect(await phoneRow.locator(".device-meta").textContent()).toContain("iPhone · Safari");
+      await phoneRow.locator(".device-name").click();
+      await pc.locator(".device-name-input").fill("");
+      await pc.locator(".device-name-input").press("Enter");
+      await waitUntil("自動の名前に戻る", async () => (await phoneRow.locator(".device-name").textContent()) === "iPhone · Safari");
+      await phoneRow.locator(".device-name").click();
+      await pc.locator(".device-name-input").fill("仕事用スマホ");
+      await pc.locator(".device-name-input").press("Enter");
+      await waitUntil("名前が付く", async () => (await phoneRow.locator(".device-name").textContent()) === "仕事用スマホ");
 
       // スマホを2回押しで取り消す。スマホはつなぎ直さず、ログインし直す案内になる
-      await phoneRow.locator("button").click();
-      expect(await phoneRow.locator("button").textContent()).toBe("Revoke?");
-      await phoneRow.locator("button").click();
+      await phoneRow.locator(".device-revoke").click();
+      expect(await phoneRow.locator(".device-revoke").textContent()).toBe("Revoke?");
+      await phoneRow.locator(".device-revoke").click();
       await waitUntil("一覧から消える", async () => (await phoneRow.count()) === 0);
       await waitUntil("スマホがログインし直す案内になる", async () => ((await phone.textContent("body").catch(() => "")) ?? "").includes("/auth?token="), 10_000);
 
       // 自分をログアウトする
-      await me.locator("button").click();
-      await me.locator("button").click();
+      await me.locator(".device-revoke").click();
+      await me.locator(".device-revoke").click();
       await waitUntil("ログインし直す案内になる", async () => ((await pc.textContent("body").catch(() => "")) ?? "").includes("/auth?token="));
       expect((await pcContext.cookies()).find((c) => c.name === "palmterm_token")).toBeUndefined();
 

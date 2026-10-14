@@ -76,6 +76,7 @@ func (s *server) validToken(t string) bool {
 type deviceInfo struct {
 	ID       string    `json:"id"`
 	Name     string    `json:"name"`
+	Label    string    `json:"label,omitempty"`
 	Created  time.Time `json:"created"`
 	LastSeen time.Time `json:"lastSeen"`
 	Current  bool      `json:"current"` // 問い合わせた端末自身
@@ -86,7 +87,7 @@ func (s *server) handleDevices(w http.ResponseWriter, r *http.Request) {
 	me := deviceID(r)
 	list := []deviceInfo{}
 	for _, d := range s.devices.list() {
-		list = append(list, deviceInfo{ID: d.ID, Name: d.Name, Created: d.Created, LastSeen: d.LastSeen, Current: d.ID == me})
+		list = append(list, deviceInfo{ID: d.ID, Name: d.Name, Label: d.Label, Created: d.Created, LastSeen: d.LastSeen, Current: d.ID == me})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -120,6 +121,27 @@ func (s *server) handleRevokeDevice(w http.ResponseWriter, r *http.Request) {
 	s.clients.closeDevice(id)
 	if id == deviceID(r) {
 		http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: isHTTPS(r), SameSite: http.SameSiteLaxMode})
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// 端末に名前を付ける（{"id": …, "name": …}。name が空なら付けた名前を消す）。
+func (s *server) handleRenameDevice(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ok, err := s.devices.rename(req.ID, req.Name)
+	if err != nil {
+		log.Printf(tr("ログインした端末の記録を書けませんでした: %v", "Could not save the logged-in devices: %v"), err)
+	}
+	if !ok {
+		http.Error(w, tr("その端末はログインしていません", "That device is not logged in"), http.StatusNotFound)
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -43,7 +43,8 @@ for working with TUIs such as vim, lazygit and Claude Code.
   close a pane (tap twice), move between panes, enter tmux copy mode, send the prefix (Ctrl+B), and
   change the font size.
   Its "Devices" button lists the logged-in devices: log this one out, or revoke another (both tap
-  twice) — for example a lost phone, from a device you still have.
+  twice) — for example a lost phone, from a device you still have. Tap a device's name to give it one
+  you will recognize ("work iPad"); clear it to go back to the automatic name.
 - **Tap a pane** to select it.
 - These actions run tmux commands on the server, so they work regardless of your prefix and key
   bindings, and with tmux's `mouse` option off.
