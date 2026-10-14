@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -72,8 +75,11 @@ func TestRequireAuth(t *testing.T) {
 	s := newTestServer(t)
 	h := s.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) }))
 
-	// トークンそのものを Cookie に入れても通さない（通すのはログインで渡した値だけ）。
-	for name, cookie := range map[string]string{"Cookie なし": "", "違う値": "nope", "トークンそのもの": testToken} {
+	// トークンそのものや、前の形の Cookie（トークンから計算した値）を入れても通さない（通すのはログインで渡した値だけ）。
+	mac := hmac.New(sha256.New, []byte(testToken))
+	mac.Write([]byte("palmterm cookie v1"))
+	legacy := hex.EncodeToString(mac.Sum(nil))
+	for name, cookie := range map[string]string{"Cookie なし": "", "違う値": "nope", "トークンそのもの": testToken, "前の形の Cookie": legacy} {
 		r := httptest.NewRequest("GET", "/", nil)
 		if cookie != "" {
 			r.AddCookie(&http.Cookie{Name: cookieName, Value: cookie})

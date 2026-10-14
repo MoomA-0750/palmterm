@@ -20,12 +20,14 @@
 - （仮）ログイン用の URL（`/auth?token=…`）を一度開くと、そのブラウザは1年間ログインしたままになる
 - （確定）Cookie の中身はトークンそのものではない。Cookie は同じホストの別のサービスにも送られるので、そこから漏れても新しい端末でログインできないようにするため。トークンそのものを Cookie に入れても通さない
   - 確かめ方: 自動テスト `TestAuthSetsCookieOnlyForTheRightToken`、`TestRequireAuth`（auth_config_test.go）
-- （仮）Cookie の中身は、ログインした端末ごとのランダムな値。サーバーは値のハッシュと、User-Agent から作った名前（例「iPhone · Safari」）、ログインした時刻、最後に使った時刻を `~/.config/palmterm/devices.json`（権限 0600）に記録する。再起動しても残る
+- （確定）Cookie の中身は、ログインした端末ごとのランダムな値。サーバーは値のハッシュと、User-Agent から作った名前（例「iPhone · Safari」）、ログインした時刻、最後に使った時刻を `~/.config/palmterm/devices.json`（権限 0600）に記録する。再起動しても残る
   - 確かめ方: 自動テスト `TestDevicesSurviveRestartButNotTokenChange`（auth_config_test.go）
-- （仮）tmux ボタンのパネルの「ログイン中の端末」で一覧を出す（最後に使った順。この端末には印）。この端末は「ログアウト」、ほかの端末は「取り消す」。どちらも2回押し。取り消した端末は Cookie が通らなくなり、開いている接続もすぐ切れる。切られた画面はつなぎ直さず、ページを読み込み直してログインし直す方法の案内を出す
+- （確定）tmux ボタンのパネルの「ログイン中の端末」で一覧を出す（最後に使った順。この端末には印）。この端末は「ログアウト」、ほかの端末は「取り消す」。どちらも2回押し。取り消した端末は Cookie が通らなくなり、開いている接続もすぐ切れる。切られた画面はつなぎ直さず、ページを読み込み直してログインし直す方法の案内を出す
   - 確かめ方: 自動テスト `TestDevicesListLogoutAndRevoke`、`TestRevokeClosesThatDevicesTerminal`（auth_config_test.go）、通しのテスト「一覧からほかの端末を取り消すとその端末はつながらなくなり、自分はログアウトできる」（web/e2e/app.test.ts）
-- （仮）全端末を一度に締め出すには、トークンを変えて再起動する。前のトークンで記録した端末は全部無効になる
-- （仮）この仕組みより前の Cookie（トークンから計算した値）は通さない。前から使っていた端末は、一度ログインし直す
+- （確定）全端末を一度に締め出すには、トークンを変えて再起動する。前のトークンで記録した端末は全部無効になる
+  - 確かめ方: 自動テスト `TestDevicesSurviveRestartButNotTokenChange`（auth_config_test.go）
+- （確定）この仕組みより前の Cookie（トークンから計算した値）は通さない。前から使っていた端末は、一度ログインし直す
+  - 確かめ方: 自動テスト `TestRequireAuth`（auth_config_test.go）
 - （仮）他のアプリから開いたリンクでもログインしたまま開ける。一方、別のサイトのページからは tmux を操作できない
 - （仮）`palmterm url` で、動いている palmterm のログイン用 URL（`tailscale serve` が中継していればその URL も）と、スマホで読める QR コードを出す
 - （仮）ログイン用のトークンは tmux の中のシェルの環境に渡さない
