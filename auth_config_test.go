@@ -206,6 +206,7 @@ type configResponse struct {
 	Language string      `json:"language"`
 	Keys     []keyConfig `json:"keys"`
 	Path     string      `json:"path"`
+	Version  string      `json:"version"`
 	Error    string      `json:"error"`
 }
 
@@ -230,6 +231,15 @@ func TestConfigDefaultsToEnglishWithoutAFile(t *testing.T) {
 	}
 	if tr("日本語", "English") != "English" {
 		t.Fatal("既定は英語のはずです")
+	}
+}
+
+func TestConfigIncludesVersion(t *testing.T) {
+	s := newTestServer(t)
+	defer func(v string) { version = v }(version)
+	version = "v1.2.3-4-gabcdef0-dirty"
+	if c := getConfig(t, s); c.Version != version {
+		t.Fatalf("version=%q", c.Version)
 	}
 }
 

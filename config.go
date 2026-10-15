@@ -108,9 +108,10 @@ func (s *server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	cfg, err := settings.get()
 	resp := struct {
 		config
-		Path  string `json:"path"`
-		Error string `json:"error,omitempty"`
-	}{config: cfg, Path: settings.path}
+		Path    string `json:"path"`
+		Version string `json:"version"` // palmterm -version と同じ版（画面の tmux パネルに出す）
+		Error   string `json:"error,omitempty"`
+	}{config: cfg, Path: settings.path, Version: version}
 	if err != nil {
 		resp.Error = err.Error()
 	}

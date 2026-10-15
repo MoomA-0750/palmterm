@@ -215,6 +215,13 @@ button:active {
   color: #9a9;
 }
 
+.tmux-version {
+  font-size: 12px;
+  color: #ccc;
+  white-space: nowrap;
+  user-select: text;
+}
+
 .tmux-size {
   flex: none;
   min-width: 3.5em;

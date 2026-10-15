@@ -16,6 +16,8 @@
   - 確かめ方: 自動テスト `TestHelpLanguage`（help_test.go）
 - （仮）`palmterm -version` で `palmterm <版>` を1行出して終わる（終了コード 0。サーバーは起動しない）。版はビルド時に `-ldflags "-X main.version=..."` で埋め込み、`make` では `git describe --tags --always --dirty` の値を入れる。埋め込まなければ `dev`
   - 確かめ方: 自動テスト `TestVersionFlag`、`TestMakefileEmbedsGitDescribe`（version_test.go）
+- （仮）画面の tmux ボタンのパネルの一番下の「版」の行に、つないでいるサーバーの版を `palmterm -version` と同じ文字（`palmterm <版>`）で出す。版は `/api/config` の応答の `version` で受け取る。受け取れなければ行を出さない
+  - 確かめ方: 自動テスト `TestConfigIncludesVersion`（auth_config_test.go）、「tmux パネルの版の行」（web/src/tmuxpanel.test.ts）
 
 ## ログインと安全
 

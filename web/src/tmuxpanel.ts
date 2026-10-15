@@ -25,6 +25,8 @@ export interface TmuxPanelOptions {
   /** 端末の文字サイズ（パネルの「文字」の行で変える）。 */
   fontSize: { get: () => number; change: (delta: number) => void };
   toast: (message: string) => void;
+  /** サーバーの版（`palmterm -version` と同じ）。分からなければ空で、その行を出さない。 */
+  version?: string;
   /** ログイン中の端末の一覧を開く。 */
   openDevices: () => void;
   /** キーバーと同じ押し方（フォーカスを奪わない、横スクロールでは押さない）でボタンをつなぐ。 */
@@ -262,6 +264,12 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
       sizeBtn({ icon: "textLarger" }, t("textLarger"), 1),
     ),
   );
+  if (opts.version) {
+    const v = document.createElement("span");
+    v.className = "tmux-version";
+    v.textContent = `palmterm ${opts.version}`;
+    panel.append(row(t("rowVersion"), v));
+  }
 
   async function run(action: string, window?: number, extra: Record<string, string | number> = {}) {
     if (!KEEP_OPEN.has(action)) close();
