@@ -47,4 +47,6 @@ created: 2026-10-15
   - 上のメモのとおり、commit しただけでは `make` が作り直さないので版が古いまま残ることがある（`make -B` で作り直す）
 
 ## レビュー
-（task-loop が Codex の指摘を書き足す）
+Codex（2026-10-15、80651c6..fa6e023）:
+
+- 重要: 通常の `make` は Git の状態変化を依存関係として扱わないため、既存バイナリの版が古いままになります。現状でも `git describe` は `fa6e023` ですが、`./palmterm -version` は `palmterm 80651c6` です。これは完了条件および SPEC の「`make` では `git describe --tags --always --dirty` の値を入れる」と食い違います。`TestMakefileEmbedsGitDescribe` も `make -B -n` のコマンド文字列しか検査しないため、この不具合を検出できません（[Makefile](Makefile:5)、[version_test.go](version_test.go:62)）。
