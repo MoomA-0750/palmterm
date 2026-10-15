@@ -1,6 +1,6 @@
 ---
 id: 0001
-status: blocked         # todo / doing / blocked / done
+status: todo         # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - "*.go"
   - Makefile
@@ -22,6 +22,7 @@ created: 2026-10-15
 - task-loop の検査で止めた（2026-10-15 17:46）:
   - scope か「完了の条件」が書き換えられている
   - 実行役の出力: ~/.local/share/task-loop/logs/palmterm/0001-20261015-174417.log
+- 本人の答え（2026-10-15 17:50）: 検査の誤り（チェックボックスの [x] を書き換えと見なした）で止めた。実装と make test を確かめ直し、問題なければ done にしてよい
 
 ## メモ
 - 試してだめだったことはない
