@@ -14,10 +14,11 @@
 - （仮）画面の言語は英語（既定）と日本語。起動時の案内とログも設定の言語で出す
 - （仮）`palmterm -help` のオプションの説明も設定の言語で出す。`-config` で指した設定ファイル（`-help` の前でも後でも）か既定の置き場所の設定を読み、`language = "ja"` なら説明と既定値の書き添え（`（既定: …）`）を日本語にする。設定が無い・`en`・読めないときは Go の flag の既定の英語のまま
   - 確かめ方: 自動テスト `TestHelpLanguage`（help_test.go）
-- （仮）`palmterm -version` で `palmterm <版>` を1行出して終わる（終了コード 0。サーバーは起動しない）。版はビルド時に `-ldflags "-X main.version=..."` で埋め込み、`make` では `git describe --tags --always --dirty` の値を入れる。埋め込まなければ `dev`。commit を進めて `make` すれば新しい版で作り直す（`make -B` は要らない）。版もファイルも変わっていなければ作り直さない
+- （確定）`palmterm -version` で `palmterm <版>` を1行出して終わる（終了コード 0。サーバーは起動しない）。版はビルド時に `-ldflags "-X main.version=..."` で埋め込み、`make` では `git describe --tags --always --dirty` の値を入れる。埋め込まなければ `dev`。commit を進めて `make` すれば新しい版で作り直す（`make -B` は要らない）。版もファイルも変わっていなければ作り直さない
   - 確かめ方: 自動テスト `TestVersionFlag`、`TestMakefileEmbedsGitDescribe`、`TestMakeRebuildsOnlyWhenVersionChanges`（version_test.go）
-- （仮）画面の tmux ボタンのパネルの一番下の「版」の行に、つないでいるサーバーの版を `palmterm -version` と同じ文字（`palmterm <版>`）で出す。版は `/api/config` の応答の `version` で受け取る。受け取れなければ行を出さない
+- （確定）画面の tmux ボタンのパネルの一番下の「版」の行に、つないでいるサーバーの版を `palmterm -version` と同じ文字（`palmterm <版>`）で出す。版は `/api/config` の応答の `version` で受け取る。受け取れなければ行を出さない
   - 確かめ方: 自動テスト `TestConfigIncludesVersion`（auth_config_test.go）、「tmux パネルの版の行」（web/src/tmuxpanel.test.ts）
+  - 実機での確かめ方: `make install` して palmterm を再起動し、スマホで画面を読み込み直す → tmux パネルの一番下に「版」の行があり、`palmterm -version` と同じ文字が出る
 
 ## ログインと安全
 
