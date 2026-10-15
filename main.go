@@ -58,7 +58,7 @@ func main() {
 		os.Exit(runURL(os.Stdout, os.Args[2:]))
 	}
 
-	// 説明は設定ファイル（言語）を読む前に出るので、既定の言語の英語で書く。
+	// 説明は英語で書く。-help では設定の言語が日本語なら help.go の flagUsageJa に差し替える。
 	listen := flag.String("listen", "127.0.0.1:7681", "address to listen on (HTTP)")
 	session := flag.String("session", "main", "tmux session to attach to")
 	token := flag.String("token", "", "login token (default: ~/.config/palmterm/token, created on first run)")
@@ -69,6 +69,7 @@ func main() {
 	captureClip := flag.Bool("capture-clipboard", true, "set tmux's set-clipboard to on, so text that programs in tmux copy (OSC 52) also goes to the tmux buffers listed on the palmterm page")
 	lan := flag.String("lan", "", "also listen on this address over HTTPS for the local network, e.g. :7682 (self-signed certificate in ~/.config/palmterm)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	flag.Usage = func() { printUsage(flag.CommandLine, helpLanguage(os.Args[1:])) }
 	flag.Parse()
 
 	if *showVersion {
