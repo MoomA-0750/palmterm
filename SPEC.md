@@ -12,6 +12,8 @@
 - （仮）端末の文字は DOM に描くので、OS の文字選択が使える
 - （仮）切断されても tmux のセッションは残り、間隔を広げながらつなぎ直し、続きから表示する
 - （仮）画面の言語は英語（既定）と日本語。起動時の案内とログも設定の言語で出す
+- （仮）`palmterm -version` で `palmterm <版>` を1行出して終わる（終了コード 0。サーバーは起動しない）。版はビルド時に `-ldflags "-X main.version=..."` で埋め込み、`make` では `git describe --tags --always --dirty` の値を入れる。埋め込まなければ `dev`
+  - 確かめ方: 自動テスト `TestVersionFlag`、`TestMakefileEmbedsGitDescribe`（version_test.go）
 
 ## ログインと安全
 

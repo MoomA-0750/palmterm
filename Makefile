@@ -1,7 +1,10 @@
+# 実行ファイルに埋め込む版（palmterm -version で出る）。
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
 # 画面（web/dist）をビルドしてから、それを埋め込んだ Go の実行ファイルを作る。
 palmterm: web/node_modules $(shell find web/src -type f) web/index.html *.go
 	cd web && npm run build
-	go build -o palmterm .
+	go build -ldflags "-X main.version=$(VERSION)" -o palmterm .
 
 web/node_modules: web/package.json
 	cd web && npm install

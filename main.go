@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"flag"
+	"fmt"
 	"io/fs"
 	"log"
 	"net"
@@ -39,6 +40,9 @@ type server struct {
 	terminals        sync.WaitGroup // 動いている端末の中継（テストで終わりを待つ）
 }
 
+// 版。ビルド時に -ldflags "-X main.version=..." で埋め込む（make では git describe の値）。
+var version = "dev"
+
 var sessionNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 func main() {
@@ -64,7 +68,13 @@ func main() {
 	relayBrowser := flag.Bool("relay-browser", true, "open URLs that programs in tmux try to open in a browser (BROWSER) on the palmterm page instead")
 	captureClip := flag.Bool("capture-clipboard", true, "set tmux's set-clipboard to on, so text that programs in tmux copy (OSC 52) also goes to the tmux buffers listed on the palmterm page")
 	lan := flag.String("lan", "", "also listen on this address over HTTPS for the local network, e.g. :7682 (self-signed certificate in ~/.config/palmterm)")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("palmterm " + version)
+		return
+	}
 
 	if *configPath == "" {
 		dir, err := os.UserConfigDir()
