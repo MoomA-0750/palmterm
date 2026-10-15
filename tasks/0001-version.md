@@ -1,6 +1,6 @@
 ---
 id: 0001
-status: doing         # todo / doing / blocked / done
+status: done          # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - "*.go"
   - Makefile
@@ -37,6 +37,10 @@ created: 2026-10-15
 - どう確かめたか
   - `make test` が通った（Go のテスト、画面の単体テスト 110 件、通しのテスト 27 件）
   - `make` で作った `./palmterm -version` が `palmterm 27c5236-dirty` を出し、終了コード 0
+  - 検査で止まったあと（2026-10-15）、本人の答えに沿って確かめ直した。コードは変えていない
+    - `go test -run 'TestVersionFlag|TestMakefileEmbedsGitDescribe' -v` が通った
+    - `make test` が終了コード 0 で通った（Go のテスト、画面の単体テスト 110 件、通しのテスト 27 件）
+    - `make -B` で作り直した `./palmterm -version` が `palmterm 80651c6` を出し、終了コード 0
 - 本人が見るべき点
   - SPEC の項目は「仮」で置いた。よければ「確定」に
   - タグがまだ無いので、版は commit のハッシュになる。`v0.1.0` などのタグを打てば `v0.1.0-3-gxxxx` の形になる
