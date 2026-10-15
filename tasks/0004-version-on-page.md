@@ -1,8 +1,10 @@
 ---
 id: 0004
-status: blocked       # todo / doing / blocked / done
+status: todo       # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - web/src/**
+  - "config.go"
+  - "*_test.go"
 spec: SPEC.md「全体」
 created: 2026-10-15
 ---
@@ -22,6 +24,7 @@ created: 2026-10-15
 - 決めてほしいこと: scope を広げてよいか。推奨は案A
   - 案A（推奨）: `config.go` の `/api/config` の応答に `version` を足し（Go のテストも1つ足す）、画面は設定パネルに出す。scope に `config.go`・`auth_config_test.go`（か新しいテストファイル）を足す。`palmterm -version` と同じ値を確実に出せる
   - 案B: Makefile から Vite に `VITE_VERSION` を渡して画面に焼き込む。scope に `Makefile`・`web/vite.config.ts` が要る。画面だけ作り直したとき（`npm run dev` など）サーバーの版とずれうるので勧めない
+- 本人の答え（2026-10-15 18:22）: 案Aでよい。/api/config の応答に version を足し、画面の設定パネルに出す（scope に config.go, *_test.go を足した）
 
 ## メモ
 （実行役が書く。試してだめだったこと）
