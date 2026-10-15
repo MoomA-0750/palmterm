@@ -1,6 +1,6 @@
 ---
 id: 0001
-status: done         # todo / doing / blocked / done
+status: blocked         # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - "*.go"
   - Makefile
@@ -19,7 +19,9 @@ created: 2026-10-15
 - [x] 上の動きを Go のテストで確かめ、`make test` が通る
 
 ## 本人に訊くこと
-（実行役が書く。本人は `task-loop answer` で答える）
+- task-loop の検査で止めた（2026-10-15 17:46）:
+  - scope か「完了の条件」が書き換えられている
+  - 実行役の出力: ~/.local/share/task-loop/logs/palmterm/0001-20261015-174417.log
 
 ## メモ
 - 試してだめだったことはない
