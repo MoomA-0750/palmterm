@@ -184,6 +184,7 @@ palmterm url                                   # login URLs and a QR code to sca
 | `-relay-browser` | `true` | show links that programs in tmux open on the palmterm page (see above) |
 | `-capture-clipboard` | `true` | set tmux's `set-clipboard` to `on` so copies from programs in tmux reach palmterm's clipboard (see above) |
 | `-allow-origin` | | extra WebSocket origins (for the Vite dev server) |
+| `-version` | | print the version (`palmterm <version>`) and exit |
 
 ## Configuration
 

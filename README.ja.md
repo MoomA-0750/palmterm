@@ -179,6 +179,7 @@ palmterm url                                   # ログイン用の URL と、�
 | `-relay-browser` | `true` | tmux の中のプログラムが開こうとしたリンクを palmterm の画面に出す（上記） |
 | `-capture-clipboard` | `true` | tmux の `set-clipboard` を `on` にし、tmux の中のプログラムのコピーも palmterm のクリップボードに入れる（上記） |
 | `-allow-origin` | | WebSocket を許す別の Origin（開発用の Vite など） |
+| `-version` | | 版（`palmterm <版>`）を出して終わる |
 
 ## 設定ファイル
 
