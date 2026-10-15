@@ -1,6 +1,6 @@
 ---
 id: 0002
-status: doing         # todo / doing / blocked / done
+status: done          # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - "*.go"
 spec: SPEC.md「全体」（画面の言語）
@@ -32,6 +32,8 @@ created: 2026-10-15
   - 日本語の説明の言い回し（help.go の `flagUsageJa`）
   - 見出しは「<実行ファイル> の使い方:」、既定値は `（既定: "main"）` の形にした
   - 新しいオプションを足して訳を忘れると `TestHelpLanguage` が落ちる（数を比べている）
+- 確かめ直し（2026-10-15、検査の誤りで止まった後）: 実装は commit cabc007 のまま変えていない。`go vet ./...` と `make test` が通り（Go・画面の単体テスト 110 件・e2e 27 件）、`TestHelpLanguage` の各場合（設定なし・en・ja・`-config` を前／後）が PASS。`language = "ja"` の設定で作った実行ファイルの `-help` が日本語の説明で出て終了コード 0 なのも目で見た。0002 の commit で触ったのは scope の `*.go` と SPEC.md・docs/decisions.md・この課題ファイルだけ
+- 「本人に訊くこと」のログの場所に入っていた個人のパスを `~` に縮めた
 
 ## レビュー
 （task-loop が Codex の指摘を書き足す）
