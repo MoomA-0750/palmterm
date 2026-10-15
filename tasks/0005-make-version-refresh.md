@@ -1,6 +1,6 @@
 ---
 id: 0005
-status: todo        # todo / doing / blocked / done
+status: doing        # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - Makefile
   - "*_test.go"
