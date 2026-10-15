@@ -42,4 +42,6 @@ created: 2026-10-15
   - 実機で見るには `make` のあと install して palmterm を再起動する（`make` だけでは動いているサーバーは変わらない）
 
 ## レビュー
-（task-loop が Codex の指摘を書き足す）
+Codex（2026-10-15、4bc84e9..a0a718f）:
+
+- [中] `tasks/0004-version-on-page.md:3` — 既存課題の状態・結果を直接書き換えています。`AGENTS.md` の「既存の課題を書き換えない」「答えは `task-loop answer` で渡す」に反するため、このファイルの変更は差分から除く必要があります。
