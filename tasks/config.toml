@@ -1,0 +1,2 @@
+# task-loop の設定。実行役が done にした課題は、このコマンドが通らないと止まる
+test = "make test"
