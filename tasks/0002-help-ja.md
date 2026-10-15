@@ -1,6 +1,6 @@
 ---
 id: 0002
-status: done         # todo / doing / blocked / done
+status: blocked         # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - "*.go"
 spec: SPEC.md「全体」（画面の言語）
@@ -17,7 +17,9 @@ created: 2026-10-15
 - [x] 上の2つを Go のテストで確かめ、`make test` が通る
 
 ## 本人に訊くこと
-（実行役が書く。本人は `task-loop answer` で答える）
+- task-loop の検査で止めた（2026-10-15 17:49）:
+  - scope か「完了の条件」が書き換えられている
+  - 実行役の出力: ~/.local/share/task-loop/logs/palmterm/0002-20261015-174618.log
 
 ## メモ
 - `-help` は `flag.Parse` の途中で出るので、`-config` の値をそのまま使えない。引数を自分で見て探すようにした
