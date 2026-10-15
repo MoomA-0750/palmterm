@@ -32,6 +32,8 @@ interface ServerConfig {
   language: Lang;
   keys?: KeyConfig[];
   path: string;
+  /** palmterm の版（`palmterm -version` と同じ）。 */
+  version?: string;
   error?: string;
 }
 const serverConfig: ServerConfig = (await fetch("/api/config", { cache: "no-store" })
@@ -426,6 +428,7 @@ const tmuxPanel = setupTmuxPanel({
   sendPrefix: () => conn.send("\x02"),
   fontSize: { get: () => fontSize, change: (delta) => setFontSize(fontSize + delta) },
   toast,
+  version: serverConfig.version,
   openDevices: () => openDevices(),
   bind: bindKeyButton,
 });
