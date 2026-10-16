@@ -46,4 +46,6 @@ created: 2026-10-16
 - 実機: `make install` して palmterm を再起動してから、スマホで tmux パネル →「設定」→「言語」の「日本語」
 
 ## レビュー
-（task-loop が Codex の指摘を書き足す）
+Codex（2026-10-16、17c0545..4ad9c7a）:
+
+指摘なし
