@@ -24,6 +24,8 @@ export interface TmuxPanelOptions {
   sendPrefix: () => void;
   /** 端末の文字サイズ（パネルの「文字」の行で変える）。 */
   fontSize: { get: () => number; change: (delta: number) => void };
+  /** キーバーを出しているか・出し分ける（パネルの「キーバー」の行で切り替える）。 */
+  keybar: { shown: () => boolean; set: (shown: boolean) => void };
   toast: (message: string) => void;
   /** サーバーの版（`palmterm -version` と同じ）。分からなければ空で、その行を出さない。 */
   version?: string;
@@ -229,6 +231,20 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
       showSize();
     });
 
+  // キーバーを隠す・出す。押すと tmux ボタンの場所が変わるので、パネルは閉じる。
+  const keybarBtn = makeBtn("", "", () => {
+    close();
+    opts.keybar.set(!opts.keybar.shown());
+    showKeybarState();
+  }, "tmux-keybar");
+  const showKeybarState = () => {
+    const shown = opts.keybar.shown();
+    keybarBtn.textContent = t(shown ? "keybarHide" : "keybarShow");
+    keybarBtn.title = t(shown ? "keybarHideTitle" : "keybarShowTitle");
+    keybarBtn.setAttribute("aria-label", keybarBtn.title);
+  };
+  showKeybarState();
+
   panel.append(
     row(
       t("rowSplit"),
@@ -263,6 +279,7 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
       sizeLabel,
       sizeBtn({ icon: "textLarger" }, t("textLarger"), 1),
     ),
+    row(t("rowKeybar"), keybarBtn),
   );
   if (opts.version) {
     const v = document.createElement("span");
@@ -289,6 +306,7 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
 
   function open() {
     showSize(); // ピンチで変わっていることがある
+    showKeybarState();
     panel.hidden = false;
     button.setAttribute("aria-expanded", "true");
   }

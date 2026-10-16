@@ -368,6 +368,42 @@ describe("tmux のタブとパネル", () => {
 
     tmux("kill-pane", "-t", SESSION);
   });
+  it("パネルでキーバーを隠すと端末が広がり、読み込み直しても隠れたまま。別のブラウザでは出たまま。もう一度押すと出る", async () => {
+    const termHeight = async () => (await page.locator("#term").boundingBox())!.height;
+    const shownHeight = await termHeight();
+    const keyrowHeight = (await page.locator("#keyrow").boundingBox())!.height;
+
+    await page.locator("#tmux-btn").click();
+    await page.locator('#tmuxpanel button[title="Hide the key bar"]').click();
+    expect(await page.locator("#tmuxpanel").isHidden()).toBe(true);
+    expect(await page.locator("#keybar").isHidden()).toBe(true);
+    // タブ、tmux ボタン（タブバーの右端に移る）、入力バーは残る
+    expect(await page.locator("#tabs").isVisible()).toBe(true);
+    expect(await page.locator("#tabbar #tmux-btn").isVisible()).toBe(true);
+    expect(await page.locator("#inputbar").isVisible()).toBe(true);
+    // 端末はキーの段の分だけ広がる（タブバーは下の余白 4px を持つ）
+    await waitUntil("端末が広がる", async () => Math.abs((await termHeight()) - (shownHeight + keyrowHeight - 4)) < 1);
+
+    await openPage();
+    expect(await page.locator("#keybar").isHidden()).toBe(true);
+    expect(await page.locator("#tabbar #tmux-btn").isVisible()).toBe(true);
+
+    const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
+    try {
+      const otherPage = await other.newPage();
+      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await otherPage.waitForFunction(() => document.querySelector("#keybar button") !== null);
+      expect(await otherPage.locator("#keybar").isVisible()).toBe(true);
+    } finally {
+      await other.close();
+    }
+
+    await page.locator("#tmux-btn").click();
+    await page.locator('#tmuxpanel button[title="Show the key bar"]').click();
+    expect(await page.locator("#keybar").isVisible()).toBe(true);
+    expect(await page.locator("#keyrow #tmux-btn").isVisible()).toBe(true);
+    await waitUntil("端末が元の高さに戻る", async () => Math.abs((await termHeight()) - shownHeight) < 1);
+  });
 });
 
 describe("設定ファイル", () => {

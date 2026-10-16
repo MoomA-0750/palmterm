@@ -175,6 +175,15 @@ button:active {
   box-shadow: inset 0 0 0 1.5px var(--accent), -8px 0 8px -4px var(--bar-bg);
 }
 
+/* キーバーを隠したときは、tmux のボタンはタブバーの右端に移り、タブバーが下の余白も持つ。 */
+#app.keybar-hidden #tabbar {
+  padding-bottom: 4px;
+}
+
+#app.keybar-hidden #tmux-btn {
+  margin: 0;
+}
+
 #tmux-btn[aria-expanded="true"] {
   color: #000;
   background: var(--accent);
@@ -402,6 +411,7 @@ button:active {
 #devices[hidden],
 #history-bar[hidden],
 #clips[hidden],
+#keyrow[hidden],
 #status[hidden],
 #toast[hidden] {
   display: none;

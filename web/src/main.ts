@@ -427,6 +427,19 @@ for (const def of keyButtons) {
   keybar.appendChild(btn);
 }
 
+// キーバーは隠せる（この端末のブラウザに覚える）。隠すとキーの段ごと消して端末を広げ、
+// tmux ボタンはタブバーの右端（＋の右）に移す。
+let keybarShown = true;
+function setKeybarShown(shown: boolean, save = true) {
+  keybarShown = shown;
+  const tmuxBtn = $("tmux-btn");
+  $("keyrow").hidden = !shown;
+  $("app").classList.toggle("keybar-hidden", !shown);
+  (shown ? $("keyrow") : $("tabbar")).append(tmuxBtn);
+  if (save) saveSetting("keybar", shown ? "shown" : "hidden");
+}
+setKeybarShown(loadSetting("keybar", "shown") !== "hidden", false);
+
 const tmuxPanel = setupTmuxPanel({
   tabs: $("tabs"),
   newWindow: $("new-window"),
@@ -434,6 +447,7 @@ const tmuxPanel = setupTmuxPanel({
   panel: $("tmuxpanel"),
   sendPrefix: () => conn.send("\x02"),
   fontSize: { get: () => fontSize, change: (delta) => setFontSize(fontSize + delta) },
+  keybar: { shown: () => keybarShown, set: (shown) => setKeybarShown(shown) },
   toast,
   version: serverConfig.version,
   openDevices: () => openDevices(),
