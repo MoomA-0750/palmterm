@@ -1,13 +1,15 @@
 # 実行ファイルに埋め込む版（palmterm -version で出る）。
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# '…' の中に書くための形。' を '\'' にするので、タグ名に ' " $ などが入っても崩れない。
+VERSION_Q = $(subst ','\'',$(VERSION))
 # 版が前と変わったときだけ .version を書き換える。palmterm はこれに依存するので、
 # commit しただけ（ファイルは同じ）でも make で新しい版を埋め込み直す。
-$(shell printf '%s\n' '$(VERSION)' | cmp -s - .version || printf '%s\n' '$(VERSION)' > .version)
+$(shell printf '%s\n' '$(VERSION_Q)' | cmp -s - .version || printf '%s\n' '$(VERSION_Q)' > .version)
 
 # 画面（web/dist）をビルドしてから、それを埋め込んだ Go の実行ファイルを作る。
 palmterm: .version web/node_modules $(shell find web/src -type f) web/index.html *.go
 	cd web && npm run build
-	go build -ldflags "-X main.version=$(VERSION)" -o palmterm .
+	go build -ldflags '-X main.version=$(VERSION_Q)' -o palmterm .
 
 web/node_modules: web/package.json
 	cd web && npm install

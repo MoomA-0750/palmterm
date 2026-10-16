@@ -207,4 +207,17 @@ func main() {
 	if out := run("make", "palmterm"); built(out) {
 		t.Errorf("作り直した直後の make で、また go build しました:\n%s", out)
 	}
+
+	// タグ名に ' " $ が入っても、版はそのまま入り、変わらなければ作り直さない。
+	tag := `v1'a"b$c`
+	run("git", "tag", tag)
+	if out := run("make", "palmterm"); !built(out) {
+		t.Fatalf("タグを打った後の make で go build していません:\n%s", out)
+	}
+	if got := run("./palmterm", "-version"); got != "palmterm "+tag+"\n" {
+		t.Errorf("-version = %q、期待 %q", got, "palmterm "+tag+"\n")
+	}
+	if out := run("make", "palmterm"); built(out) {
+		t.Errorf("タグ名に ' などがあると、変わっていないのに go build し直しました:\n%s", out)
+	}
 }
