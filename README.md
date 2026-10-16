@@ -194,6 +194,7 @@ changes; no restart is needed. [config.example.toml](config.example.toml) contai
 so it is a good starting point.
 
 ```toml
+version = 1            # config format version (defaults to 1)
 language = "en"        # "en" (default) or "ja"
 
 [[keys]]
@@ -210,6 +211,10 @@ label = "S-Tab"
 text = ":wq\r"         # sent as is
 label = ":wq"
 ```
+
+`version` is the config format version. A config file from a newer palmterm is read as far as this
+palmterm understands it, and the page tells you so when it opens. Your settings live in
+`~/.config/palmterm/`, so copying that folder gives you the same setup on another PC.
 
 Each `[[keys]]` entry has exactly one of:
 

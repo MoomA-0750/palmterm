@@ -4,6 +4,9 @@
 # 書き換えたら、ブラウザでページを読み込み直せば反映される（サーバーの再起動は要らない）。
 # Put this at ~/.config/palmterm/config.toml (or pass -config). Reload the page to apply changes.
 
+# 設定ファイルの書き方の版 / Config format version（書かなければ 1 / defaults to 1）
+version = 1
+
 # 画面の言語 / UI language: "en"（既定 / default）or "ja"
 language = "en"
 

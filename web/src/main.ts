@@ -35,6 +35,8 @@ interface ServerConfig {
   /** palmterm の版（`palmterm -version` と同じ）。 */
   version?: string;
   error?: string;
+  /** 設定ファイルの版がこの palmterm より新しいときの版（読める項目だけ使っている）。 */
+  newerConfig?: number;
 }
 const serverConfig: ServerConfig = (await fetch("/api/config", { cache: "no-store" })
   .then((r) => (r.ok ? r.json() : null))
@@ -781,6 +783,9 @@ await term.init();
 // 設定ファイルの書き間違いは、読める所だけ使って知らせる（長めに出す）。
 const configProblems = [
   ...(serverConfig.error ? [t("configError", { path: serverConfig.path, error: serverConfig.error })] : []),
+  ...(serverConfig.newerConfig
+    ? [t("configNewer", { path: serverConfig.path, version: String(serverConfig.newerConfig) })]
+    : []),
   ...keyErrors,
 ];
 if (configProblems.length) toast(configProblems.join("\n"), 10000);
