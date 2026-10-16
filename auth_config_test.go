@@ -205,9 +205,11 @@ func TestDevicesSurviveRestartButNotTokenChange(t *testing.T) {
 type configResponse struct {
 	Language string      `json:"language"`
 	Keys     []keyConfig `json:"keys"`
+	Theme    themeConfig `json:"theme"`
 	Path     string      `json:"path"`
 	Version  string      `json:"version"`
 	Error    string      `json:"error"`
+	Newer    int         `json:"newerConfig"`
 }
 
 func getConfig(t *testing.T, s *server) configResponse {
@@ -303,6 +305,129 @@ func TestConfigErrorsFallBackToDefaults(t *testing.T) {
 	writeConfig(t, "langage = \"ja\"\n")
 	if c := getConfig(t, s); !strings.Contains(c.Error, "langage") {
 		t.Fatalf("間違えた項目名が知らせにありません: %q", c.Error)
+	}
+}
+
+// 設定ファイルの版。書いていなければ 1 とみなし、今までの設定ファイルはそのまま読める。
+func TestConfigVersion(t *testing.T) {
+	s := newTestServer(t)
+	for name, body := range map[string]string{
+		"版なし":         "language = \"ja\"\n[[keys]]\nkey = \"esc\"\n",
+		"version = 1": "version = 1\nlanguage = \"ja\"\n[[keys]]\nkey = \"esc\"\n",
+	} {
+		writeConfig(t, body)
+		c := getConfig(t, s)
+		if c.Error != "" || c.Newer != 0 || c.Language != "ja" || len(c.Keys) != 1 || c.Keys[0].Key != "esc" {
+			t.Errorf("%s: %+v", name, c)
+		}
+		if c.Version != version {
+			t.Errorf("%s: 応答の version は palmterm の版のままのはずです: %q", name, c.Version)
+		}
+	}
+	for _, body := range []string{"version = 0\n", "version = -1\n", "version = \"1\"\n"} {
+		writeConfig(t, body)
+		if c := getConfig(t, s); c.Error == "" || c.Newer != 0 {
+			t.Errorf("%q: %+v", body, c)
+		}
+	}
+}
+
+// 知らない新しい版なら、読める項目だけ使い、画面に新しい版であることを知らせる（書き間違いの知らせは出さない）。
+func TestConfigNewerVersionUsesWhatItCanRead(t *testing.T) {
+	s := newTestServer(t)
+	writeConfig(t, `
+version = 2
+language = "ja"
+theme = "dark"
+
+[[keys]]
+key = "ctrl+c"
+color = "red"
+
+[[keys]]
+mod = "alt"
+
+[layout]
+rows = 2
+`)
+	c := getConfig(t, s)
+	if c.Newer != 2 || c.Error != "" {
+		t.Fatalf("新しい版の知らせ: %+v", c)
+	}
+	if c.Language != "ja" || len(c.Keys) != 2 || c.Keys[0].Key != "ctrl+c" || c.Keys[1].Mod != "alt" {
+		t.Fatalf("読める項目が使われていません: %+v", c)
+	}
+
+	// 書き方が変わって読めない項目は飛ばし、残りは使う。
+	writeConfig(t, "version = 3\nlanguage = \"ja\"\nkeys = \"esc tab\"\n")
+	if c := getConfig(t, s); c.Newer != 3 || c.Error != "" || c.Language != "ja" || c.Keys != nil {
+		t.Fatalf("%+v", c)
+	}
+	writeConfig(t, "version = 3\nlanguage = \"fr\"\n")
+	if c := getConfig(t, s); c.Newer != 3 || c.Error != "" || c.Language != "en" {
+		t.Fatalf("%+v", c)
+	}
+
+	// TOML として読めなければ、今までどおり書き間違いとして知らせる。
+	writeConfig(t, "version = 2\nlanguage = \n")
+	if c := getConfig(t, s); c.Error == "" || c.Newer != 0 {
+		t.Fatalf("%+v", c)
+	}
+}
+
+// 見本の設定ファイルは version = 1 で、そのまま読める。
+func TestConfigExampleReadsAsIs(t *testing.T) {
+	body, err := os.ReadFile("config.example.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "\nversion = 1\n") {
+		t.Fatal("config.example.toml に version = 1 がありません")
+	}
+	s := newTestServer(t)
+	writeConfig(t, string(body))
+	c := getConfig(t, s)
+	if c.Error != "" || c.Newer != 0 || c.Language != "en" || len(c.Keys) == 0 || c.Theme.Name != "default" {
+		t.Fatalf("%+v", c)
+	}
+}
+
+// [theme] の name と色は、書いたとおり画面に渡す（色の確かめと既定への戻しは画面側）。
+// [theme] の中の知らない項目は、ほかの項目と同じく書き間違いとして知らせる。
+func TestConfigTheme(t *testing.T) {
+	s := newTestServer(t)
+	writeConfig(t, `
+[theme]
+name = "light"
+background = "#fafafa"
+foreground = "#123"
+cursor = "#ff0000"
+accent = "#0969da"
+red = "#12345"
+bright_white = "#ffffff"
+`)
+	c := getConfig(t, s)
+	want := themeConfig{Name: "light", Background: "#fafafa", Foreground: "#123", Cursor: "#ff0000",
+		Accent: "#0969da", Red: "#12345", BrightWhite: "#ffffff"}
+	if c.Error != "" || c.Theme != want {
+		t.Fatalf("%+v", c)
+	}
+
+	writeConfig(t, "[theme]\nname = \"light\"\nbackgroud = \"#000000\"\n")
+	if c := getConfig(t, s); !strings.Contains(c.Error, "theme.backgroud") || c.Theme != (themeConfig{}) {
+		t.Fatalf("%+v", c)
+	}
+
+	// 書いていなければ空（画面側で default になる）。
+	writeConfig(t, "language = \"ja\"\n")
+	if c := getConfig(t, s); c.Error != "" || c.Theme != (themeConfig{}) {
+		t.Fatalf("%+v", c)
+	}
+
+	// 新しい版の設定ファイルでも [theme] は読む。
+	writeConfig(t, "version = 2\n[theme]\nname = \"light\"\naccent = \"#0969da\"\nglow = true\n")
+	if c := getConfig(t, s); c.Newer != 2 || c.Error != "" || c.Theme != (themeConfig{Name: "light", Accent: "#0969da"}) {
+		t.Fatalf("%+v", c)
 	}
 }
 

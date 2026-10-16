@@ -6,6 +6,17 @@
   /* ボタンの色は緑にそろえる。枠だけ＝使える・一時的、塗りつぶし＝開いている・固定。 */
   --accent: #3fb950;
   --accent-dim: #1f3325;
+  --on-accent: #000; /* 強調の色で塗ったボタンの文字 */
+  --btn-active: #555;
+  --panel-bg: rgba(30, 36, 32, 0.97);
+  --muted-fg: #ccc;
+  --dim-fg: #aaa; /* タブの × */
+  --label-fg: #9a9; /* tmux パネルの行の見出し */
+  --input-bg: #111;
+  --input-border: #555;
+  --toast-bg: #444;
+  --toast-fg: #e6e6e6;
+  /* 上の色は設定ファイルの [theme] で選んだテーマで置き換わる（theme.ts）。ここの値は default のテーマと同じ。 */
   --app-h: 100dvh;
   color-scheme: dark;
 }
@@ -71,7 +82,7 @@ body {
 
 #linkbar-open,
 #clipbar-copy {
-  color: #000;
+  color: var(--on-accent);
   background: var(--accent);
 }
 
@@ -131,7 +142,7 @@ button {
 }
 
 button:active {
-  background: #555;
+  background: var(--btn-active);
 }
 
 #keyrow {
@@ -175,8 +186,17 @@ button:active {
   box-shadow: inset 0 0 0 1.5px var(--accent), -8px 0 8px -4px var(--bar-bg);
 }
 
+/* キーバーを隠したときは、tmux のボタンはタブバーの右端に移り、タブバーが下の余白も持つ。 */
+#app.keybar-hidden #tabbar {
+  padding-bottom: 4px;
+}
+
+#app.keybar-hidden #tmux-btn {
+  margin: 0;
+}
+
 #tmux-btn[aria-expanded="true"] {
-  color: #000;
+  color: var(--on-accent);
   background: var(--accent);
 }
 
@@ -190,7 +210,7 @@ button:active {
   flex-direction: column;
   gap: 4px;
   padding: 6px 4px;
-  background: rgba(30, 36, 32, 0.97);
+  background: var(--panel-bg);
   border-top: 2px solid var(--accent);
 }
 
@@ -212,12 +232,12 @@ button:active {
   width: 5.5em;
   font-size: 11px;
   white-space: nowrap;
-  color: #9a9;
+  color: var(--label-fg);
 }
 
 .tmux-version {
   font-size: 12px;
-  color: #ccc;
+  color: var(--muted-fg);
   white-space: nowrap;
   user-select: text;
 }
@@ -227,7 +247,7 @@ button:active {
   min-width: 3.5em;
   text-align: center;
   font-size: 13px;
-  color: #ccc;
+  color: var(--muted-fg);
 }
 
 #tmuxpanel button {
@@ -290,14 +310,14 @@ button:active {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
   color: var(--btn-fg);
-  background: #111;
+  background: var(--input-bg);
   font: 16px var(--mono-font); /* 16px 未満だと iOS が拡大する */
 }
 
 .tmux-tab-close {
   min-width: 32px;
   padding: 0 8px;
-  color: #aaa;
+  color: var(--dim-fg);
 }
 
 .tmux-tab.active {
@@ -305,7 +325,7 @@ button:active {
 }
 
 .tmux-tab.active button {
-  color: #000;
+  color: var(--on-accent);
 }
 
 #new-window {
@@ -318,14 +338,15 @@ button:active {
 }
 
 #tmuxpanel button.on {
-  color: #000;
+  color: var(--on-accent);
   background: var(--accent);
 }
 
 #tmuxpanel button.armed,
 .tmux-tab button.armed,
 .clip-actions button.armed,
-.device-revoke.armed {
+.device-revoke.armed,
+.font-delete.armed {
   color: #fff;
   background: #b3261e;
 }
@@ -338,7 +359,7 @@ button:active {
 
 #keybar button.mod[data-state="lock"] {
   background: var(--accent);
-  color: #000;
+  color: var(--on-accent);
 }
 
 #inputbar {
@@ -360,6 +381,10 @@ button:active {
   place-items: center;
 }
 
+#inputbar button[hidden] {
+  display: none;
+}
+
 #line {
   flex: 1;
   min-width: 0;
@@ -369,8 +394,8 @@ button:active {
   padding: 7px 8px;
   font: 16px/20px var(--mono-font); /* 16px 未満だと iOS が拡大する */
   color: var(--btn-fg);
-  background: #111;
-  border: 1px solid #555;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: 6px;
 }
 
@@ -382,7 +407,8 @@ button:active {
 
 
 #copymode,
-#devices {
+#devices,
+#fonts {
   position: fixed;
   inset: 0 0 auto 0;
   height: var(--app-h);
@@ -396,8 +422,10 @@ button:active {
 
 #copymode[hidden],
 #devices[hidden],
+#fonts[hidden],
 #history-bar[hidden],
 #clips[hidden],
+#keyrow[hidden],
 #status[hidden],
 #toast[hidden] {
   display: none;
@@ -436,7 +464,7 @@ button:active {
 }
 
 .copy-tabs button[aria-selected="true"] {
-  color: #000;
+  color: var(--on-accent);
   background: var(--accent);
 }
 
@@ -482,7 +510,7 @@ button:active {
 }
 
 .clip-actions .clip-copy {
-  color: #000;
+  color: var(--on-accent);
   background: var(--accent);
 }
 
@@ -559,6 +587,70 @@ button:active {
   padding: 0 12px;
 }
 
+/* 画面から足したフォントの一覧。 */
+#fonts-title {
+  align-self: center;
+  padding: 0 8px;
+}
+
+#fonts-hint {
+  margin: 8px 8px 0;
+  font-size: 12px;
+  opacity: 0.7;
+  overflow-wrap: anywhere;
+}
+
+#font-list {
+  flex: 1;
+  margin: 0;
+  padding: 4px 8px;
+  overflow: auto;
+  list-style: none;
+}
+
+.font-file,
+.font-default {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--btn-bg);
+}
+
+.font-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.font-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-file.in-use .font-name,
+.font-default.in-use .font-name {
+  color: var(--accent);
+}
+
+.font-meta {
+  font-size: 12px;
+  opacity: 0.7;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.font-delete,
+.font-use {
+  height: 36px;
+  padding: 0 12px;
+}
+
+.fonts-empty {
+  padding: 16px 0;
+  opacity: 0.7;
+}
+
 .clips-empty {
   padding: 16px 0;
   opacity: 0.7;
@@ -584,7 +676,8 @@ button:active {
   z-index: 20;
   padding: 10px 14px;
   border-radius: 8px;
-  background: #444;
+  color: var(--toast-fg);
+  background: var(--toast-bg);
   font-size: 14px;
   text-align: center;
   white-space: pre-line;
@@ -620,7 +713,7 @@ button:active {
   height: 64px;
   border-radius: 6px;
   overflow: hidden;
-  background: #111;
+  background: var(--input-bg);
 }
 
 .att img {

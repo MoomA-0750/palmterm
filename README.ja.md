@@ -90,6 +90,7 @@ Ctrl や Alt の入力、カーソル移動、スクロールを使いやすく�
 - JetBrains Mono と Symbols Nerd Font Mono を palmterm が配るので、スマホでも Nerd Font のアイコンが出る。
 - WezTerm・kitty・Ghostty と同じく、次のマスが空白のアイコンは2マス分の大きさで描き、そうでなければ
   1マスに収める。Powerline の区切りは1マスいっぱいに引き伸ばす。
+- 設定ファイルの `[font]` で端末のフォントを変えられる（[下](#フォント-1)）。アイコンはどのフォントでも今までどおり出る。
 
 ### リンクをスマホで開く
 
@@ -165,7 +166,8 @@ palmterm url                                   # ログイン用の URL と、�
 
 ### オプション
 
-`palmterm url [-no-qr]` はログイン用の URL と QR コードを出す。`palmterm open URL` は URL を palmterm の画面に渡す
+`palmterm url [-no-qr]` はログイン用の URL と QR コードを出す。`palmterm logout-all` は動いている palmterm の
+全端末のログインを取り消し、開いている接続も切る（端末をなくしたときなど。トークンは変わらない）。`palmterm open URL` は URL を palmterm の画面に渡す
 （[リンクをスマホで開く](#リンクをスマホで開く)）。
 
 | オプション | 既定 | |
@@ -183,11 +185,12 @@ palmterm url                                   # ログイン用の URL と、�
 
 ## 設定ファイル
 
-`~/.config/palmterm/config.toml` で、画面の言語とキーバーを決める。書き換えたらページを読み込み直すだけで
+`~/.config/palmterm/config.toml` で、画面の言語とキーバー、色（テーマ）、フォントを決める。書き換えたらページを読み込み直すだけで
 反映する（再起動は要らない）。[config.example.toml](config.example.toml) に既定のキーバーがそのまま
 書いてあるので、コピーして編集するとよい。
 
 ```toml
+version = 1            # 設定ファイルの書き方の版（書かなければ 1）
 language = "ja"        # "en"（既定）か "ja"
 
 [[keys]]
@@ -204,6 +207,56 @@ label = "S-Tab"
 text = ":wq\r"         # そのまま送る文字
 label = ":wq"
 ```
+
+`version` は書き方の版。この palmterm より新しい版の設定ファイルは、読める項目だけ使い、画面を開いたときに
+知らせる。好みの設定は `~/.config/palmterm/` にまとめて置くので、このフォルダを写せば別の PC でも同じになる。
+
+### 色（テーマ）
+
+`[theme]` の `name` で組み込みのテーマを選び、書いた色だけ上書きする。
+
+```toml
+[theme]
+name = "light"         # "default"（既定）・"light"・"solarized-dark"・"solarized-light"
+background = "#fafafa" # 端末と画面の背景
+foreground = "#1f2328" # 端末の文字
+cursor = "#1f2328"
+accent = "#0969da"     # ボタンの強調の色（既定は緑）
+red = "#d1242f"        # 端末の16色の1つ
+```
+
+16色は `black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` と、`bright_` を付けた
+`bright_black`〜`bright_white`。色は `#rrggbb` か `#rgb` で書く。書き間違えた色（`#12345` など）や
+知らないテーマの名前は画面を開いたときに知らせ、その所だけ既定の色に戻す。
+
+テーマは画面からも選べる。tmux ボタンのパネルの「テーマ」の行で押すと、すぐ色が変わり、設定ファイルの
+`[theme]` の `name` の行を書き換える（ほかの行・コメント・並び順はそのまま。ファイルが無ければ作る）。
+設定ファイルに書き間違いがあって読めないときは書き換えず、理由を知らせる。
+
+### フォント
+
+`[font]` で端末のフォントを変える。PC に入っているフォントは、palmterm がファイルを探してスマホに配る。
+
+```toml
+[font]
+family = "Liberation Mono"   # PC に入っているフォントの名前（fc-list で出る名前）
+# file = "fonts/MyFont.ttf"  # フォントのファイル。相対パスは ~/.config/palmterm/ から数える
+```
+
+- `family` の名前が PC に無ければ、スマホに入っている同じ名前のフォントを使い、それも無ければ JetBrains Mono に戻る。
+- `file` を書くと、`family` で探す代わりにそのファイルを配る（.ttf・.otf・.woff・.woff2）。フォントを
+  `~/.config/palmterm/` に置いて相対パスで書けば、フォルダごと写すだけで別の PC でも同じになる。使えない
+  ファイルは画面を開いたときに知らせる。
+- フォントのファイルはスマホからも足せる。tmux ボタンのパネルの「フォント」→「追加」で .ttf・.otf・.woff・.woff2
+  （32 MB まで）を選ぶと `~/.config/palmterm/fonts/` に保存される。一覧の「使う」を押すと、すぐ端末の文字が
+  そのフォントになり、設定ファイルの `[font]` の `file` の行（`file = "fonts/名前"`）を書き換える（テーマと同じく、
+  ほかの行はそのまま）。先頭の「既定のフォント」の「使う」は `file` の行を消す。同じ画面で、保存したフォントを
+  2回押しで消せる。
+- 配るのはログインした端末にだけで、配るのは決めたフォントのファイル1つだけ。
+- 配るのは普通の太さの1ファイルなので、太字はブラウザが太らせて描く。Nerd Font のアイコンは、どのフォントにしても
+  palmterm が配るアイコン用フォントで描く。
+
+### キーバー
 
 `[[keys]]` の1つ1つには、次のどれか1つを書く。
 

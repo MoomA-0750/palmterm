@@ -5,6 +5,7 @@ import "./style.css";
 import { Attachments, uploadFile } from "./attachments";
 import { type ClipItem, clipPreview, deleteClip, fetchClips, renderClips } from "./clips";
 import { Connection } from "./connection";
+import { setupFonts } from "./fontfiles";
 import { type DeviceItem, fetchDevices, renameDevice, renderDevices, revokeDevice } from "./devices";
 import { setupDragSelect } from "./dragselect";
 import { type Lang, setLang, t } from "./i18n";
@@ -14,6 +15,9 @@ import { applyToChar, isSingleChar, keySequenceWithMods, Modifiers, type ModName
 import { setupNerdIcons } from "./nerd";
 import { pasteSequence } from "./paste";
 import { SoftKeyboard } from "./softkeyboard";
+import { applyFont, type FontConfig } from "./font";
+import { applyTheme, resolveTheme, THEMES, type ThemeConfig } from "./theme";
+import { chooseAppearance, type AppearanceChange } from "./appearance";
 import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
 
@@ -26,21 +30,34 @@ const sendBtn = $<HTMLButtonElement>("send");
 const statusEl = $<HTMLDivElement>("status");
 const toastEl = $<HTMLDivElement>("toast");
 
-// ---- 設定ファイル（サーバーの ~/.config/palmterm/config.toml：言語とキーバー） ----
+// ---- 設定ファイル（サーバーの ~/.config/palmterm/config.toml：言語・キーバー・色・フォント） ----
 
 interface ServerConfig {
   language: Lang;
   keys?: KeyConfig[];
+  theme?: ThemeConfig;
+  font?: FontConfig;
+  /** [font] のフォントを PC から配るときの URL（PC に無ければ無い）。 */
+  fontURL?: string;
+  /** [font] の file を使えなかった理由。 */
+  fontError?: string;
   path: string;
   /** palmterm の版（`palmterm -version` と同じ）。 */
   version?: string;
   error?: string;
+  /** 設定ファイルの版がこの palmterm より新しいときの版（読める項目だけ使っている）。 */
+  newerConfig?: number;
 }
-const serverConfig: ServerConfig = (await fetch("/api/config", { cache: "no-store" })
+let serverConfig: ServerConfig = (await fetch("/api/config", { cache: "no-store" })
   .then((r) => (r.ok ? r.json() : null))
   .catch(() => null)) ?? { language: "en", path: "" };
 setLang(serverConfig.language);
 applyStaticTexts();
+// 色は [theme] で選んだテーマに、書いた色だけ上書きする。書き間違えた色は既定に戻して知らせる（起動の所）。
+const { theme, errors: themeErrors } = resolveTheme(serverConfig.theme);
+applyTheme(theme, document.documentElement, termEl);
+// フォントは [font] で PC から配られたもの、無ければスマホの同じ名前のもの、それも無ければ JetBrains Mono。
+applyFont(serverConfig.font, serverConfig.fontURL, document.documentElement);
 
 /** index.html に書いてある文言を、設定の言語に置き換える。 */
 function applyStaticTexts() {
@@ -264,6 +281,7 @@ function insertIntoLine(text: string) {
 // 1行のときはボタンと同じ高さ、改行したら 200px まで伸ばす。
 const LINE_MIN_HEIGHT = 36;
 function autosizeLine() {
+  updateSendButton();
   line.style.height = "";
   if (line.value === "") return; // 空なら CSS の高さ（プレースホルダーの折り返しで伸ばさない）
   const border = line.offsetHeight - line.clientHeight; // box-sizing: border-box なので枠の分を足す
@@ -323,6 +341,12 @@ async function flushLine(withEnter: boolean): Promise<boolean> {
   if (text) conn.send(text.includes("\n") ? bracketedPaste(text) : text);
   if (withEnter) conn.send("\r");
   return true;
+}
+
+// 送信ボタンは、送るもの（文字か添付）があるときだけ出す。空のときはテキストボックスがその分伸びる。
+// 空のままの Ctrl+Enter は今までどおり Enter だけを送る。
+function updateSendButton() {
+  sendBtn.hidden = line.value === "" && attachments.count === 0;
 }
 
 line.addEventListener("input", autosizeLine);
@@ -420,6 +444,19 @@ for (const def of keyButtons) {
   keybar.appendChild(btn);
 }
 
+// キーバーは隠せる（この端末のブラウザに覚える）。隠すとキーの段ごと消して端末を広げ、
+// tmux ボタンはタブバーの右端（＋の右）に移す。
+let keybarShown = true;
+function setKeybarShown(shown: boolean, save = true) {
+  keybarShown = shown;
+  const tmuxBtn = $("tmux-btn");
+  $("keyrow").hidden = !shown;
+  $("app").classList.toggle("keybar-hidden", !shown);
+  (shown ? $("keyrow") : $("tabbar")).append(tmuxBtn);
+  if (save) saveSetting("keybar", shown ? "shown" : "hidden");
+}
+setKeybarShown(loadSetting("keybar", "shown") !== "hidden", false);
+
 const tmuxPanel = setupTmuxPanel({
   tabs: $("tabs"),
   newWindow: $("new-window"),
@@ -427,9 +464,16 @@ const tmuxPanel = setupTmuxPanel({
   panel: $("tmuxpanel"),
   sendPrefix: () => conn.send("\x02"),
   fontSize: { get: () => fontSize, change: (delta) => setFontSize(fontSize + delta) },
+  keybar: { shown: () => keybarShown, set: (shown) => setKeybarShown(shown) },
   toast,
   version: serverConfig.version,
   openDevices: () => openDevices(),
+  openFonts: () => fonts.open(),
+  theme: {
+    names: Object.keys(THEMES),
+    current: () => (serverConfig.theme?.name && Object.hasOwn(THEMES, serverConfig.theme.name) ? serverConfig.theme.name : "default"),
+    choose: (name) => changeAppearance({ theme: name }),
+  },
   bind: bindKeyButton,
 });
 // 端末に触れたらパネルを閉じる。
@@ -567,7 +611,8 @@ async function copyText(text: string): Promise<boolean> {
 // どちらも Claude Code などに画像を渡すため。HEIC などはサーバーが JPEG に変換してから返す。
 
 const uploadInput = $<HTMLInputElement>("upload-input");
-const attachments = new Attachments($("attachments"));
+const attachments = new Attachments($("attachments"), updateSendButton);
+updateSendButton();
 
 async function addImages(files: File[]) {
   if (files.length === 0) return;
@@ -749,6 +794,28 @@ async function renameAndRefresh(item: DeviceItem, name: string) {
 
 $("devices-close").addEventListener("click", () => (devicesEl.hidden = true));
 
+// ---- 画面から足したフォント：追加と削除 ----
+
+const fonts = setupFonts((message) => toast(message, 5000), (name) => changeAppearance({ font: name }));
+
+// ---- テーマとフォントを画面で選ぶ：設定ファイルに書き戻し、すぐ画面に当てる ----
+
+/** 書き戻せたら、書き戻したあとの設定を当てて true。書き間違いがあって読めない設定ファイルなどは理由を知らせて false。 */
+async function changeAppearance(change: AppearanceChange): Promise<boolean> {
+  try {
+    serverConfig = await chooseAppearance<ServerConfig>(change);
+  } catch (e) {
+    toast(t("appearanceFailed", { error: e instanceof Error ? e.message : String(e) }), 10000);
+    return false;
+  }
+  const { theme, errors } = resolveTheme(serverConfig.theme);
+  applyTheme(theme, document.documentElement, termEl);
+  applyFont(serverConfig.font, serverConfig.fontURL, document.documentElement);
+  const problems = [...errors, ...(serverConfig.fontError ? [t("fontFileError", { error: serverConfig.fontError })] : [])];
+  if (problems.length) toast(problems.join("\n"), 10000);
+  return true;
+}
+
 // ほかの端末から取り消されたら、つなぎ直さずに読み込み直す（ログインし直す方法の案内が出る）。
 conn.onLoggedOut = () => location.reload();
 
@@ -759,7 +826,12 @@ await term.init();
 // 設定ファイルの書き間違いは、読める所だけ使って知らせる（長めに出す）。
 const configProblems = [
   ...(serverConfig.error ? [t("configError", { path: serverConfig.path, error: serverConfig.error })] : []),
+  ...(serverConfig.newerConfig
+    ? [t("configNewer", { path: serverConfig.path, version: String(serverConfig.newerConfig) })]
+    : []),
   ...keyErrors,
+  ...themeErrors,
+  ...(serverConfig.fontError ? [t("fontFileError", { error: serverConfig.fontError })] : []),
 ];
 if (configProblems.length) toast(configProblems.join("\n"), 10000);
 

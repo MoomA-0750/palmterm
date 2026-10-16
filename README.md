@@ -93,6 +93,7 @@ for working with TUIs such as vim, lazygit and Claude Code.
 - palmterm serves JetBrains Mono and Symbols Nerd Font Mono, so Nerd Font icons work on phones.
 - As in WezTerm, kitty and Ghostty, an icon followed by a space is drawn two cells wide; otherwise it
   fits in one cell. Powerline separators are stretched to fill their cell.
+- `[font]` in the config file changes the terminal font ([below](#font)). Icons keep working with any font.
 
 ### Opening links on your phone
 
@@ -170,7 +171,8 @@ palmterm url                                   # login URLs and a QR code to sca
 
 ### Options
 
-`palmterm url [-no-qr]` prints the login URLs and a QR code; `palmterm open URL` hands a URL to the palmterm page
+`palmterm url [-no-qr]` prints the login URLs and a QR code; `palmterm logout-all` logs out every device of the
+running palmterm and closes their open connections (e.g. after losing a phone; the token stays the same); `palmterm open URL` hands a URL to the palmterm page
 (see [Opening links on your phone](#opening-links-on-your-phone)).
 
 | Flag | Default | |
@@ -188,11 +190,12 @@ palmterm url                                   # login URLs and a QR code to sca
 
 ## Configuration
 
-`~/.config/palmterm/config.toml` sets the UI language and the key bar. Reload the page to apply
+`~/.config/palmterm/config.toml` sets the UI language, the key bar, the colors (theme) and the font. Reload the page to apply
 changes; no restart is needed. [config.example.toml](config.example.toml) contains the default key bar,
 so it is a good starting point.
 
 ```toml
+version = 1            # config format version (defaults to 1)
 language = "en"        # "en" (default) or "ja"
 
 [[keys]]
@@ -209,6 +212,60 @@ label = "S-Tab"
 text = ":wq\r"         # sent as is
 label = ":wq"
 ```
+
+`version` is the config format version. A config file from a newer palmterm is read as far as this
+palmterm understands it, and the page tells you so when it opens. Your settings live in
+`~/.config/palmterm/`, so copying that folder gives you the same setup on another PC.
+
+### Colors (theme)
+
+`name` in `[theme]` picks a built-in theme; any color you write overrides just that color.
+
+```toml
+[theme]
+name = "light"         # "default" (default), "light", "solarized-dark" or "solarized-light"
+background = "#fafafa" # terminal and page background
+foreground = "#1f2328" # terminal text
+cursor = "#1f2328"
+accent = "#0969da"     # button accent (green by default)
+red = "#d1242f"        # one of the 16 terminal colors
+```
+
+The 16 colors are `black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` and their
+`bright_` versions (`bright_black` … `bright_white`). Write colors as `#rrggbb` or `#rgb`. A mistyped
+color (such as `#12345`) or an unknown theme name is reported when the page opens, and only that part
+falls back to the default.
+
+You can also pick the theme on the page: tap one in the Theme row of the tmux button's panel. The colors
+change at once and the `name` line under `[theme]` in the config file is rewritten (other lines, comments
+and their order stay as they are; the file is created if missing). If the config file has a mistake and
+cannot be read, it is left alone and the reason is shown.
+
+### Font
+
+`[font]` sets the terminal font. For a font installed on the PC, palmterm finds its file and serves it to the phone.
+
+```toml
+[font]
+family = "Liberation Mono"   # name of a font installed on the PC (as fc-list shows it)
+# file = "fonts/MyFont.ttf"  # a font file; relative paths start at ~/.config/palmterm/
+```
+
+- If the PC has no font with that `family` name, a font of the same name on the phone is used, and
+  otherwise JetBrains Mono.
+- `file` serves that file instead of looking up `family` (.ttf, .otf, .woff or .woff2). Put the font in
+  `~/.config/palmterm/` and use a relative path, and copying the folder carries it to another PC. A file that
+  cannot be used is reported when the page opens.
+- You can also add font files from the phone: in the tmux button's panel, tap Fonts → Add and pick a .ttf,
+  .otf, .woff or .woff2 (up to 32 MB). It is saved in `~/.config/palmterm/fonts/`. Tap Use in the list to
+  switch the terminal to it at once; the `file` line under `[font]` (`file = "fonts/NAME"`) in the config
+  file is rewritten, leaving the other lines alone as with the theme. Use on "Default font" at the top
+  removes the `file` line. The same screen deletes saved fonts (tap twice).
+- The font is served only to logged-in devices, and only that one font file.
+- Only the regular weight is served, so the browser draws bold by thickening it. Nerd Font icons are always
+  drawn with the icon font palmterm serves, whichever font you pick.
+
+### Key bar
 
 Each `[[keys]]` entry has exactly one of:
 

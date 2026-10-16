@@ -4,8 +4,39 @@
 # 書き換えたら、ブラウザでページを読み込み直せば反映される（サーバーの再起動は要らない）。
 # Put this at ~/.config/palmterm/config.toml (or pass -config). Reload the page to apply changes.
 
+# 設定ファイルの書き方の版 / Config format version（書かなければ 1 / defaults to 1）
+version = 1
+
 # 画面の言語 / UI language: "en"（既定 / default）or "ja"
 language = "en"
+
+# 画面の色 / Colors
+[theme]
+# 組み込みのテーマ / Built-in theme: "default"（既定 / default）, "light", "solarized-dark", "solarized-light"
+# 画面の tmux パネルの「テーマ」で選ぶと、この行が書き換わる / Picking a theme in the tmux panel rewrites this line
+name = "default"
+# 書いた色だけ、テーマの色を上書きする（"#rrggbb" か "#rgb"）。書き間違えた色は画面で知らせ、テーマの色に戻す。
+# Colors you write override the theme ("#rrggbb" or "#rgb"). A mistyped color is reported on the page and ignored.
+# background = "#1e1e1e"   # 端末と画面の背景 / terminal and page background
+# foreground = "#d4d4d4"   # 端末の文字 / terminal text
+# cursor = "#aeafad"
+# accent = "#3fb950"       # ボタンの強調の色 / button accent
+# 端末の16色 / The 16 terminal colors:
+#   black red green yellow blue magenta cyan white
+#   bright_black bright_red bright_green bright_yellow bright_blue bright_magenta bright_cyan bright_white
+# red = "#f44747"
+
+# 端末のフォント / Terminal font（書かなければ JetBrains Mono / JetBrains Mono if unset）
+[font]
+# PC に入っているフォントの名前。palmterm がファイルを探してスマホに配る。PC に無ければスマホの同じ名前のフォント、
+# それも無ければ JetBrains Mono。
+# Name of a font installed on the PC; palmterm finds and serves its file. Falls back to a font of that name
+# on the phone, then to JetBrains Mono.
+# family = "Liberation Mono"
+# フォントのファイル（family で探す代わりに配る）。相対パスはこのファイルのあるフォルダから数える。
+# A font file to serve instead (.ttf, .otf, .woff, .woff2). Relative paths start at this file's folder.
+# フォントの一覧の「使う」で選ぶと、file の行が書き換わる / Tapping Use in the font list rewrites the file line
+# file = "fonts/MyFont.ttf"
 
 # キーバーのキー。書いた順に左から並ぶ。[[keys]] を1つでも書くと、既定の並びを丸ごと置き換える。
 # Keys on the key bar, left to right. Any [[keys]] entry replaces the whole default set.

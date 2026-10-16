@@ -4,10 +4,11 @@
 // 一時ディレクトリの設定ファイル・アップロード先で動かすので、ふだんの環境には触れない。
 
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { inflateSync } from "node:zlib";
 import { type Browser, type CDPSession, chromium, type Page } from "playwright-core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -22,7 +23,55 @@ const configPath = join(dir, "config.toml");
 const uploadDir = join(dir, "uploads");
 // XDG_CONFIG_HOME も一時ディレクトリにする（LAN 用の証明書をふだんの ~/.config に作らない）。
 // XDG_RUNTIME_DIR も分ける（ブラウザの受け渡しのソケットと palmterm-open をそこに作る）。
-const env = { ...process.env, TMUX_TMPDIR: tmuxDir, TMUX: "", SHELL: "/bin/sh", ENV: "", PS1: "$ ", XDG_CONFIG_HOME: dir, XDG_RUNTIME_DIR: tmuxDir };
+// XDG_DATA_HOME も分ける（PC に入っているフォントとして、テスト用のフォントを fonts に置く）。
+const env = { ...process.env, TMUX_TMPDIR: tmuxDir, TMUX: "", SHELL: "/bin/sh", ENV: "", PS1: "$ ", XDG_CONFIG_HOME: dir, XDG_RUNTIME_DIR: tmuxDir, XDG_DATA_HOME: join(dir, "data") };
+// ブラウザ（スマホ）にだけ入っているフォントの置き場所。
+const browserData = join(dir, "browser-data");
+
+/**
+ * テスト用のフォント：JetBrains Mono の WOFF を TrueType に戻し、名前を family（14文字）に付け替えたもの。
+ * 名前の長さが同じなので、名前の所を書き換えるだけで済む。
+ */
+function testFont(family: string): Buffer {
+  if (family.length !== 14) throw new Error("名前は JetBrains Mono と同じ14文字にする");
+  const woff = readFileSync(resolve(__dirname, "../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff"));
+  const n = woff.readUInt16BE(12);
+  const tables = Array.from({ length: n }, (_, i) => {
+    const e = 44 + 20 * i;
+    const [offset, comp, orig] = [woff.readUInt32BE(e + 4), woff.readUInt32BE(e + 8), woff.readUInt32BE(e + 12)];
+    const raw = woff.subarray(offset, offset + comp);
+    return { tag: woff.subarray(e, e + 4), checksum: woff.readUInt32BE(e + 16), data: comp < orig ? inflateSync(raw) : raw };
+  });
+  const head = Buffer.alloc(12 + 16 * n);
+  woff.copy(head, 0, 4, 8); // 元の形式（TrueType）
+  head.writeUInt16BE(n, 4);
+  const parts: Buffer[] = [head];
+  let at = head.length;
+  tables.forEach((t, i) => {
+    t.tag.copy(head, 12 + 16 * i);
+    head.writeUInt32BE(t.checksum, 12 + 16 * i + 4);
+    head.writeUInt32BE(at, 12 + 16 * i + 8);
+    head.writeUInt32BE(t.data.length, 12 + 16 * i + 12);
+    const padded = Buffer.alloc((t.data.length + 3) & ~3);
+    t.data.copy(padded);
+    parts.push(padded);
+    at += padded.length;
+  });
+  const font = Buffer.concat(parts);
+  for (const [from, to] of [
+    [Buffer.from("JetBrains Mono", "utf16le").swap16(), Buffer.from(family, "utf16le").swap16()],
+    [Buffer.from("JetBrains Mono"), Buffer.from(family)],
+  ]) {
+    for (let i = font.indexOf(from); i >= 0; i = font.indexOf(from, i + 1)) to.copy(font, i);
+  }
+  return font;
+}
+mkdirSync(join(dir, "data", "fonts"), { recursive: true });
+writeFileSync(join(dir, "data", "fonts", "PalmtermProbe-Regular.ttf"), testFont("Palmterm Probe"));
+mkdirSync(join(dir, "myfonts"));
+writeFileSync(join(dir, "myfonts", "files.ttf"), testFont("Palmterm Files"));
+mkdirSync(join(browserData, "fonts"), { recursive: true });
+writeFileSync(join(browserData, "fonts", "PalmtermLocal-Regular.ttf"), testFont("Palmterm Local"));
 
 let server: ChildProcess;
 let browser: Browser;
@@ -94,7 +143,7 @@ beforeAll(async () => {
   );
   await waitUntil("サーバーが立ち上がる", async () => fetch(`${base}/auth?token=${TOKEN}`, { redirect: "manual" }).then((r) => r.status === 303, () => false));
 
-  browser = await chromium.launch({ executablePath: CHROMIUM, headless: true });
+  browser = await chromium.launch({ executablePath: CHROMIUM, headless: true, env: { ...process.env, XDG_DATA_HOME: browserData } });
   const context = await browser.newContext({ viewport: { width: 400, height: 760 } });
   await context.addInitScript(() => {
     const w = window as unknown as { __sent: string[]; __sockets: WebSocket[] };
@@ -146,6 +195,44 @@ beforeEach(async () => {
   await openPage();
   await clearSent();
 });
+
+/**
+ * 文字とアイコン（U+F418）を出し、それぞれ実際にどのフォントで描いたかをブラウザに訊く。
+ * ページを読み込み直したあとも使える（printf の出力は tmux に残る）。終わったら cdp.detach() する。
+ */
+async function fontProbe() {
+  tmux("send-keys", "-t", SESSION, "printf 'WWW \\357\\220\\230 X\\n'", "Enter");
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("DOM.enable");
+  await cdp.send("CSS.enable");
+  const usedFont = async (what: "text" | "icon"): Promise<string> => {
+    let found = "";
+    await waitUntil(`${what} のフォントがわかる`, async () => {
+      const marked = await page.evaluate((what) => {
+        document.querySelectorAll("[data-probe]").forEach((e) => e.removeAttribute("data-probe"));
+        const want = what === "text" ? "WWW" : "\uf418";
+        const walker = document.createTreeWalker(document.getElementById("term")!, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const text = n.textContent ?? "";
+          if (text.includes(want) && !text.includes("printf")) {
+            n.parentElement!.setAttribute("data-probe", "");
+            return true;
+          }
+        }
+        return false;
+      }, what);
+      if (!marked || !(await page.evaluate(() => document.fonts.ready.then(() => true)))) return false;
+      const { root } = await cdp.send("DOM.getDocument");
+      const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: "[data-probe]" });
+      if (!nodeId) return false;
+      const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
+      found = fonts.map((f) => f.familyName).join(",");
+      return found !== "";
+    });
+    return found;
+  };
+  return { usedFont, cdp };
+}
 
 describe("キーバー", () => {
   it("既定の並びと英語の表示", async () => {
@@ -254,6 +341,48 @@ describe("入力", () => {
     expect(await sent()).toEqual(["echo two", "\r", "\x7f"]);
   });
 
+  it("送信ボタンは、文字か添付があるときだけ出す。空の Ctrl+Enter は Enter だけを送る", async () => {
+    const send = page.locator("#send");
+    const lineWidth = async () => (await page.locator("#line").boundingBox())!.width;
+    // 空で添付もないときは出さず、テキストボックスがその分（ボタンの幅と間の 4px）伸びる
+    expect(await send.isHidden()).toBe(true);
+    const wide = await lineWidth();
+
+    await page.locator("#line").click();
+    await page.keyboard.type("a");
+    expect(await send.isVisible()).toBe(true);
+    const sendWidth = (await send.boundingBox())!.width;
+    expect(wide - (await lineWidth())).toBeCloseTo(sendWidth + 4, 0);
+    await page.keyboard.press("Backspace");
+    expect(await send.isHidden()).toBe(true);
+    expect(await lineWidth()).toBeCloseTo(wide, 0);
+
+    // 文字が空でも画像を添付すると出て、× で外すと消える
+    await page.locator("#upload-input").setInputFiles({ name: "only.png", mimeType: "image/png", buffer: Buffer.from("89504e470d0a1a0a", "hex") });
+    await waitUntil("送信ボタンが出る", () => send.isVisible());
+    await page.locator(".att-remove").click();
+    expect(await send.isHidden()).toBe(true);
+
+    // 送って空になると消える
+    await page.locator("#line").fill("echo three");
+    expect(await send.isVisible()).toBe(true);
+    await send.click();
+    expect(await page.inputValue("#line")).toBe("");
+    expect(await send.isHidden()).toBe(true);
+
+    // 空のままの Ctrl+Enter と、キーバーの Ctrl → Enter は Enter だけを送る
+    await clearSent();
+    await page.locator("#line").click();
+    await page.keyboard.press("Control+Enter");
+    expect(await sent()).toEqual(["\r"]);
+    await key("Ctrl").click();
+    await page.locator("#line").focus();
+    await page.keyboard.press("Enter");
+    expect(await sent()).toEqual(["\r", "\r"]);
+    expect(await page.inputValue("#line")).toBe("");
+    expect(await send.isHidden()).toBe(true);
+  });
+
   it("端末をタップすれば直接入力。Tab はテキストボックスの書きかけを送らない", async () => {
     await page.locator("#line").fill("LEFTOVER");
     await page.mouse.click(200, 150);
@@ -326,6 +455,42 @@ describe("tmux のタブとパネル", () => {
 
     tmux("kill-pane", "-t", SESSION);
   });
+  it("パネルでキーバーを隠すと端末が広がり、読み込み直しても隠れたまま。別のブラウザでは出たまま。もう一度押すと出る", async () => {
+    const termHeight = async () => (await page.locator("#term").boundingBox())!.height;
+    const shownHeight = await termHeight();
+    const keyrowHeight = (await page.locator("#keyrow").boundingBox())!.height;
+
+    await page.locator("#tmux-btn").click();
+    await page.locator('#tmuxpanel button[title="Hide the key bar"]').click();
+    expect(await page.locator("#tmuxpanel").isHidden()).toBe(true);
+    expect(await page.locator("#keybar").isHidden()).toBe(true);
+    // タブ、tmux ボタン（タブバーの右端に移る）、入力バーは残る
+    expect(await page.locator("#tabs").isVisible()).toBe(true);
+    expect(await page.locator("#tabbar #tmux-btn").isVisible()).toBe(true);
+    expect(await page.locator("#inputbar").isVisible()).toBe(true);
+    // 端末はキーの段の分だけ広がる（タブバーは下の余白 4px を持つ）
+    await waitUntil("端末が広がる", async () => Math.abs((await termHeight()) - (shownHeight + keyrowHeight - 4)) < 1);
+
+    await openPage();
+    expect(await page.locator("#keybar").isHidden()).toBe(true);
+    expect(await page.locator("#tabbar #tmux-btn").isVisible()).toBe(true);
+
+    const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
+    try {
+      const otherPage = await other.newPage();
+      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await otherPage.waitForFunction(() => document.querySelector("#keybar button") !== null);
+      expect(await otherPage.locator("#keybar").isVisible()).toBe(true);
+    } finally {
+      await other.close();
+    }
+
+    await page.locator("#tmux-btn").click();
+    await page.locator('#tmuxpanel button[title="Show the key bar"]').click();
+    expect(await page.locator("#keybar").isVisible()).toBe(true);
+    expect(await page.locator("#keyrow #tmux-btn").isVisible()).toBe(true);
+    await waitUntil("端末が元の高さに戻る", async () => Math.abs((await termHeight()) - shownHeight) < 1);
+  });
 });
 
 describe("設定ファイル", () => {
@@ -351,6 +516,233 @@ text = ":wq"
     await key("S-Tab").click();
     expect(await sent()).toEqual(["\x1b[Z"]);
   });
+
+  it("[theme] でテーマを選ぶと端末とボタンの色が変わり、書いた色だけ上書きする。書き間違えた色は知らせて既定に戻す", async () => {
+    const colors = () =>
+      page.evaluate(() => {
+        const term = getComputedStyle(document.getElementById("term")!);
+        const key = getComputedStyle(document.querySelector("#keybar button")!);
+        return {
+          termBg: term.backgroundColor,
+          termFg: term.getPropertyValue("--term-fg").trim(),
+          red: term.getPropertyValue("--term-color-1").trim(),
+          blue: term.getPropertyValue("--term-color-4").trim(),
+          keyBg: key.backgroundColor,
+          tmuxBtn: getComputedStyle(document.getElementById("tmux-btn")!).color,
+        };
+      });
+    const before = await colors();
+    expect(before.termBg).toBe("rgb(30, 30, 30)");
+
+    writeFileSync(configPath, `[theme]\nname = "light"\n`);
+    await openPage();
+    const light = await colors();
+    expect(light.termBg).toBe("rgb(255, 255, 255)");
+    expect(light.keyBg).not.toBe(before.keyBg);
+    expect(light.red).toBe("#cf222e");
+
+    writeFileSync(configPath, `[theme]\nname = "light"\nbackground = "#fafafa"\naccent = "#0969da"\nblue = "#0000ff"\nred = "#12345"\n`);
+    await openPage();
+    const custom = await colors();
+    expect(custom.termBg).toBe("rgb(250, 250, 250)");
+    expect(custom.tmuxBtn).toBe("rgb(9, 105, 218)");
+    expect(custom.blue).toBe("#0000ff");
+    expect(custom.red).toBe("#cf222e"); // 書き間違えた色は light の色のまま
+    expect(custom.termFg).toBe(light.termFg); // 書いていない色もそのまま
+    expect(custom.keyBg).toBe(light.keyBg);
+    expect(await page.locator("#toast").textContent()).toContain("[theme] red");
+
+    rmSync(configPath, { force: true });
+    await openPage();
+    expect(await colors()).toEqual(before);
+  });
+
+  it("[font] の family・file のフォントを PC から配って端末の文字に使う。PC に無ければスマホのもの、それも無ければ JetBrains Mono。アイコンは変わらない", async () => {
+    const { usedFont, cdp } = await fontProbe();
+    const icon = await usedFont("icon");
+    expect(await usedFont("text")).toBe("JetBrains Mono");
+
+    // PC に入っているフォントの名前。スマホ（ブラウザ）には無いので、PC から配ったものを使う。
+    writeFileSync(configPath, `[font]\nfamily = "Palmterm Probe"\n`);
+    await openPage();
+    expect(await usedFont("text")).toBe("Palmterm Probe");
+    expect(await usedFont("icon")).toBe(icon);
+
+    // PC に無くスマホにある名前なら、スマホのものを使う。
+    writeFileSync(configPath, `[font]\nfamily = "Palmterm Local"\n`);
+    await openPage();
+    expect(await usedFont("text")).toBe("Palmterm Local");
+    expect(await usedFont("icon")).toBe(icon);
+
+    // どちらにも無ければ JetBrains Mono。
+    writeFileSync(configPath, `[font]\nfamily = "Palmterm Nowhere"\n`);
+    await openPage();
+    expect(await usedFont("text")).toBe("JetBrains Mono");
+
+    // file は設定ファイルのあるフォルダから数える。
+    writeFileSync(configPath, `[font]\nfile = "myfonts/files.ttf"\n`);
+    await openPage();
+    expect(await usedFont("text")).toBe("Palmterm Files");
+    expect(await usedFont("icon")).toBe(icon);
+    // ログインしていないブラウザには配らない。
+    const res = await fetch(`${base}/api/font`, { redirect: "manual" });
+    expect(res.status).not.toBe(200);
+
+    // 使えないファイルは知らせて、JetBrains Mono に戻す。
+    writeFileSync(configPath, `[font]\nfile = "myfonts/missing.ttf"\n`);
+    await openPage();
+    expect(await page.locator("#toast").textContent()).toContain("[font]");
+    expect(await usedFont("text")).toBe("JetBrains Mono");
+    await cdp.detach();
+  });
+  it("tmux パネルの「フォント」から足したフォントは fonts/ に保存され、[font] の file で使え、一覧から2回押しで消せる。フォントでない・大きすぎるものは保存せず知らせる", async () => {
+    const fontsDir = join(dir, "fonts");
+    rmSync(fontsDir, { recursive: true, force: true });
+    const openFonts = async () => {
+      await page.locator("#tmux-btn").click();
+      await page.locator("#tmuxpanel button", { hasText: "Fonts" }).click();
+      await waitUntil("フォントの画面が出る", async () => (await page.locator("#fonts").isVisible()) && (await page.locator("#font-list li").count()) > 0 && !((await page.locator("#font-list").textContent()) ?? "").includes("Loading"));
+    };
+    await openFonts();
+    expect(await page.locator(".fonts-empty").count()).toBe(1);
+    expect(await page.locator("#fonts-hint").textContent()).toContain(fontsDir);
+
+    // フォントを選ぶと保存され、一覧に設定ファイルに書く行が出る
+    const added = testFont("Palmterm Added");
+    await page.locator("#fonts-input").setInputFiles({ name: "Added Probe.ttf", mimeType: "font/ttf", buffer: added });
+    const row = page.locator(".font-file", { hasText: "Added_Probe.ttf" });
+    await waitUntil("一覧に出る", async () => (await row.count()) === 1);
+    expect(await row.locator(".font-meta").textContent()).toContain('file = "fonts/Added_Probe.ttf"');
+    expect(await page.locator("#toast").textContent()).toContain('file = "fonts/Added_Probe.ttf"');
+    expect(readFileSync(join(fontsDir, "Added_Probe.ttf")).equals(added)).toBe(true);
+
+    // フォントでないもの・大きすぎるものは保存せず知らせる。名前に ../ があっても fonts/ の外には書かない
+    await page.locator("#fonts-input").setInputFiles({ name: "notes.ttf", mimeType: "font/ttf", buffer: Buffer.from("this is not a font") });
+    await waitUntil("フォントでないと知らせる", async () => ((await page.locator("#toast").textContent()) ?? "").includes("not a font file"));
+    const big = Buffer.concat([added, Buffer.alloc(33 << 20)]);
+    await page.locator("#fonts-input").setInputFiles({ name: "big.ttf", mimeType: "font/ttf", buffer: big });
+    await waitUntil("大きすぎると知らせる", async () => ((await page.locator("#toast").textContent()) ?? "").includes("too large"), 15_000);
+    await page.locator("#fonts-input").setInputFiles({ name: "../escape.ttf", mimeType: "font/ttf", buffer: added });
+    await waitUntil("保存の結果が出る", async () => ((await page.locator("#toast").textContent()) ?? "").includes("Saved"));
+    expect(existsSync(join(dir, "escape.ttf"))).toBe(false);
+    expect(existsSync(join(dir, "notes.ttf")) || existsSync(join(fontsDir, "notes.ttf")) || existsSync(join(fontsDir, "big.ttf"))).toBe(false);
+    expect(readdirSync(fontsDir).sort()).toEqual(["Added_Probe.ttf", "escape.ttf"]);
+    await page.locator("#fonts-close").click();
+
+    // [font] の file = "fonts/…" で端末の文字に使える。一覧では使っているものに印が付く
+    tmux("send-keys", "-t", SESSION, "clear", "Enter");
+    writeFileSync(configPath, `[font]\nfile = "fonts/Added_Probe.ttf"\n`);
+    await openPage();
+    const { usedFont, cdp } = await fontProbe();
+    expect(await usedFont("text")).toBe("Palmterm Added");
+    await cdp.detach();
+    await openFonts();
+    expect(await page.locator(".font-file.in-use .font-name").textContent()).toBe("Added_Probe.ttf（in use）");
+
+    // 削除は2回押し
+    const del = page.locator(".font-file", { hasText: "escape.ttf" }).locator(".font-delete");
+    await del.click();
+    expect(await del.textContent()).toBe("Delete?");
+    expect(existsSync(join(fontsDir, "escape.ttf"))).toBe(true);
+    await del.click();
+    await waitUntil("一覧から消える", async () => (await page.locator(".font-file").count()) === 1);
+    expect(readdirSync(fontsDir)).toEqual(["Added_Probe.ttf"]);
+  }, 30_000);
+
+  it("tmux パネルでテーマと fonts/ のフォントを選ぶとすぐ画面に反映され、設定ファイルの [theme] の name と [font] の file だけが書き換わる。無ければ作る。別の端末で読み込み直しても同じ。読めない設定ファイルには書かず知らせる", async () => {
+    mkdirSync(join(dir, "fonts"), { recursive: true });
+    writeFileSync(join(dir, "fonts", "Chosen.ttf"), testFont("Palmterm Chose"));
+    const termBg = (p: Page) => p.evaluate(() => getComputedStyle(document.getElementById("term")!).backgroundColor);
+    const accent = (p: Page) => p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
+    const chooseTheme = async (name: string) => {
+      if (await page.locator("#tmuxpanel").isHidden()) await page.locator("#tmux-btn").click();
+      await page.locator(`#tmuxpanel .tmux-theme[data-theme="${name}"]`).click();
+    };
+    const mine = `# mine
+language = "en" # English
+
+[theme]
+# colors
+name = "light"  # change later
+accent = "#0969da"
+
+[font]
+family = "Palmterm Local"
+`;
+    writeFileSync(configPath, mine);
+    tmux("send-keys", "-t", SESSION, "clear", "Enter");
+    await openPage();
+    expect(await termBg(page)).toBe("rgb(255, 255, 255)");
+
+    // テーマ：押すとすぐ色が変わり、パネルは開いたまま、押したものに印が付く。書いた色（accent）はそのまま上書きする
+    await chooseTheme("solarized-dark");
+    await waitUntil("色が変わる", async () => (await termBg(page)) === "rgb(0, 43, 54)");
+    expect(await accent(page)).toBe("#0969da");
+    expect(await page.locator("#tmuxpanel").isVisible()).toBe(true);
+    expect(await page.locator("#tmuxpanel .tmux-theme.on").getAttribute("data-theme")).toBe("solarized-dark");
+    expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`name = "light"`, `name = "solarized-dark"`));
+
+    // フォント：パネルの「フォント」の一覧で「使う」を押すと、読み込み直さずに端末の文字がそのフォントになる
+    await page.locator("#tmuxpanel button", { hasText: "Fonts" }).click();
+    const row = page.locator(".font-file", { hasText: "Chosen.ttf" });
+    await waitUntil("一覧に出る", async () => (await row.count()) === 1);
+    await row.locator(".font-use").click();
+    await waitUntil("使用中になる", async () => ((await row.locator(".font-name").textContent()) ?? "").includes("in use"));
+    const { usedFont, cdp } = await fontProbe();
+    expect(await usedFont("text")).toBe("Palmterm Chose");
+    await cdp.detach();
+    await page.locator("#fonts-close").click();
+    const written = mine.replace(`name = "light"`, `name = "solarized-dark"`).replace(`family = "Palmterm Local"\n`, `family = "Palmterm Local"\nfile = "fonts/Chosen.ttf"\n`);
+    expect(readFileSync(configPath, "utf8")).toBe(written);
+
+    // 別の端末で読み込み直しても同じテーマ・フォント
+    const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
+    try {
+      const otherPage = await other.newPage();
+      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await otherPage.waitForFunction(() => document.querySelector(".term-row") !== null);
+      expect(await termBg(otherPage)).toBe("rgb(0, 43, 54)");
+      expect(
+        await otherPage.evaluate(async () => {
+          await document.fonts.ready;
+          const served = [...document.fonts].find((f) => f.family.replace(/"/g, "") === "palmterm font");
+          return [served?.status, getComputedStyle(document.documentElement).getPropertyValue("--mono-font").includes("palmterm font")];
+        }),
+      ).toEqual(["loaded", true]);
+    } finally {
+      await other.close();
+    }
+
+    // 「既定のフォント」に戻すと file の行だけ消える
+    await page.locator("#tmux-btn").click();
+    await page.locator("#tmuxpanel button", { hasText: "Fonts" }).click();
+    await page.locator(".font-default .font-use").click();
+    await waitUntil("既定に戻る", async () => ((await page.locator(".font-default .font-name").textContent()) ?? "").includes("in use"));
+    expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`name = "light"`, `name = "solarized-dark"`));
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--mono-font").includes("palmterm font"))).toBe(false);
+    await page.locator("#fonts-close").click();
+
+    // 設定ファイルが無ければ作る
+    rmSync(configPath, { force: true });
+    await chooseTheme("light");
+    await waitUntil("色が変わる", async () => (await termBg(page)) === "rgb(255, 255, 255)");
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 1\n\n[theme]\nname = "light"\n`);
+
+    // 書き間違いがあって読めない設定ファイルには書かず、知らせる。色も変えない
+    const bad = `[theme]\nname = "light"\nbackgroud = "#000000"\n`;
+    writeFileSync(configPath, bad);
+    await openPage();
+    expect(await termBg(page)).toBe("rgb(30, 30, 30)");
+    await chooseTheme("solarized-light");
+    await waitUntil("知らせる", async () => ((await page.locator("#toast").textContent()) ?? "").includes("has a mistake"));
+    expect(await page.locator("#toast").textContent()).toContain("theme.backgroud");
+    expect(readFileSync(configPath, "utf8")).toBe(bad);
+    expect(await termBg(page)).toBe("rgb(30, 30, 30)");
+    expect(await page.locator("#tmuxpanel .tmux-theme.on").getAttribute("data-theme")).toBe("default");
+
+    rmSync(configPath, { force: true });
+    await openPage();
+  }, 30_000);
 });
 
 describe("複数行の送信", () => {

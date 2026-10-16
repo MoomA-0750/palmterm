@@ -146,6 +146,15 @@ func (d *deviceStore) remove(id string) (bool, error) {
 	return false, nil
 }
 
+// 全端末の記録を消し、消した台数を返す（palmterm logout-all）。
+func (d *deviceStore) removeAll() (int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	n := len(d.devices)
+	d.devices = map[string]*device{}
+	return n, d.saveLocked()
+}
+
 // 端末に付けた名前の長さの上限（文字数）。
 const maxDeviceLabel = 40
 
