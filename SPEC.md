@@ -12,8 +12,9 @@
 - （仮）端末の文字は DOM に描くので、OS の文字選択が使える
 - （仮）切断されても tmux のセッションは残り、間隔を広げながらつなぎ直し、続きから表示する
 - （仮）画面の言語は英語（既定）と日本語。起動時の案内とログも設定の言語で出す
-- （仮）`palmterm -help` のオプションの説明も設定の言語で出す。`-config` で指した設定ファイル（`-help` の前でも後でも）か既定の置き場所の設定を読み、`language = "ja"` なら説明と既定値の書き添え（`（既定: …）`）を日本語にする。設定が無い・`en`・読めないときは Go の flag の既定の英語のまま
+- （確定）`palmterm -help` のオプションの説明も設定の言語で出す。`-config` で指した設定ファイル（`-help` の前でも後でも）か既定の置き場所の設定を読み、`language = "ja"` なら説明と既定値の書き添え（`（既定: …）`）を日本語にする。設定が無い・`en`・読めないときは Go の flag の既定の英語のまま
   - 確かめ方: 自動テスト `TestHelpLanguage`（help_test.go）
+  - 実物での確かめ方: `language = "ja"` の設定ファイルを作り、`palmterm -config <そのファイル> -help` → 見出しが「<実行ファイル> の使い方:」で、各オプションの説明が日本語、既定値は「（既定: …）」で出る。`language = "en"` なら英語のまま
 - （確定）`palmterm -version` で `palmterm <版>` を1行出して終わる（終了コード 0。サーバーは起動しない）。版はビルド時に `-ldflags "-X main.version=..."` で埋め込み、`make` では `git describe --tags --always --dirty` の値を入れる。埋め込まなければ `dev`。commit を進めて `make` すれば新しい版で作り直す（`make -B` は要らない）。版もファイルも変わっていなければ作り直さない。タグ名に `'` `"` `$` などが入っていても同じように動く
   - 確かめ方: 自動テスト `TestVersionFlag`、`TestMakefileEmbedsGitDescribe`、`TestMakeRebuildsOnlyWhenVersionChanges`（version_test.go）
 - （確定）画面の tmux ボタンのパネルの一番下の「版」の行に、つないでいるサーバーの版を `palmterm -version` と同じ文字（`palmterm <版>`）で出す。版は `/api/config` の応答の `version` で受け取る。受け取れなければ行を出さない
