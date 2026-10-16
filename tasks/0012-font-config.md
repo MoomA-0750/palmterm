@@ -52,4 +52,7 @@ created: 2026-10-16
 - PC に入れたばかりのフォントは、30秒たつか設定ファイルを保存し直すと見つかる
 
 ## レビュー
-（task-loop が Codex の指摘を書き足す）
+Codex（2026-10-16、c48cb86..3a0ee4a）:
+
+- 中: `fonts.go:193-198,303-304` — SFNT の Macintosh 名を Mac Roman として復号せず UTF-8 扱いし、スタイル判定も英語の `regular`・`bold`・`italic` 等だけです。非 ASCII の family 名を持つ macOS フォントは見つからず、ローカライズされたスタイル名では太字・斜体を通常書体として選ぶ可能性があります。「macOS のフォントを名前で探し、普通の太さで斜体でないものを選ぶ」という `SPEC.md` の確定仕様を満たしません。テストも ASCII・platform 3 のフォントしか扱っておらず、このケースを検出できません。
+- 低: `README.ja.md:243`, `README.md:251`, `config.example.toml:35` — 利用可能な `file` 形式から `.ttc` が抜けています。`SPEC.md:156` と実装は `.ttc` 対応を明記しており、利用者向け説明と食い違います。
