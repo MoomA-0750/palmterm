@@ -4,7 +4,7 @@
 // 一時ディレクトリの設定ファイル・アップロード先で動かすので、ふだんの環境には触れない。
 
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -467,7 +467,7 @@ describe("tmux のタブとパネル", () => {
 
     tmux("kill-pane", "-t", SESSION);
   });
-  it("tmux パネルに残るのは分割・ペイン・コピーモード・Ctrl+B・設定だけ。「設定」で設定画面が出て、文字サイズ・フォント・テーマ・キーバー・ログイン中の端末・版が並ぶ。一覧を開いて閉じると設定画面に戻り、設定画面を閉じると端末に戻る", async () => {
+  it("tmux パネルに残るのは分割・ペイン・コピーモード・Ctrl+B・設定だけ。「設定」で設定画面が出て、文字サイズ・フォント・テーマ・言語・キーバー・ログイン中の端末・版が並ぶ。一覧を開いて閉じると設定画面に戻り、設定画面を閉じると端末に戻る", async () => {
     await page.locator("#tmux-btn").click();
     const rows = page.locator("#tmuxpanel .tmux-row");
     expect(await rows.locator(".tmux-label").allTextContents()).toEqual(["Split", "Pane", "Other"]);
@@ -479,9 +479,9 @@ describe("tmux のタブとパネル", () => {
     expect(await page.locator("#tmuxpanel").isHidden()).toBe(true);
     await page.locator("#settings").waitFor({ state: "visible" });
     const labels = await page.locator("#settings .settings-label").allTextContents();
-    expect(labels.slice(0, 5)).toEqual(["Text", "Fonts", "Theme", "Key bar", "Devices"]);
+    expect(labels.slice(0, 6)).toEqual(["Text", "Fonts", "Theme", "Language", "Key bar", "Devices"]);
     // 版（サーバーはいつも版を返す。make の外で作れば dev）
-    expect(labels.slice(5)).toEqual(["Version"]);
+    expect(labels.slice(6)).toEqual(["Version"]);
     expect(await page.locator("#settings .settings-version").textContent()).toMatch(/^palmterm \S+/);
 
     // 上に重なって見えているもの（端末の画面の真ん中）
@@ -804,6 +804,76 @@ family = "Palmterm Local"
     rmSync(configPath, { force: true });
     await openPage();
   }, 30_000);
+
+  it("設定画面で言語を選ぶと設定ファイルの language の行だけが書き換わり、読み込み直してその言語になる。無ければ足し、無いファイルは作る。別の端末で読み込み直しても同じ。読めない設定ファイルには書かず知らせる", async () => {
+    const chooseLanguage = async (lang: string) => {
+      await page.locator("#tmux-btn").click();
+      await page.locator("#tmuxpanel .tmux-row").nth(2).locator("button").last().click(); // 「設定」（言語によらず最後のボタン）
+      await page.locator("#settings").waitFor({ state: "visible" });
+      const loaded = page.waitForEvent("load");
+      await page.locator(`#settings .settings-language[data-lang="${lang}"]`).click();
+      return loaded;
+    };
+    const settingsTitle = (p: Page) => p.evaluate(() => [document.documentElement.lang, document.getElementById("settings-title")?.textContent]);
+    const mine = `# mine\r\nversion = 1 # first\r\nlanguage = "en" # English\r\n\r\n# colors\r\n[theme]\r\nname = "light"\r\n`;
+    writeFileSync(configPath, mine);
+    chmodSync(configPath, 0o640);
+    await openPage();
+    expect(await settingsTitle(page)).toEqual(["en", "Settings"]);
+
+    // 選ぶと language の行だけが書き換わり（コメント・ほかの項目・並び順・CRLF・権限はそのまま）、読み込み直して日本語になる
+    await chooseLanguage("ja");
+    await page.waitForFunction(() => document.querySelector(".term-row") !== null);
+    expect(await settingsTitle(page)).toEqual(["ja", "設定"]);
+    expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`language = "en"`, `language = "ja"`));
+    expect(statSync(configPath).mode & 0o777).toBe(0o640);
+    expect(await page.locator("#settings .settings-language.on").getAttribute("data-lang")).toBe("ja");
+
+    // 別の端末で読み込み直しても日本語
+    const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
+    try {
+      const otherPage = await other.newPage();
+      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await otherPage.waitForFunction(() => document.querySelector(".term-row") !== null);
+      expect(await settingsTitle(otherPage)).toEqual(["ja", "設定"]);
+    } finally {
+      await other.close();
+    }
+
+    // 行が無ければ最初のテーブルより前に足す
+    const noLang = `# mine\nversion = 1\n\n# colors\n[theme]\nname = "light"\n`;
+    writeFileSync(configPath, noLang);
+    await openPage();
+    await chooseLanguage("ja");
+    await page.waitForFunction(() => document.querySelector(".term-row") !== null);
+    expect(await settingsTitle(page)).toEqual(["ja", "設定"]);
+    expect(readFileSync(configPath, "utf8")).toBe(noLang.replace(`version = 1\n`, `version = 1\nlanguage = "ja"\n`));
+
+    // 設定ファイルが無ければ作る
+    rmSync(configPath, { force: true });
+    await openPage();
+    await chooseLanguage("ja");
+    await page.waitForFunction(() => document.querySelector(".term-row") !== null);
+    expect(await settingsTitle(page)).toEqual(["ja", "設定"]);
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 1\nlanguage = "ja"\n`);
+
+    // 書き間違いがあって読めない設定ファイルには書かず、知らせる。読み込み直さない
+    const bad = `language = "ja"\n[theme]\nbackgroud = "#000000"\n`;
+    writeFileSync(configPath, bad);
+    await openPage();
+    expect(await settingsTitle(page)).toEqual(["en", "Settings"]); // 読めないので既定の英語
+    await page.evaluate(() => ((window as unknown as { __notReloaded: boolean }).__notReloaded = true));
+    await page.locator("#tmux-btn").click();
+    await page.locator('#tmuxpanel button[title^="Settings"]').click();
+    await page.locator('#settings .settings-language[data-lang="ja"]').click();
+    await waitUntil("知らせる", async () => ((await page.locator("#toast").textContent()) ?? "").includes("has a mistake"));
+    expect(await page.locator("#toast").textContent()).toContain("theme.backgroud");
+    expect(readFileSync(configPath, "utf8")).toBe(bad);
+    expect(await page.evaluate(() => (window as unknown as { __notReloaded?: boolean }).__notReloaded)).toBe(true);
+
+    rmSync(configPath, { force: true });
+    await openPage();
+  }, 45_000);
 });
 
 describe("複数行の送信", () => {

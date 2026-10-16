@@ -1,7 +1,7 @@
-// 設定画面（tmux パネルの「設定」で開く）。文字サイズ・フォント・テーマ・キーバー・ログイン中の端末・版を並べる。
+// 設定画面（tmux パネルの「設定」で開く）。文字サイズ・フォント・テーマ・言語・キーバー・ログイン中の端末・版を並べる。
 // index.html には置かず、ここで作って body に足す。フォントと端末の一覧はこの画面の上に開き、閉じるとこの画面に戻る。
 
-import { hasMessage, type MessageKey, t } from "./i18n";
+import { hasMessage, type Lang, LANG_NAMES, type MessageKey, t } from "./i18n";
 import { icon, type IconName } from "./icons";
 
 export interface SettingsOptions {
@@ -11,6 +11,8 @@ export interface SettingsOptions {
   keybar: { shown: () => boolean; set: (shown: boolean) => void };
   /** 組み込みのテーマ。choose は設定ファイルに書き戻せたら true。 */
   theme: { names: string[]; current: () => string; choose: (name: string) => Promise<boolean> };
+  /** 画面の言語。choose は設定ファイルに書き戻す（書き戻せたらページを読み込み直す）。 */
+  language: { current: () => Lang; choose: (lang: Lang) => void };
   /** ログイン中の端末の一覧を開く。 */
   openDevices: () => void;
   /** 画面から足したフォントの一覧を開く（そこでフォントを選ぶ）。 */
@@ -100,6 +102,20 @@ export function setupSettings(opts: SettingsOptions) {
     for (const b of themeBtns) b.classList.toggle("on", b.dataset.theme === current);
   };
 
+  // 言語。名前はそれぞれの言語で出す。選ぶと設定ファイルに書き戻して読み込み直す。
+  const langBtns = (Object.keys(LANG_NAMES) as Lang[]).map((lang) => {
+    const b = makeBtn(LANG_NAMES[lang], t("languageTitle", { name: LANG_NAMES[lang] }), () => {
+      if (lang !== opts.language.current()) opts.language.choose(lang);
+    }, "settings-language");
+    b.lang = lang;
+    b.dataset.lang = lang;
+    return b;
+  });
+  const showLanguage = () => {
+    const current = opts.language.current();
+    for (const b of langBtns) b.classList.toggle("on", b.dataset.lang === current);
+  };
+
   // キーバーを隠す・出す。
   const keybarBtn = makeBtn("", "", () => {
     opts.keybar.set(!opts.keybar.shown());
@@ -121,6 +137,7 @@ export function setupSettings(opts: SettingsOptions) {
     ),
     row(t("fonts"), makeBtn(t("fontsOpen"), t("fontsTitle"), () => opts.openFonts(), "settings-fonts")),
     row(t("rowTheme"), ...themeBtns),
+    row(t("rowLanguage"), ...langBtns),
     row(t("rowKeybar"), keybarBtn),
     row(t("devices"), makeBtn(t("devicesOpen"), t("devicesTitle"), () => opts.openDevices(), "settings-devices")),
   );
@@ -135,6 +152,7 @@ export function setupSettings(opts: SettingsOptions) {
   function refresh() {
     showSize(); // ピンチで変わっていることがある
     showTheme();
+    showLanguage();
     showKeybarState();
   }
   refresh();

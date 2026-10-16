@@ -18,8 +18,8 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// 画面で選んだテーマとフォントを設定ファイルに書き戻す。ファイルを丸ごと書き直すのではなく、
-// [theme] の name と [font] の file の行だけを書き換えるので、本人が書いたコメント・ほかの項目・並び順は残る。
+// 画面で選んだ言語・テーマ・フォントを設定ファイルに書き戻す。ファイルを丸ごと書き直すのではなく、
+// language と [theme] の name と [font] の file の行だけを書き換えるので、本人が書いたコメント・ほかの項目・並び順は残る。
 // 書き換えたあとに読み直して、変わったのがその1か所だけであることを確かめてから保存する。
 
 // 組み込みのテーマの名前（web/src/theme.ts の THEMES と同じ。TestThemeNamesMatchTheScreen で確かめる）。
@@ -29,8 +29,9 @@ var configWriteMu sync.Mutex
 
 // 画面からの変更。書いた項目だけ変える。Font は fonts/ の直下のファイルの名前で、空なら [font] の file を消す。
 type appearanceChange struct {
-	Theme *string `json:"theme"`
-	Font  *string `json:"font"`
+	Language *string `json:"language"`
+	Theme    *string `json:"theme"`
+	Font     *string `json:"font"`
 }
 
 func (s *server) handleAppearance(w http.ResponseWriter, r *http.Request) {
@@ -39,8 +40,12 @@ func (s *server) handleAppearance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if req.Theme == nil && req.Font == nil {
+	if req.Language == nil && req.Theme == nil && req.Font == nil {
 		http.Error(w, tr("変える項目がありません", "Nothing to change"), http.StatusBadRequest)
+		return
+	}
+	if req.Language != nil && *req.Language != "ja" && *req.Language != "en" {
+		http.Error(w, fmt.Sprintf(tr("知らない言語です: %q", "Unknown language: %q"), *req.Language), http.StatusBadRequest)
 		return
 	}
 	if req.Theme != nil && !slices.Contains(themeNames, *req.Theme) {
@@ -60,6 +65,9 @@ func (s *server) handleAppearance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var edits []configEdit
+	if req.Language != nil {
+		edits = append(edits, configEdit{key: "language", value: *req.Language})
+	}
 	if req.Theme != nil {
 		edits = append(edits, configEdit{table: "theme", key: "name", value: *req.Theme})
 	}
@@ -92,6 +100,7 @@ func (e *configUnreadableError) Error() string {
 }
 
 // 設定ファイルの1か所の書き換え。[table] の key を value（文字列）にする。remove なら key の行を消す。
+// table が空なら、最初のテーブルより前に書く項目（language など）。
 type configEdit struct {
 	table, key, value string
 	remove            bool
@@ -175,10 +184,18 @@ func editConfig(src string, edits []configEdit) (string, error) {
 	}
 	var after map[string]any
 	if _, err := toml.Decode(out, &after); err != nil {
-		return "", fmt.Errorf(tr("書き換えると読めなくなるので、書き換えませんでした（[%s] を手で直してください）: %v",
-			"Not changed, because the result would not be readable (edit [%s] by hand): %v"), tableNames(edits), err)
+		return "", fmt.Errorf(tr("書き換えると読めなくなるので、書き換えませんでした（%s を手で直してください）: %v",
+			"Not changed, because the result would not be readable (edit %s by hand): %v"), tableNames(edits), err)
 	}
 	for _, e := range edits {
+		if e.table == "" {
+			if e.remove {
+				delete(before, e.key)
+			} else {
+				before[e.key] = e.value
+			}
+			continue
+		}
 		t, ok := before[e.table].(map[string]any)
 		if !ok {
 			if _, exists := before[e.table]; exists {
@@ -194,8 +211,8 @@ func editConfig(src string, edits []configEdit) (string, error) {
 		}
 	}
 	if !reflect.DeepEqual(before, after) {
-		return "", fmt.Errorf(tr("[%s] の書き方を読み取れないので、書き換えませんでした（手で直してください）",
-			"Could not find where to write in [%s], so it was not changed (edit it by hand)"), tableNames(edits))
+		return "", fmt.Errorf(tr("%s の書き方を読み取れないので、書き換えませんでした（手で直してください）",
+			"Could not find where to write %s, so it was not changed (edit it by hand)"), tableNames(edits))
 	}
 	return out, nil
 }
@@ -203,11 +220,15 @@ func editConfig(src string, edits []configEdit) (string, error) {
 func tableNames(edits []configEdit) string {
 	var names []string
 	for _, e := range edits {
-		if !slices.Contains(names, e.table) {
-			names = append(names, e.table)
+		name := "[" + e.table + "]"
+		if e.table == "" {
+			name = e.key
+		}
+		if !slices.Contains(names, name) {
+			names = append(names, name)
 		}
 	}
-	return strings.Join(names, "], [")
+	return strings.Join(names, ", ")
 }
 
 func editLine(src string, e configEdit) (string, error) {
@@ -219,8 +240,10 @@ func editLine(src string, e configEdit) (string, error) {
 	if lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
+	if e.table == "" {
+		return editTopLine(lines, nl, e)
+	}
 	header := regexp.MustCompile(`^\s*\[\s*` + regexp.QuoteMeta(e.table) + `\s*\]\s*(#.*)?\r?\n?$`)
-	keyLine := regexp.MustCompile(`^(\s*` + regexp.QuoteMeta(e.key) + `\s*=\s*)("(?:[^"\\\r\n]|\\.)*"|'[^'\r\n]*')(\s*(?:#.*)?\r?\n?)$`)
 	keyStart := regexp.MustCompile(`^\s*` + regexp.QuoteMeta(e.key) + `\s*=`)
 	newLine := e.key + " = " + tomlString(e.value) + nl
 
@@ -252,13 +275,7 @@ func editLine(src string, e configEdit) (string, error) {
 		if e.remove {
 			return strings.Join(slices.Delete(lines, i, i+1), ""), nil
 		}
-		m := keyLine.FindStringSubmatch(lines[i])
-		if m == nil {
-			return "", fmt.Errorf(tr("[%s] の %s が1行の文字列ではないので、書き換えませんでした（手で直してください）",
-				"[%s] %s is not a one-line string, so it was not changed (edit it by hand)"), e.table, e.key)
-		}
-		lines[i] = m[1] + tomlString(e.value) + m[3] // 後ろのコメントと改行はそのまま
-		return strings.Join(lines, ""), nil
+		return replaceValue(lines, i, e)
 	}
 	if e.remove {
 		return src, nil
@@ -278,7 +295,74 @@ func editLine(src string, e configEdit) (string, error) {
 	return strings.Join(lines, ""), nil
 }
 
-// TOML の基本の文字列。値はテーマの名前とフォントのファイル名だけなので、\ と " だけ気にすればよい。
+// 1行の文字列の値だけを書き換える。後ろのコメントと改行はそのまま。
+func replaceValue(lines []string, i int, e configEdit) (string, error) {
+	keyLine := regexp.MustCompile(`^(\s*` + regexp.QuoteMeta(e.key) + `\s*=\s*)("(?:[^"\\\r\n]|\\.)*"|'[^'\r\n]*')(\s*(?:#.*)?\r?\n?)$`)
+	m := keyLine.FindStringSubmatch(lines[i])
+	if m == nil {
+		ja, en := "["+e.table+"] の "+e.key, "["+e.table+"] "+e.key
+		if e.table == "" {
+			ja, en = e.key, e.key
+		}
+		return "", fmt.Errorf(tr("%s が1行の文字列ではないので、書き換えませんでした（手で直してください）",
+			"%s is not a one-line string, so it was not changed (edit it by hand)"), tr(ja, en))
+	}
+	lines[i] = m[1] + tomlString(e.value) + m[3]
+	return strings.Join(lines, ""), nil
+}
+
+// 最初のテーブルより前の key の行を書き換える。無ければ、最初のテーブルより前の最後の項目の後ろに足す
+// （項目が無ければファイルの先頭のコメントの後ろ、テーブルの直前のコメントや空行より前）。
+func editTopLine(lines []string, nl string, e configEdit) (string, error) {
+	keyStart := regexp.MustCompile(`^\s*` + regexp.QuoteMeta(e.key) + `\s*=`)
+	end := len(lines)
+	for i, l := range lines {
+		if tableHeader.MatchString(l) {
+			end = i
+			break
+		}
+	}
+	for i := 0; i < end; i++ {
+		if !keyStart.MatchString(lines[i]) {
+			continue
+		}
+		if e.remove {
+			return strings.Join(slices.Delete(lines, i, i+1), ""), nil
+		}
+		return replaceValue(lines, i, e)
+	}
+	if e.remove {
+		return strings.Join(lines, ""), nil
+	}
+	at := -1
+	for i := end - 1; i >= 0; i-- {
+		if !commentLine.MatchString(lines[i]) {
+			at = i + 1
+			break
+		}
+	}
+	if at < 0 {
+		// 項目が無い。ファイルの先頭のコメントのまとまり（空行まで）の後ろに置く。
+		at = 0
+		for at < end && strings.TrimSpace(lines[at]) != "" {
+			at++
+		}
+		if at == end && end < len(lines) {
+			at = 0 // 空行が無く、コメントがテーブルにつながっている
+		}
+	}
+	newLine := e.key + " = " + tomlString(e.value) + nl
+	if at == 0 && len(lines) > 0 && tableHeader.MatchString(lines[0]) {
+		newLine += nl // テーブルしか無ければ、見出しとのあいだを1行空ける
+	}
+	if at > 0 && !strings.HasSuffix(lines[at-1], "\n") {
+		lines[at-1] += nl
+	}
+	lines = slices.Insert(lines, at, newLine)
+	return strings.Join(lines, ""), nil
+}
+
+// TOML の基本の文字列。値は言語・テーマの名前とフォントのファイル名だけなので、\ と " だけ気にすればよい。
 func tomlString(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }

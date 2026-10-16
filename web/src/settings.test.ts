@@ -10,6 +10,7 @@ function makeSettings(over: Partial<SettingsOptions> = {}) {
     fontSize: { get: () => 14, change: () => {} },
     keybar: { shown: () => true, set: () => {} },
     theme: noTheme,
+    language: { current: () => "ja", choose: () => {} },
     openDevices: () => {},
     openFonts: () => {},
     ...over,
@@ -22,9 +23,9 @@ const rowOf = (el: Element | null | undefined) => el?.closest(".settings-row");
 beforeEach(() => document.body.replaceChildren());
 
 describe("設定画面の並び", () => {
-  it("文字サイズ・フォント・テーマ・キーバー・ログイン中の端末・版が並ぶ", () => {
+  it("文字サイズ・フォント・テーマ・言語・キーバー・ログイン中の端末・版が並ぶ", () => {
     setLang("ja");
-    expect(makeSettings({ version: "v1" }).labels()).toEqual(["文字", "フォント", "テーマ", "キーバー", "ログイン中の端末", "版"]);
+    expect(makeSettings({ version: "v1" }).labels()).toEqual(["文字", "フォント", "テーマ", "言語", "キーバー", "ログイン中の端末", "版"]);
   });
 
   it("開くと出て、閉じるボタンで消える", () => {
@@ -144,5 +145,21 @@ describe("設定画面のテーマの行", () => {
     await new Promise((r) => setTimeout(r));
     expect(chosen).toEqual(["light", "solarized-dark"]);
     expect(on()).toEqual(["light"]);
+  });
+});
+
+describe("設定画面の言語の行", () => {
+  it("English と日本語をそれぞれの言語の名前で並べ、今のものに印を付ける。今と違うものを押すと選ぶ", () => {
+    setLang("ja");
+    const chosen: string[] = [];
+    const s = makeSettings({ language: { current: () => "ja", choose: (lang) => chosen.push(lang) } });
+    const btns = [...s.el.querySelectorAll<HTMLButtonElement>(".settings-language")];
+    expect(rowOf(btns[0])?.querySelector(".settings-label")?.textContent).toBe("言語");
+    expect(btns.map((b) => b.textContent)).toEqual(["English", "日本語"]);
+    expect(btns.filter((b) => b.classList.contains("on")).map((b) => b.dataset.lang)).toEqual(["ja"]);
+
+    btns[1].click(); // 今の言語は選び直さない
+    btns[0].click();
+    expect(chosen).toEqual(["en"]);
   });
 });

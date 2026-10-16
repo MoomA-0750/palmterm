@@ -1,7 +1,9 @@
-// 画面で選んだテーマとフォントを、PC の設定ファイル（[theme] の name、[font] の file）に書き戻す。
+// 画面で選んだ言語・テーマ・フォントを、PC の設定ファイル（language、[theme] の name、[font] の file）に書き戻す。
 // サーバーは書き換えた行のほかは触らず、書き間違いがあって読めない設定ファイルには書かない（理由を返す）。
 
 export interface AppearanceChange {
+  /** 画面の言語（"ja" か "en"）。 */
+  language?: string;
   /** 組み込みのテーマの名前。 */
   theme?: string;
   /** fonts/ の直下のフォントの名前。空なら [font] の file を消す（family か JetBrains Mono に戻る）。 */

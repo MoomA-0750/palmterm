@@ -121,8 +121,10 @@ const ja = {
   "fontUploadFailed": "フォントを保存できませんでした: {error}",
   "rowVersion": "版",
   "rowKeybar": "キーバー",
+  "rowLanguage": "言語",
+  "languageTitle": "言語を {name} にする（読み込み直します）",
   "settings": "設定",
-  "settingsTitle": "設定（文字サイズ・フォント・テーマ・キーバー・ログイン中の端末）",
+  "settingsTitle": "設定（文字サイズ・フォント・テーマ・言語・キーバー・ログイン中の端末）",
   "fontsOpen": "一覧",
   "devicesOpen": "一覧",
   "keybarHide": "隠す",
@@ -261,8 +263,10 @@ const en: Messages = {
   "fontUploadFailed": "Could not save the font: {error}",
   "rowVersion": "Version",
   "rowKeybar": "Key bar",
+  "rowLanguage": "Language",
+  "languageTitle": "Switch the language to {name} (reloads the page)",
   "settings": "Settings",
-  "settingsTitle": "Settings (text size, fonts, theme, key bar, devices)",
+  "settingsTitle": "Settings (text size, fonts, theme, language, key bar, devices)",
   "fontsOpen": "List",
   "devicesOpen": "List",
   "keybarHide": "Hide",
@@ -279,6 +283,8 @@ const en: Messages = {
 };
 
 export type Lang = "ja" | "en";
+/** 言語の名前（設定画面に、それぞれの言語で出す）。 */
+export const LANG_NAMES: Record<Lang, string> = { en: "English", ja: "日本語" };
 let messages: Messages = ja;
 
 export function setLang(lang: Lang) {

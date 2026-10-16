@@ -44,6 +44,8 @@ for working with TUIs such as vim, lazygit and Claude Code.
   open Settings.
 - **Settings** (from the panel) lists the text size, fonts, theme, hiding or showing the key bar, the
   logged-in devices, and the palmterm version. Close returns to the terminal.
+  Picking English or 日本語 in the Language row rewrites the `language` line of the config file and reloads
+  the page (like the theme, the other lines are kept, and every device shows the same language).
   The "List" button in its Devices row lists the logged-in devices: log this one out, or revoke another (both tap
   twice) — for example a lost phone, from a device you still have. Tap a device's name to give it one
   you will recognize ("work iPad"); clear it to go back to the automatic name.

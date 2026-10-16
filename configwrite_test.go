@@ -221,3 +221,102 @@ func TestThemeNamesMatchTheScreen(t *testing.T) {
 		t.Fatalf("画面: %v、サーバー: %v", names, themeNames)
 	}
 }
+
+// 画面で選んだ言語は language の行だけを書き換え、コメント・ほかの項目・並び順・改行の形・権限はそのまま残す。
+// 行が無ければ最初のテーブルより前に足し、ファイルが無ければ作る。別の端末で読み込み直しても同じ言語になる。
+func TestLanguageIsWrittenBackKeepingTheRest(t *testing.T) {
+	s := newTestServer(t)
+	phone, other := login(t, s, "phone"), login(t, s, "tablet")
+	choose := func(lang string) {
+		t.Helper()
+		if code, body := chooseAppearance(t, s, phone, `{"language":"`+lang+`"}`); code != http.StatusOK {
+			t.Fatalf("code=%d %s", code, body)
+		}
+	}
+
+	// 行があれば値だけ書き換える（後ろのコメントは残る）
+	writeConfig(t, "# 私の設定\nversion = 1\nlanguage = 'en'   # 言語\n\n[theme]\nname = \"light\"\n")
+	if err := os.Chmod(settings.path, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	choose("ja")
+	if got, want := readConfigFile(t), "# 私の設定\nversion = 1\nlanguage = \"ja\"   # 言語\n\n[theme]\nname = \"light\"\n"; got != want {
+		t.Fatalf("書き戻した中身:\n%q", got)
+	}
+	if info, _ := os.Stat(settings.path); info.Mode().Perm() != 0o640 {
+		t.Fatalf("権限が変わりました: %v", info.Mode())
+	}
+	w := authed(s, "GET", "/api/config", "", other)
+	if !strings.Contains(w.Body.String(), `"language":"ja"`) {
+		t.Fatalf("別の端末: %s", w.Body.String())
+	}
+
+	for _, tc := range []struct{ name, before, after string }{
+		{"最初のテーブルより前の最後の項目の後ろに足す",
+			"# 私の設定\nversion = 1\n\n# 色\n[theme]\nname = \"light\"\n",
+			"# 私の設定\nversion = 1\nlanguage = \"ja\"\n\n# 色\n[theme]\nname = \"light\"\n"},
+		{"項目が無ければ先頭のコメントの後ろに足す",
+			"# 私の設定\n\n[theme]\nname = \"light\"\n",
+			"# 私の設定\nlanguage = \"ja\"\n\n[theme]\nname = \"light\"\n"},
+		{"テーブルしか無ければ先頭に足す",
+			"[theme]\nname = \"light\"\n",
+			"language = \"ja\"\n\n[theme]\nname = \"light\"\n"},
+		{"CRLF と最後の改行の無さはそのまま",
+			"version = 1\r\n[theme]\r\nname = \"light\"",
+			"version = 1\r\nlanguage = \"ja\"\r\n[theme]\r\nname = \"light\""},
+		{"テーブルの中の language は別のもの",
+			"[[keys]]\nkey = \"esc\"\n",
+			"language = \"ja\"\n\n[[keys]]\nkey = \"esc\"\n"},
+	} {
+		writeConfig(t, tc.before)
+		choose("ja")
+		if got := readConfigFile(t); got != tc.after {
+			t.Errorf("%s:\n%q", tc.name, got)
+		}
+		if cfg, err := settings.get(); err != nil || cfg.Language != "ja" {
+			t.Errorf("%s: %+v %v", tc.name, cfg, err)
+		}
+	}
+
+	// ファイルが無ければ作る
+	os.Remove(settings.path)
+	choose("en")
+	if got, want := readConfigFile(t), "version = 1\nlanguage = \"en\"\n"; got != want {
+		t.Fatalf("作った中身:\n%q", got)
+	}
+	if info, _ := os.Stat(settings.path); info.Mode().Perm() != 0o600 {
+		t.Fatalf("権限: %v", info.Mode())
+	}
+}
+
+// 書き間違いがあって読めない設定ファイルには言語も書き戻さず、理由を返す。知らない言語は断る。
+func TestLanguageIsNotWrittenToAnUnreadableConfig(t *testing.T) {
+	s := newTestServer(t)
+	c := login(t, s, "")
+	for _, tc := range []struct{ body, says string }{
+		{"language = \"en\"\n[theme]\nbackgroud = \"#000\"\n", "has a mistake"},
+		{"language = \"en\n", "has a mistake"},
+		{"language = \"\"\"en\"\"\"\n", "not a one-line string"},
+	} {
+		writeConfig(t, tc.body)
+		code, msg := chooseAppearance(t, s, c, `{"language":"ja"}`)
+		if code != http.StatusConflict || !strings.Contains(msg, tc.says) {
+			t.Errorf("%q: code=%d %s", tc.body, code, msg)
+		}
+		if got := readConfigFile(t); got != tc.body {
+			t.Errorf("%q を書き換えました: %q", tc.body, got)
+		}
+	}
+	writeConfig(t, "# mine\n")
+	for _, body := range []string{`{"language":"fr"}`, `{"language":""}`} {
+		if code, msg := chooseAppearance(t, s, c, body); code != http.StatusBadRequest {
+			t.Errorf("%s: code=%d %s", body, code, msg)
+		}
+	}
+	if code, _ := chooseAppearance(t, s, nil, `{"language":"ja"}`); code != http.StatusUnauthorized {
+		t.Errorf("ログインしていない端末: code=%d", code)
+	}
+	if got := readConfigFile(t); got != "# mine\n" {
+		t.Fatalf("書き換えました: %q", got)
+	}
+}

@@ -468,6 +468,7 @@ const settings = setupSettings({
     current: () => (serverConfig.theme?.name && Object.hasOwn(THEMES, serverConfig.theme.name) ? serverConfig.theme.name : "default"),
     choose: (name) => changeAppearance({ theme: name }),
   },
+  language: { current: () => serverConfig.language, choose: (lang) => changeLanguage(lang) },
   openDevices: () => openDevices(),
   openFonts: () => fonts.open(),
   version: serverConfig.version,
@@ -831,6 +832,17 @@ async function changeAppearance(change: AppearanceChange): Promise<boolean> {
   const problems = [...errors, ...(serverConfig.fontError ? [t("fontFileError", { error: serverConfig.fontError })] : [])];
   if (problems.length) toast(problems.join("\n"), 10000);
   return true;
+}
+
+/** 言語を設定ファイルに書き戻し、書き戻せたら読み込み直す（画面の文言は読み込むときに決める）。 */
+async function changeLanguage(language: Lang) {
+  try {
+    await chooseAppearance<ServerConfig>({ language });
+  } catch (e) {
+    toast(t("appearanceFailed", { error: e instanceof Error ? e.message : String(e) }), 10000);
+    return;
+  }
+  location.reload();
 }
 
 // ほかの端末から取り消されたら、つなぎ直さずに読み込み直す（ログインし直す方法の案内が出る）。
