@@ -18,6 +18,20 @@ function makeSettings(over: Partial<SettingsOptions> = {}) {
   return { ...s, labels: () => [...s.el.querySelectorAll(".settings-label")].map((l) => l.textContent) };
 }
 
+/** happy-dom の画面の大きさを変える（matchMedia もこれに合わせて答える）。 */
+function setViewport(width: number, height: number) {
+  (window as unknown as { happyDOM: { setViewport: (v: { width: number; height: number }) => void } }).happyDOM.setViewport({ width, height });
+}
+
+/** index.html やフォントの画面が足す一覧の代わり。 */
+function list(id: string): HTMLElement {
+  const l = document.createElement("div");
+  l.id = id;
+  l.hidden = true;
+  document.body.append(l);
+  return l;
+}
+
 const rowOf = (el: Element | null | undefined) => el?.closest(".settings-row");
 
 beforeEach(() => document.body.replaceChildren());
@@ -38,8 +52,9 @@ describe("設定画面の並び", () => {
     expect(s.el.hidden).toBe(true);
   });
 
-  it("フォントと端末の一覧を開いても、設定画面は閉じない（一覧を閉じると戻る）", () => {
+  it("小さい画面では、フォントと端末の一覧を開いても、設定画面は閉じない（一覧を閉じると戻る）", () => {
     setLang("en");
+    setViewport(400, 760);
     const opened: string[] = [];
     const s = makeSettings({ openFonts: () => opened.push("fonts"), openDevices: () => opened.push("devices") });
     s.open();
@@ -47,6 +62,36 @@ describe("設定画面の並び", () => {
     s.el.querySelector<HTMLButtonElement>(".settings-devices")!.click();
     expect(opened).toEqual(["fonts", "devices"]);
     expect(s.el.hidden).toBe(false);
+    expect(s.el.classList.contains("two-columns")).toBe(false);
+  });
+
+  it("大きい画面では2列にし、右に端末の一覧を出す。左で押した方の一覧が右に出て、閉じると一緒に隠れる", () => {
+    setLang("ja");
+    setViewport(1024, 768);
+    const devices = list("devices");
+    const fonts = list("fonts");
+    const s = makeSettings({ openDevices: () => (devices.hidden = false), openFonts: () => (fonts.hidden = false) });
+    const side = s.el.querySelector("#settings-side")!;
+    const on = () => [...s.el.querySelectorAll("#settings-body button.on")].map((b) => b.className);
+    s.open();
+    expect(s.el.classList.contains("two-columns")).toBe(true);
+    expect([devices.parentElement, fonts.parentElement]).toEqual([side, side]);
+    expect([devices.hidden, fonts.hidden]).toEqual([false, true]);
+    s.el.querySelector<HTMLButtonElement>(".settings-fonts")!.click();
+    expect([devices.hidden, fonts.hidden]).toEqual([true, false]);
+    expect(on()).toContain("settings-fonts on");
+    s.close();
+    expect([devices.hidden, fonts.hidden]).toEqual([true, true]);
+    // 開き直すと右はまた端末の一覧
+    s.open();
+    expect([devices.hidden, fonts.hidden]).toEqual([false, true]);
+    // 小さい画面で開くと1列に戻り、一覧は body に戻って隠れる
+    s.close();
+    setViewport(400, 760);
+    s.open();
+    expect(s.el.classList.contains("two-columns")).toBe(false);
+    expect([devices.parentElement, fonts.parentElement]).toEqual([document.body, document.body]);
+    expect([devices.hidden, fonts.hidden]).toEqual([true, true]);
   });
 });
 

@@ -19,7 +19,9 @@ export function setupSheets(sheets: Sheet[], win: Window = window) {
   backdrop.hidden = true;
   doc.body.append(backdrop);
 
-  const top = () => [...sheets].reverse().find((s) => !s.el.hidden);
+  // 別の板の中に入っている板（2列の設定画面の右の一覧）は、外の板と一緒に扱う。
+  const nested = (s: Sheet) => sheets.some((o) => o !== s && o.el.contains(s.el));
+  const top = () => [...sheets].reverse().find((s) => !s.el.hidden && !nested(s));
   const floating = () => win.matchMedia(FLOAT_QUERY).matches;
 
   // 幕は一番上の板のすぐ下に置く（設定画面から開いた一覧なら、設定画面も暗くなる）。

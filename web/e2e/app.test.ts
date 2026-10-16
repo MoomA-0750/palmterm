@@ -937,12 +937,12 @@ describe("大きい画面の板", () => {
       return { x: r.x, y: r.y, w: r.width, h: r.height, vw: innerWidth, vh: innerHeight, backdrop: getComputedStyle(backdrop).display !== "none" };
     }, id);
 
-  /** 浮いて中央に出ているか（幅は 560px、高さは画面の8割まで、周りは暗い）。 */
-  async function expectFloating(id: string) {
+  /** 浮いて中央に出ているか（幅は 560px（2列の設定画面は 900px か画面の9割）、高さは画面の8割まで、周りは暗い）。 */
+  async function expectFloating(id: string, width = 560) {
     await page.locator(`#${id}`).waitFor({ state: "visible" });
     const l = await layout(id);
     expect(l.backdrop).toBe(true);
-    expect(l.w).toBeCloseTo(560, 0);
+    expect(l.w).toBeCloseTo(width, 0);
     expect(l.h).toBeLessThanOrEqual(l.vh * 0.8 + 1);
     expect(l.h).toBeGreaterThan(50);
     expect(Math.abs(l.x + l.w / 2 - l.vw / 2)).toBeLessThan(2);
@@ -960,38 +960,59 @@ describe("大きい画面の板", () => {
   /** 暗い所（左上の隅）を押す。 */
   const clickBackdrop = () => page.mouse.click(5, 5);
 
-  it("幅 700px 以上かつ高さ 600px 以上では、板が周りを暗くして中央に浮き、暗い所か Esc で閉じる。設定画面から開いた一覧なら設定画面に戻る", async () => {
+  /** 設定画面の右の列に、その一覧だけが出ているか（左の設定の行より右に並び、もう一方は隠れている）。 */
+  async function expectSide(id: "devices" | "fonts") {
+    await page.locator(`#${id}`).waitFor({ state: "visible" });
+    const other = id === "devices" ? "fonts" : "devices";
+    expect(await page.locator(`#${other}`).isHidden()).toBe(true);
+    const settings = await layout("settings");
+    const rows = await layout("settings-body");
+    const side = await layout(id);
+    expect(side.x).toBeGreaterThanOrEqual(rows.x + rows.w - 1);
+    expect(side.x + side.w).toBeLessThanOrEqual(settings.x + settings.w + 1);
+    expect(side.y).toBeGreaterThanOrEqual(settings.y - 1);
+    expect(side.y + side.h).toBeLessThanOrEqual(settings.y + settings.h + 1);
+    expect(side.w).toBeGreaterThan(300);
+    expect(await page.locator(`#${id}-close`).isVisible()).toBe(false); // 設定画面と一緒に閉じる
+  }
+
+  it("幅 700px 以上かつ高さ 600px 以上では、板が周りを暗くして中央に浮き、暗い所か Esc で閉じる。設定画面は2列で、右に「ログイン中の端末」かフォントの一覧が出る", async () => {
     await page.setViewportSize({ width: 1024, height: 768 });
     try {
-      // 設定画面：暗い所で閉じる
+      // 設定画面：幅 900px の2列で、開いた直後の右は端末の一覧。暗い所で閉じる
       await openSettings();
-      await expectFloating("settings");
+      await expectFloating("settings", 900);
+      await expectSide("devices");
+      await waitUntil("端末の一覧が出る", async () => (await page.locator("#settings .device.current").count()) === 1);
       await clickBackdrop();
       expect(await page.locator("#settings").isHidden()).toBe(true);
+      expect(await page.locator("#devices").isHidden()).toBe(true);
       expect(await page.locator("#sheet-backdrop").isHidden()).toBe(true);
 
-      // 設定画面：Esc で閉じる
-      await openSettings();
-      await page.keyboard.press("Escape");
-      expect(await page.locator("#settings").isHidden()).toBe(true);
-
-      // フォントの一覧：暗い所で設定画面に戻る
+      // 左で押した方が右に出る。Esc で設定画面ごと閉じる
       await openSettings();
       await page.locator("#settings .settings-fonts").click();
-      await expectFloating("fonts");
-      await clickBackdrop();
-      expect(await page.locator("#fonts").isHidden()).toBe(true);
-      expect(await page.locator("#settings").isVisible()).toBe(true);
-      await expectFloating("settings");
-
-      // ログイン中の端末：Esc で設定画面に戻る
+      await expectSide("fonts");
       await page.locator("#settings .settings-devices").click();
-      await expectFloating("devices");
-      await page.keyboard.press("Escape");
-      expect(await page.locator("#devices").isHidden()).toBe(true);
-      expect(await page.locator("#settings").isVisible()).toBe(true);
+      await expectSide("devices");
+      await page.locator("#settings .settings-fonts").click();
+      await expectSide("fonts");
       await page.keyboard.press("Escape");
       expect(await page.locator("#settings").isHidden()).toBe(true);
+      expect(await page.locator("#fonts").isHidden()).toBe(true);
+
+      // 開き直すと右はまた端末の一覧
+      await openSettings();
+      await expectSide("devices");
+      await page.locator("#settings-close").click();
+      expect(await page.locator("#settings").isHidden()).toBe(true);
+
+      // 狭い画面（800×700）では板は画面の9割の幅
+      await page.setViewportSize({ width: 800, height: 700 });
+      await openSettings();
+      await expectFloating("settings", 720);
+      await expectSide("devices");
+      await page.keyboard.press("Escape");
 
       // 履歴/クリップボード：Esc でも暗い所でも閉じ、端末に Esc を送らない
       await clearSent();
@@ -1012,7 +1033,7 @@ describe("大きい画面の板", () => {
     }
   });
 
-  it("それより小さい画面（スマホの縦・横、幅だけ広い画面）では今までどおり全画面で出る", async () => {
+  it("それより小さい画面（スマホの縦・横、幅だけ広い画面）では今までどおり全画面で出る。設定画面は1列で、一覧は設定画面に代わって出て、閉じると設定画面に戻る", async () => {
     for (const size of [
       { width: 400, height: 760 },
       { width: 760, height: 400 },
@@ -1023,12 +1044,15 @@ describe("大きい画面の板", () => {
       try {
         await openSettings();
         await expectFullScreen("settings");
+        expect(await page.locator("#devices").isHidden()).toBe(true); // 1列で、一覧は押すまで出ない
         await page.locator("#settings .settings-fonts").click();
         await expectFullScreen("fonts");
         await page.locator("#fonts-close").click();
+        await expectFullScreen("settings");
         await page.locator("#settings .settings-devices").click();
         await expectFullScreen("devices");
         await page.locator("#devices-close").click();
+        await expectFullScreen("settings");
         await page.locator("#settings-close").click();
         await page.locator("#copy").click();
         await expectFullScreen("copymode");

@@ -542,7 +542,67 @@ button:active {
   }
 }
 
+/* 大きい画面の設定画面は2列にする。左に設定の行、右に「ログイン中の端末」かフォントの一覧（settings.ts が移す）。 */
+@media (min-width: 700px) and (min-height: 600px) {
+  #settings.two-columns {
+    flex-direction: row;
+    width: min(900px, 90vw);
+  }
+
+  #settings.two-columns #settings-main {
+    flex: 1 1 0;
+  }
+
+  #settings.two-columns #settings-side {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    border-left: 1px solid var(--btn-bg);
+  }
+
+  #settings-side > #devices,
+  #settings-side > #fonts {
+    position: static;
+    inset: auto;
+    transform: none;
+    flex: 1;
+    min-height: 0;
+    width: auto;
+    height: auto;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    z-index: auto;
+  }
+
+  #settings-side .copy-bar {
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+
+  /* 右の一覧は設定画面と一緒に閉じるので、一覧の「閉じる」は出さない。 */
+  #settings-side #devices-close,
+  #settings-side #fonts-close {
+    display: none;
+  }
+}
+
+#settings-side {
+  display: none;
+}
+
 /* 設定画面。 */
+#settings-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
 #settings-title {
   align-self: center;
   padding: 0 8px;

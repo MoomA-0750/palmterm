@@ -1,8 +1,11 @@
 // 設定画面（tmux パネルの「設定」で開く）。文字サイズ・フォント・テーマ・言語・キーバー・ログイン中の端末・版を並べる。
-// index.html には置かず、ここで作って body に足す。フォントと端末の一覧はこの画面の上に開き、閉じるとこの画面に戻る。
+// index.html には置かず、ここで作って body に足す。小さい画面では、フォントと端末の一覧はこの画面の上に開き、
+// 閉じるとこの画面に戻る。板を浮かせる大きい画面では2列にし、左に設定の行、右にどちらかの一覧を出す
+// （一覧の要素を右の列に移す。小さい画面に戻ると body に戻して隠す）。
 
 import { hasMessage, type Lang, LANG_NAMES, type MessageKey, t } from "./i18n";
 import { icon, type IconName } from "./icons";
+import { FLOAT_QUERY } from "./sheets";
 
 export interface SettingsOptions {
   /** 端末の文字サイズ。 */
@@ -13,9 +16,9 @@ export interface SettingsOptions {
   theme: { names: string[]; current: () => string; choose: (name: string) => Promise<boolean> };
   /** 画面の言語。choose は設定ファイルに書き戻す（書き戻せたらページを読み込み直す）。 */
   language: { current: () => Lang; choose: (lang: Lang) => void };
-  /** ログイン中の端末の一覧を開く。 */
+  /** ログイン中の端末の一覧（id が devices の要素）を開く。 */
   openDevices: () => void;
-  /** 画面から足したフォントの一覧を開く（そこでフォントを選ぶ）。 */
+  /** 画面から足したフォントの一覧（id が fonts の要素）を開く（そこでフォントを選ぶ）。 */
   openFonts: () => void;
   /** サーバーの版（`palmterm -version` と同じ）。分からなければ空で、その行を出さない。 */
   version?: string;
@@ -26,6 +29,10 @@ function themeLabel(name: string): string {
   const key = `theme.${name}` as MessageKey;
   return hasMessage(key) ? t(key) : name;
 }
+
+/** 2列のときに右に出す一覧。値は一覧の要素の id。 */
+type Side = "devices" | "fonts";
+const SIDES: Side[] = ["devices", "fonts"];
 
 type Label = string | { icon: IconName; text?: string };
 
@@ -77,7 +84,12 @@ export function setupSettings(opts: SettingsOptions) {
   bar.append(closeBtn, title);
   const body = document.createElement("div");
   body.id = "settings-body";
-  el.append(bar, body);
+  const main = document.createElement("div");
+  main.id = "settings-main";
+  main.append(bar, body);
+  const sideEl = document.createElement("div");
+  sideEl.id = "settings-side";
+  el.append(main, sideEl);
 
   // 文字サイズ。続けて押して合わせる。
   const sizeLabel = document.createElement("span");
@@ -128,6 +140,42 @@ export function setupSettings(opts: SettingsOptions) {
     keybarBtn.setAttribute("aria-label", keybarBtn.title);
   };
 
+  // フォントと端末の一覧。小さい画面ではこの画面の上に開き、2列のときは右の列に出す。
+  const openList = { devices: () => opts.openDevices(), fonts: () => opts.openFonts() };
+  const sideBtns = {
+    devices: makeBtn(t("devicesOpen"), t("devicesTitle"), () => showList("devices"), "settings-devices"),
+    fonts: makeBtn(t("fontsOpen"), t("fontsTitle"), () => showList("fonts"), "settings-fonts"),
+  };
+  const twoColumns = () => window.matchMedia?.(FLOAT_QUERY).matches ?? false;
+  let side: Side = "devices";
+
+  function showList(s: Side) {
+    if (twoColumns()) {
+      side = s;
+      for (const other of SIDES) {
+        const l = document.getElementById(other);
+        if (other !== s && l) l.hidden = true;
+        sideBtns[other].classList.toggle("on", other === s);
+      }
+    }
+    openList[s]();
+  }
+
+  /** 画面の大きさに合わせて、一覧を右の列に移すか body に戻す（戻した一覧は隠す）。 */
+  function layout() {
+    const two = twoColumns();
+    el.classList.toggle("two-columns", two);
+    for (const s of SIDES) {
+      const l = document.getElementById(s);
+      if (two && l && l.parentElement !== sideEl) sideEl.append(l);
+      if (!two && l && l.parentElement === sideEl) {
+        l.hidden = true;
+        document.body.append(l);
+      }
+      if (!two) sideBtns[s].classList.remove("on");
+    }
+  }
+
   body.append(
     row(
       t("rowText"),
@@ -135,11 +183,11 @@ export function setupSettings(opts: SettingsOptions) {
       sizeLabel,
       sizeBtn({ icon: "textLarger" }, t("textLarger"), 1),
     ),
-    row(t("fonts"), makeBtn(t("fontsOpen"), t("fontsTitle"), () => opts.openFonts(), "settings-fonts")),
+    row(t("fonts"), sideBtns.fonts),
     row(t("rowTheme"), ...themeBtns),
     row(t("rowLanguage"), ...langBtns),
     row(t("rowKeybar"), keybarBtn),
-    row(t("devices"), makeBtn(t("devicesOpen"), t("devicesTitle"), () => opts.openDevices(), "settings-devices")),
+    row(t("devices"), sideBtns.devices),
   );
   if (opts.version) {
     const v = document.createElement("span");
@@ -160,11 +208,22 @@ export function setupSettings(opts: SettingsOptions) {
   function open() {
     refresh();
     el.hidden = false;
+    layout();
+    if (twoColumns()) showList("devices"); // 開いた直後の右は端末の一覧
   }
   function close() {
     el.hidden = true;
+    for (const l of sideEl.children) (l as HTMLElement).hidden = true;
   }
   closeBtn.addEventListener("click", close);
+
+  // 開いている間に画面の大きさが変わったら、その場で1列と2列を切り替える。
+  window.matchMedia?.(FLOAT_QUERY).addEventListener?.("change", () => {
+    if (el.hidden) return;
+    const wasTwo = el.classList.contains("two-columns");
+    layout();
+    if (twoColumns() && !wasTwo) showList(SIDES.find((s) => !document.getElementById(s)?.hidden) ?? side);
+  });
 
   return { el, open, close, isOpen: () => !el.hidden };
 }
