@@ -14,6 +14,7 @@ import { applyToChar, isSingleChar, keySequenceWithMods, Modifiers, type ModName
 import { setupNerdIcons } from "./nerd";
 import { pasteSequence } from "./paste";
 import { SoftKeyboard } from "./softkeyboard";
+import { applyFont, type FontConfig } from "./font";
 import { applyTheme, resolveTheme, type ThemeConfig } from "./theme";
 import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
@@ -27,12 +28,17 @@ const sendBtn = $<HTMLButtonElement>("send");
 const statusEl = $<HTMLDivElement>("status");
 const toastEl = $<HTMLDivElement>("toast");
 
-// ---- 設定ファイル（サーバーの ~/.config/palmterm/config.toml：言語・キーバー・色） ----
+// ---- 設定ファイル（サーバーの ~/.config/palmterm/config.toml：言語・キーバー・色・フォント） ----
 
 interface ServerConfig {
   language: Lang;
   keys?: KeyConfig[];
   theme?: ThemeConfig;
+  font?: FontConfig;
+  /** [font] のフォントを PC から配るときの URL（PC に無ければ無い）。 */
+  fontURL?: string;
+  /** [font] の file を使えなかった理由。 */
+  fontError?: string;
   path: string;
   /** palmterm の版（`palmterm -version` と同じ）。 */
   version?: string;
@@ -48,6 +54,8 @@ applyStaticTexts();
 // 色は [theme] で選んだテーマに、書いた色だけ上書きする。書き間違えた色は既定に戻して知らせる（起動の所）。
 const { theme, errors: themeErrors } = resolveTheme(serverConfig.theme);
 applyTheme(theme, document.documentElement, termEl);
+// フォントは [font] で PC から配られたもの、無ければスマホの同じ名前のもの、それも無ければ JetBrains Mono。
+applyFont(serverConfig.font, serverConfig.fontURL, document.documentElement);
 
 /** index.html に書いてある文言を、設定の言語に置き換える。 */
 function applyStaticTexts() {
@@ -793,6 +801,7 @@ const configProblems = [
     : []),
   ...keyErrors,
   ...themeErrors,
+  ...(serverConfig.fontError ? [t("fontFileError", { error: serverConfig.fontError })] : []),
 ];
 if (configProblems.length) toast(configProblems.join("\n"), 10000);
 

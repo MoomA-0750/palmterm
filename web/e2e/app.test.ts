@@ -4,10 +4,11 @@
 // 一時ディレクトリの設定ファイル・アップロード先で動かすので、ふだんの環境には触れない。
 
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { inflateSync } from "node:zlib";
 import { type Browser, type CDPSession, chromium, type Page } from "playwright-core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -22,7 +23,55 @@ const configPath = join(dir, "config.toml");
 const uploadDir = join(dir, "uploads");
 // XDG_CONFIG_HOME も一時ディレクトリにする（LAN 用の証明書をふだんの ~/.config に作らない）。
 // XDG_RUNTIME_DIR も分ける（ブラウザの受け渡しのソケットと palmterm-open をそこに作る）。
-const env = { ...process.env, TMUX_TMPDIR: tmuxDir, TMUX: "", SHELL: "/bin/sh", ENV: "", PS1: "$ ", XDG_CONFIG_HOME: dir, XDG_RUNTIME_DIR: tmuxDir };
+// XDG_DATA_HOME も分ける（PC に入っているフォントとして、テスト用のフォントを fonts に置く）。
+const env = { ...process.env, TMUX_TMPDIR: tmuxDir, TMUX: "", SHELL: "/bin/sh", ENV: "", PS1: "$ ", XDG_CONFIG_HOME: dir, XDG_RUNTIME_DIR: tmuxDir, XDG_DATA_HOME: join(dir, "data") };
+// ブラウザ（スマホ）にだけ入っているフォントの置き場所。
+const browserData = join(dir, "browser-data");
+
+/**
+ * テスト用のフォント：JetBrains Mono の WOFF を TrueType に戻し、名前を family（14文字）に付け替えたもの。
+ * 名前の長さが同じなので、名前の所を書き換えるだけで済む。
+ */
+function testFont(family: string): Buffer {
+  if (family.length !== 14) throw new Error("名前は JetBrains Mono と同じ14文字にする");
+  const woff = readFileSync(resolve(__dirname, "../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff"));
+  const n = woff.readUInt16BE(12);
+  const tables = Array.from({ length: n }, (_, i) => {
+    const e = 44 + 20 * i;
+    const [offset, comp, orig] = [woff.readUInt32BE(e + 4), woff.readUInt32BE(e + 8), woff.readUInt32BE(e + 12)];
+    const raw = woff.subarray(offset, offset + comp);
+    return { tag: woff.subarray(e, e + 4), checksum: woff.readUInt32BE(e + 16), data: comp < orig ? inflateSync(raw) : raw };
+  });
+  const head = Buffer.alloc(12 + 16 * n);
+  woff.copy(head, 0, 4, 8); // 元の形式（TrueType）
+  head.writeUInt16BE(n, 4);
+  const parts: Buffer[] = [head];
+  let at = head.length;
+  tables.forEach((t, i) => {
+    t.tag.copy(head, 12 + 16 * i);
+    head.writeUInt32BE(t.checksum, 12 + 16 * i + 4);
+    head.writeUInt32BE(at, 12 + 16 * i + 8);
+    head.writeUInt32BE(t.data.length, 12 + 16 * i + 12);
+    const padded = Buffer.alloc((t.data.length + 3) & ~3);
+    t.data.copy(padded);
+    parts.push(padded);
+    at += padded.length;
+  });
+  const font = Buffer.concat(parts);
+  for (const [from, to] of [
+    [Buffer.from("JetBrains Mono", "utf16le").swap16(), Buffer.from(family, "utf16le").swap16()],
+    [Buffer.from("JetBrains Mono"), Buffer.from(family)],
+  ]) {
+    for (let i = font.indexOf(from); i >= 0; i = font.indexOf(from, i + 1)) to.copy(font, i);
+  }
+  return font;
+}
+mkdirSync(join(dir, "data", "fonts"), { recursive: true });
+writeFileSync(join(dir, "data", "fonts", "PalmtermProbe-Regular.ttf"), testFont("Palmterm Probe"));
+mkdirSync(join(dir, "myfonts"));
+writeFileSync(join(dir, "myfonts", "files.ttf"), testFont("Palmterm Files"));
+mkdirSync(join(browserData, "fonts"), { recursive: true });
+writeFileSync(join(browserData, "fonts", "PalmtermLocal-Regular.ttf"), testFont("Palmterm Local"));
 
 let server: ChildProcess;
 let browser: Browser;
@@ -94,7 +143,7 @@ beforeAll(async () => {
   );
   await waitUntil("サーバーが立ち上がる", async () => fetch(`${base}/auth?token=${TOKEN}`, { redirect: "manual" }).then((r) => r.status === 303, () => false));
 
-  browser = await chromium.launch({ executablePath: CHROMIUM, headless: true });
+  browser = await chromium.launch({ executablePath: CHROMIUM, headless: true, env: { ...process.env, XDG_DATA_HOME: browserData } });
   const context = await browser.newContext({ viewport: { width: 400, height: 760 } });
   await context.addInitScript(() => {
     const w = window as unknown as { __sent: string[]; __sockets: WebSocket[] };
@@ -468,6 +517,75 @@ text = ":wq"
     rmSync(configPath, { force: true });
     await openPage();
     expect(await colors()).toEqual(before);
+  });
+
+  it("[font] の family・file のフォントを PC から配って端末の文字に使う。PC に無ければスマホのもの、それも無ければ JetBrains Mono。アイコンは変わらない", async () => {
+    // 文字とアイコン（U+F418）を出し、それぞれ実際にどのフォントで描いたかをブラウザに訊く。
+    tmux("send-keys", "-t", SESSION, "printf 'WWW \\357\\220\\230 X\\n'", "Enter");
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("DOM.enable");
+    await cdp.send("CSS.enable");
+    const usedFont = async (what: "text" | "icon"): Promise<string> => {
+      let found = "";
+      await waitUntil(`${what} のフォントがわかる`, async () => {
+        const marked = await page.evaluate((what) => {
+          document.querySelectorAll("[data-probe]").forEach((e) => e.removeAttribute("data-probe"));
+          const want = what === "text" ? "WWW" : "\uf418";
+          const walker = document.createTreeWalker(document.getElementById("term")!, NodeFilter.SHOW_TEXT);
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            const text = n.textContent ?? "";
+            if (text.includes(want) && !text.includes("printf")) {
+              n.parentElement!.setAttribute("data-probe", "");
+              return true;
+            }
+          }
+          return false;
+        }, what);
+        if (!marked || !(await page.evaluate(() => document.fonts.ready.then(() => true)))) return false;
+        const { root } = await cdp.send("DOM.getDocument");
+        const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: "[data-probe]" });
+        if (!nodeId) return false;
+        const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
+        found = fonts.map((f) => f.familyName).join(",");
+        return found !== "";
+      });
+      return found;
+    };
+    const icon = await usedFont("icon");
+    expect(await usedFont("text")).toBe("JetBrains Mono");
+
+    // PC に入っているフォントの名前。スマホ（ブラウザ）には無いので、PC から配ったものを使う。
+    writeFileSync(configPath, `[font]\nfamily = "Palmterm Probe"\n`);
+    await openPage();
+    expect(await usedFont("text")).toBe("Palmterm Probe");
+    expect(await usedFont("icon")).toBe(icon);
+
+    // PC に無くスマホにある名前なら、スマホのものを使う。
+    writeFileSync(configPath, `[font]\nfamily = "Palmterm Local"\n`);
+    await openPage();
+    expect(await usedFont("text")).toBe("Palmterm Local");
+    expect(await usedFont("icon")).toBe(icon);
+
+    // どちらにも無ければ JetBrains Mono。
+    writeFileSync(configPath, `[font]\nfamily = "Palmterm Nowhere"\n`);
+    await openPage();
+    expect(await usedFont("text")).toBe("JetBrains Mono");
+
+    // file は設定ファイルのあるフォルダから数える。
+    writeFileSync(configPath, `[font]\nfile = "myfonts/files.ttf"\n`);
+    await openPage();
+    expect(await usedFont("text")).toBe("Palmterm Files");
+    expect(await usedFont("icon")).toBe(icon);
+    // ログインしていないブラウザには配らない。
+    const res = await fetch(`${base}/api/font`, { redirect: "manual" });
+    expect(res.status).not.toBe(200);
+
+    // 使えないファイルは知らせて、JetBrains Mono に戻す。
+    writeFileSync(configPath, `[font]\nfile = "myfonts/missing.ttf"\n`);
+    await openPage();
+    expect(await page.locator("#toast").textContent()).toContain("[font]");
+    expect(await usedFont("text")).toBe("JetBrains Mono");
+    await cdp.detach();
   });
 });
 

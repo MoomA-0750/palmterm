@@ -205,6 +205,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /auth", s.handleAuth)
 	mux.Handle("GET /ws", s.requireAuth(http.HandlerFunc(s.handleTerminal)))
 	mux.Handle("GET /api/config", s.requireAuth(http.HandlerFunc(s.handleConfig)))
+	mux.Handle("GET /api/font", s.requireAuth(http.HandlerFunc(s.handleFont)))
 	mux.Handle("GET /api/history", s.requireAuth(http.HandlerFunc(s.handleHistory)))
 	mux.Handle("GET /api/pane", s.requireAuth(http.HandlerFunc(s.handlePane)))
 	mux.Handle("GET /api/windows", s.requireAuth(http.HandlerFunc(s.handleWindows)))

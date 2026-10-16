@@ -93,6 +93,7 @@ for working with TUIs such as vim, lazygit and Claude Code.
 - palmterm serves JetBrains Mono and Symbols Nerd Font Mono, so Nerd Font icons work on phones.
 - As in WezTerm, kitty and Ghostty, an icon followed by a space is drawn two cells wide; otherwise it
   fits in one cell. Powerline separators are stretched to fill their cell.
+- `[font]` in the config file changes the terminal font ([below](#font)). Icons keep working with any font.
 
 ### Opening links on your phone
 
@@ -189,7 +190,7 @@ running palmterm and closes their open connections (e.g. after losing a phone; t
 
 ## Configuration
 
-`~/.config/palmterm/config.toml` sets the UI language, the key bar and the colors (theme). Reload the page to apply
+`~/.config/palmterm/config.toml` sets the UI language, the key bar, the colors (theme) and the font. Reload the page to apply
 changes; no restart is needed. [config.example.toml](config.example.toml) contains the default key bar,
 so it is a good starting point.
 
@@ -234,6 +235,25 @@ The 16 colors are `black` `red` `green` `yellow` `blue` `magenta` `cyan` `white`
 `bright_` versions (`bright_black` … `bright_white`). Write colors as `#rrggbb` or `#rgb`. A mistyped
 color (such as `#12345`) or an unknown theme name is reported when the page opens, and only that part
 falls back to the default.
+
+### Font
+
+`[font]` sets the terminal font. For a font installed on the PC, palmterm finds its file and serves it to the phone.
+
+```toml
+[font]
+family = "Liberation Mono"   # name of a font installed on the PC (as fc-list shows it)
+# file = "fonts/MyFont.ttf"  # a font file; relative paths start at ~/.config/palmterm/
+```
+
+- If the PC has no font with that `family` name, a font of the same name on the phone is used, and
+  otherwise JetBrains Mono.
+- `file` serves that file instead of looking up `family` (.ttf, .otf, .woff or .woff2). Put the font in
+  `~/.config/palmterm/` and use a relative path, and copying the folder carries it to another PC. A file that
+  cannot be used is reported when the page opens.
+- The font is served only to logged-in devices, and only that one font file.
+- Only the regular weight is served, so the browser draws bold by thickening it. Nerd Font icons are always
+  drawn with the icon font palmterm serves, whichever font you pick.
 
 ### Key bar
 

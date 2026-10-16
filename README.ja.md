@@ -90,6 +90,7 @@ Ctrl や Alt の入力、カーソル移動、スクロールを使いやすく�
 - JetBrains Mono と Symbols Nerd Font Mono を palmterm が配るので、スマホでも Nerd Font のアイコンが出る。
 - WezTerm・kitty・Ghostty と同じく、次のマスが空白のアイコンは2マス分の大きさで描き、そうでなければ
   1マスに収める。Powerline の区切りは1マスいっぱいに引き伸ばす。
+- 設定ファイルの `[font]` で端末のフォントを変えられる（[下](#フォント-1)）。アイコンはどのフォントでも今までどおり出る。
 
 ### リンクをスマホで開く
 
@@ -184,7 +185,7 @@ palmterm url                                   # ログイン用の URL と、�
 
 ## 設定ファイル
 
-`~/.config/palmterm/config.toml` で、画面の言語とキーバー、色（テーマ）を決める。書き換えたらページを読み込み直すだけで
+`~/.config/palmterm/config.toml` で、画面の言語とキーバー、色（テーマ）、フォントを決める。書き換えたらページを読み込み直すだけで
 反映する（再起動は要らない）。[config.example.toml](config.example.toml) に既定のキーバーがそのまま
 書いてあるので、コピーして編集するとよい。
 
@@ -227,6 +228,24 @@ red = "#d1242f"        # 端末の16色の1つ
 16色は `black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` と、`bright_` を付けた
 `bright_black`〜`bright_white`。色は `#rrggbb` か `#rgb` で書く。書き間違えた色（`#12345` など）や
 知らないテーマの名前は画面を開いたときに知らせ、その所だけ既定の色に戻す。
+
+### フォント
+
+`[font]` で端末のフォントを変える。PC に入っているフォントは、palmterm がファイルを探してスマホに配る。
+
+```toml
+[font]
+family = "Liberation Mono"   # PC に入っているフォントの名前（fc-list で出る名前）
+# file = "fonts/MyFont.ttf"  # フォントのファイル。相対パスは ~/.config/palmterm/ から数える
+```
+
+- `family` の名前が PC に無ければ、スマホに入っている同じ名前のフォントを使い、それも無ければ JetBrains Mono に戻る。
+- `file` を書くと、`family` で探す代わりにそのファイルを配る（.ttf・.otf・.woff・.woff2）。フォントを
+  `~/.config/palmterm/` に置いて相対パスで書けば、フォルダごと写すだけで別の PC でも同じになる。使えない
+  ファイルは画面を開いたときに知らせる。
+- 配るのはログインした端末にだけで、配るのは決めたフォントのファイル1つだけ。
+- 配るのは普通の太さの1ファイルなので、太字はブラウザが太らせて描く。Nerd Font のアイコンは、どのフォントにしても
+  palmterm が配るアイコン用フォントで描く。
 
 ### キーバー
 

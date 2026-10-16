@@ -25,6 +25,17 @@ name = "default"
 #   bright_black bright_red bright_green bright_yellow bright_blue bright_magenta bright_cyan bright_white
 # red = "#f44747"
 
+# 端末のフォント / Terminal font（書かなければ JetBrains Mono / JetBrains Mono if unset）
+[font]
+# PC に入っているフォントの名前。palmterm がファイルを探してスマホに配る。PC に無ければスマホの同じ名前のフォント、
+# それも無ければ JetBrains Mono。
+# Name of a font installed on the PC; palmterm finds and serves its file. Falls back to a font of that name
+# on the phone, then to JetBrains Mono.
+# family = "Liberation Mono"
+# フォントのファイル（family で探す代わりに配る）。相対パスはこのファイルのあるフォルダから数える。
+# A font file to serve instead (.ttf, .otf, .woff, .woff2). Relative paths start at this file's folder.
+# file = "fonts/MyFont.ttf"
+
 # キーバーのキー。書いた順に左から並ぶ。[[keys]] を1つでも書くと、既定の並びを丸ごと置き換える。
 # Keys on the key bar, left to right. Any [[keys]] entry replaces the whole default set.
 #

@@ -22,6 +22,7 @@ type config struct {
 	Language string      `toml:"language" json:"language"`
 	Keys     []keyConfig `toml:"keys" json:"keys,omitempty"` // 空なら画面側の既定の並び
 	Theme    themeConfig `toml:"theme" json:"theme"`
+	Font     fontConfig  `toml:"font" json:"font"` // 中身は fonts.go
 }
 
 // 画面の色。name で組み込みのテーマを選び（空なら default）、書いた色だけ上書きする。
@@ -150,6 +151,7 @@ func loadNewerConfig(path string, version int) (config, error) {
 		Language toml.Primitive `toml:"language"`
 		Keys     toml.Primitive `toml:"keys"`
 		Theme    toml.Primitive `toml:"theme"`
+		Font     toml.Primitive `toml:"font"`
 	}
 	md, err := toml.DecodeFile(path, &raw)
 	if err != nil {
@@ -174,6 +176,12 @@ func loadNewerConfig(path string, version int) (config, error) {
 			cfg.Theme = theme
 		}
 	}
+	if md.IsDefined("font") {
+		var font fontConfig
+		if md.PrimitiveDecode(raw.Font, &font) == nil {
+			cfg.Font = font
+		}
+	}
 	return cfg, nil
 }
 
@@ -189,7 +197,7 @@ func tr(ja, en string) string {
 	return en
 }
 
-// 画面の設定（言語・キーバー・色）を返す。設定ファイルを読めなかったときは、既定の設定と理由を返す。
+// 画面の設定（言語・キーバー・色・フォント）を返す。設定ファイルを読めなかったときは、既定の設定と理由を返す。
 func (s *server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	cfg, err := settings.get()
 	resp := struct {
@@ -199,7 +207,16 @@ func (s *server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		Error   string `json:"error,omitempty"`
 		// 設定ファイルの版がこの palmterm より新しいとき、その版（画面で知らせる）
 		NewerConfig int `json:"newerConfig,omitempty"`
+		// [font] のフォントを配るときの URL（PC に無ければ空。画面は family の名前でスマホのフォントを探す）
+		FontURL string `json:"fontURL,omitempty"`
+		// [font] の file を使えなかった理由（画面で知らせる）
+		FontError string `json:"fontError,omitempty"`
 	}{config: cfg, Path: settings.path, Version: version}
+	font := chooseFont(cfg.Font, settings.path)
+	resp.FontURL = fontURL(font)
+	if font.err != nil {
+		resp.FontError = font.err.Error()
+	}
 	if cfg.Version > configVersion {
 		resp.NewerConfig = cfg.Version
 	}
