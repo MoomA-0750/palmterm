@@ -41,8 +41,10 @@ for working with TUIs such as vim, lazygit and Claude Code.
   (an empty name restores tmux's automatic name).
 - **The green tmux button**, pinned to the right of the key bar, opens a panel to split panes, zoom,
   close a pane (tap twice), move between panes, enter tmux copy mode, send the prefix (Ctrl+B), and
-  change the font size.
-  Its "Devices" button lists the logged-in devices: log this one out, or revoke another (both tap
+  open Settings.
+- **Settings** (from the panel) lists the text size, fonts, theme, hiding or showing the key bar, the
+  logged-in devices, and the palmterm version. Close returns to the terminal.
+  The "List" button in its Devices row lists the logged-in devices: log this one out, or revoke another (both tap
   twice) — for example a lost phone, from a device you still have. Tap a device's name to give it one
   you will recognize ("work iPad"); clear it to go back to the automatic name.
 - **Tap a pane** to select it.
@@ -236,7 +238,7 @@ The 16 colors are `black` `red` `green` `yellow` `blue` `magenta` `cyan` `white`
 color (such as `#12345`) or an unknown theme name is reported when the page opens, and only that part
 falls back to the default.
 
-You can also pick the theme on the page: tap one in the Theme row of the tmux button's panel. The colors
+You can also pick the theme on the page: tap one in the Theme row of Settings. The colors
 change at once and the `name` line under `[theme]` in the config file is rewritten (other lines, comments
 and their order stay as they are; the file is created if missing). If the config file has a mistake and
 cannot be read, it is left alone and the reason is shown.
@@ -256,7 +258,7 @@ family = "Liberation Mono"   # name of a font installed on the PC (as fc-list sh
 - `file` serves that file instead of looking up `family` (.ttf, .otf, .woff or .woff2). Put the font in
   `~/.config/palmterm/` and use a relative path, and copying the folder carries it to another PC. A file that
   cannot be used is reported when the page opens.
-- You can also add font files from the phone: in the tmux button's panel, tap Fonts → Add and pick a .ttf,
+- You can also add font files from the phone: in Settings, tap List in the Fonts row → Add and pick a .ttf,
   .otf, .woff or .woff2 (up to 32 MB). It is saved in `~/.config/palmterm/fonts/`. Tap Use in the list to
   switch the terminal to it at once; the `file` line under `[font]` (`file = "fonts/NAME"`) in the config
   file is rewritten, leaving the other lines alone as with the theme. Use on "Default font" at the top

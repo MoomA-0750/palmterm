@@ -20,6 +20,7 @@ const PATHS = {
   panes: ["M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "M12 3v18", "M12 12h9"],
   textSmaller: ["m14 12 4 4 4-4", "M18 16V7", "m2 16 4.04-9.69a.5.5 0 0 1 .92 0L11 16", "M3.3 13h6.4"],
   textLarger: ["m14 11 4-4 4 4", "M18 16V7", "m2 16 4.04-9.69a.5.5 0 0 1 .92 0L11 16", "M3.3 13h6.4"],
+  settings: ["M20 7h-9", "M14 17H5", "M14 7a3 3 0 1 0-6 0 3 3 0 1 0 6 0", "M20 17a3 3 0 1 0-6 0 3 3 0 1 0 6 0"],
 } as const;
 
 export type IconName = keyof typeof PATHS;

@@ -18,6 +18,7 @@ import { SoftKeyboard } from "./softkeyboard";
 import { applyFont, type FontConfig } from "./font";
 import { applyTheme, resolveTheme, THEMES, type ThemeConfig } from "./theme";
 import { chooseAppearance, type AppearanceChange } from "./appearance";
+import { setupSettings } from "./settings";
 import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
 
@@ -457,23 +458,28 @@ function setKeybarShown(shown: boolean, save = true) {
 }
 setKeybarShown(loadSetting("keybar", "shown") !== "hidden", false);
 
+// 設定画面（tmux パネルの「設定」で開く）。フォントと端末の一覧はこの上に開く。
+const settings = setupSettings({
+  fontSize: { get: () => fontSize, change: (delta) => setFontSize(fontSize + delta) },
+  keybar: { shown: () => keybarShown, set: (shown) => setKeybarShown(shown) },
+  theme: {
+    names: Object.keys(THEMES),
+    current: () => (serverConfig.theme?.name && Object.hasOwn(THEMES, serverConfig.theme.name) ? serverConfig.theme.name : "default"),
+    choose: (name) => changeAppearance({ theme: name }),
+  },
+  openDevices: () => openDevices(),
+  openFonts: () => fonts.open(),
+  version: serverConfig.version,
+});
+
 const tmuxPanel = setupTmuxPanel({
   tabs: $("tabs"),
   newWindow: $("new-window"),
   button: $("tmux-btn"),
   panel: $("tmuxpanel"),
   sendPrefix: () => conn.send("\x02"),
-  fontSize: { get: () => fontSize, change: (delta) => setFontSize(fontSize + delta) },
-  keybar: { shown: () => keybarShown, set: (shown) => setKeybarShown(shown) },
   toast,
-  version: serverConfig.version,
-  openDevices: () => openDevices(),
-  openFonts: () => fonts.open(),
-  theme: {
-    names: Object.keys(THEMES),
-    current: () => (serverConfig.theme?.name && Object.hasOwn(THEMES, serverConfig.theme.name) ? serverConfig.theme.name : "default"),
-    choose: (name) => changeAppearance({ theme: name }),
-  },
+  openSettings: () => settings.open(),
   bind: bindKeyButton,
 });
 // 端末に触れたらパネルを閉じる。

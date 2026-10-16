@@ -235,21 +235,6 @@ button:active {
   color: var(--label-fg);
 }
 
-.tmux-version {
-  font-size: 12px;
-  color: var(--muted-fg);
-  white-space: nowrap;
-  user-select: text;
-}
-
-.tmux-size {
-  flex: none;
-  min-width: 3.5em;
-  text-align: center;
-  font-size: 13px;
-  color: var(--muted-fg);
-}
-
 #tmuxpanel button {
   flex: none;
   min-width: 40px;
@@ -408,7 +393,8 @@ button:active {
 
 #copymode,
 #devices,
-#fonts {
+#fonts,
+#settings {
   position: fixed;
   inset: 0 0 auto 0;
   height: var(--app-h);
@@ -423,6 +409,7 @@ button:active {
 #copymode[hidden],
 #devices[hidden],
 #fonts[hidden],
+#settings[hidden],
 #history-bar[hidden],
 #clips[hidden],
 #keyrow[hidden],
@@ -512,6 +499,82 @@ button:active {
 .clip-actions .clip-copy {
   color: var(--on-accent);
   background: var(--accent);
+}
+
+/* 設定画面から開く一覧は、設定画面の上に重ねる（閉じると設定画面に戻る）。 */
+#devices,
+#fonts {
+  z-index: 11;
+}
+
+/* 設定画面。 */
+#settings-title {
+  align-self: center;
+  padding: 0 8px;
+}
+
+#settings-body {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 8px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--btn-bg);
+}
+
+.settings-label {
+  flex: none;
+  width: 8em;
+  font-size: 13px;
+  color: var(--label-fg);
+}
+
+.settings-items {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+}
+
+#settings-body button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: none;
+  min-width: 40px;
+  height: 36px;
+  padding: 0 10px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+#settings-body button.on {
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
+.settings-size {
+  flex: none;
+  min-width: 3.5em;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted-fg);
+}
+
+.settings-version {
+  font-size: 13px;
+  color: var(--muted-fg);
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* ログイン中の端末の一覧。 */

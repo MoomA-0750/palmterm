@@ -125,6 +125,13 @@ async function openPage() {
   await waitUntil("つながる", async () => (await page.locator("#status").isHidden()) && tmux("list-clients").includes(SESSION));
 }
 
+/** tmux パネルの「設定」で設定画面を開く。 */
+async function openSettings(p: Page = page) {
+  await p.locator("#tmux-btn").click();
+  await p.locator('#tmuxpanel button[title^="Settings"]').click();
+  await p.locator("#settings").waitFor({ state: "visible" });
+}
+
 function paneText(): string {
   return tmux("capture-pane", "-p", "-J", "-t", SESSION);
 }
@@ -428,7 +435,7 @@ describe("tmux のタブとパネル", () => {
     await waitUntil("タブに映る", async () => (await page.locator(".tmux-tab").allTextContents()).some((t) => t.includes("1:outside")));
   });
 
-  it("パネルで分割し、端末をタップしたペインに移り、文字サイズを変える", async () => {
+  it("パネルで分割し、端末をタップしたペインに移り、設定画面で文字サイズを変える", async () => {
     await page.locator("#tmux-btn").click();
     expect(await page.locator("#tmuxpanel").isVisible()).toBe(true);
     await page.locator('#tmuxpanel button[title="Split side by side"]').click();
@@ -443,27 +450,80 @@ describe("tmux のタブとパネル", () => {
     await page.mouse.click(box!.x + box!.width - 30, 100);
     await waitUntil("右のペインに移る", () => tmux("display-message", "-p", "-t", SESSION, "#{pane_id}") !== leftPane);
 
-    await page.locator("#tmux-btn").click();
-    const size = page.locator(".tmux-size");
+    await openSettings();
+    const size = page.locator(".settings-size");
     const before = Number.parseInt((await size.textContent()) ?? "");
-    await page.locator('#tmuxpanel button[title="Larger text"]').click();
+    const cellWidth = async () => (await page.locator(".term-row").first().evaluate((r) => getComputedStyle(r).fontSize));
+    expect(await cellWidth()).toBe(`${before}px`);
+    await page.locator('#settings button[title="Larger text"]').click();
     expect(await size.textContent()).toBe(`${before + 1}px`);
-    expect(await page.locator("#tmuxpanel").isVisible()).toBe(true); // 文字サイズでは閉じない
-    await page.locator('#tmuxpanel button[title="Smaller text"]').click();
-    await page.locator("#tmux-btn").click();
-    expect(await page.locator("#tmuxpanel").isHidden()).toBe(true);
+    expect(await page.locator("#settings").isVisible()).toBe(true); // 文字サイズでは閉じない
+    await page.locator("#settings-close").click();
+    await waitUntil("端末の文字が大きくなる", async () => (await cellWidth()) === `${before + 1}px`);
+    await openSettings();
+    await page.locator('#settings button[title="Smaller text"]').click();
+    await page.locator("#settings-close").click();
+    await waitUntil("端末の文字が元に戻る", async () => (await cellWidth()) === `${before}px`);
 
     tmux("kill-pane", "-t", SESSION);
   });
-  it("パネルでキーバーを隠すと端末が広がり、読み込み直しても隠れたまま。別のブラウザでは出たまま。もう一度押すと出る", async () => {
+  it("tmux パネルに残るのは分割・ペイン・コピーモード・Ctrl+B・設定だけ。「設定」で設定画面が出て、文字サイズ・フォント・テーマ・キーバー・ログイン中の端末・版が並ぶ。一覧を開いて閉じると設定画面に戻り、設定画面を閉じると端末に戻る", async () => {
+    await page.locator("#tmux-btn").click();
+    const rows = page.locator("#tmuxpanel .tmux-row");
+    expect(await rows.locator(".tmux-label").allTextContents()).toEqual(["Split", "Pane", "Other"]);
+    expect(await rows.nth(2).locator("button").allTextContents()).toEqual(["Copy mode", "Ctrl+B", "Settings"]);
+    for (const gone of ["Theme", "Key bar", "Devices", "Fonts", "Larger text", "Version"]) {
+      expect(await page.locator("#tmuxpanel").textContent()).not.toContain(gone);
+    }
+    await page.locator('#tmuxpanel button[title^="Settings"]').click();
+    expect(await page.locator("#tmuxpanel").isHidden()).toBe(true);
+    await page.locator("#settings").waitFor({ state: "visible" });
+    const labels = await page.locator("#settings .settings-label").allTextContents();
+    expect(labels.slice(0, 5)).toEqual(["Text", "Fonts", "Theme", "Key bar", "Devices"]);
+    // 版（サーバーはいつも版を返す。make の外で作れば dev）
+    expect(labels.slice(5)).toEqual(["Version"]);
+    expect(await page.locator("#settings .settings-version").textContent()).toMatch(/^palmterm \S+/);
+
+    // 上に重なって見えているもの（端末の画面の真ん中）
+    const topAt = () =>
+      page.evaluate(() => {
+        const box = document.getElementById("term")!.getBoundingClientRect();
+        const el = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return el?.closest("#settings, #fonts, #devices, #term")?.id ?? "";
+      });
+    expect(await topAt()).toBe("settings");
+
+    await page.locator("#settings .settings-fonts").click();
+    await page.locator("#fonts").waitFor({ state: "visible" });
+    expect(await topAt()).toBe("fonts");
+    await page.locator("#fonts-close").click();
+    expect(await page.locator("#fonts").isHidden()).toBe(true);
+    expect(await page.locator("#settings").isVisible()).toBe(true);
+    expect(await topAt()).toBe("settings");
+
+    await page.locator("#settings .settings-devices").click();
+    await page.locator("#devices").waitFor({ state: "visible" });
+    expect(await topAt()).toBe("devices");
+    await page.locator("#devices-close").click();
+    expect(await page.locator("#devices").isHidden()).toBe(true);
+    expect(await page.locator("#settings").isVisible()).toBe(true);
+    expect(await topAt()).toBe("settings");
+
+    await page.locator("#settings-close").click();
+    expect(await page.locator("#settings").isHidden()).toBe(true);
+    expect(await topAt()).toBe("term");
+  });
+
+  it("設定画面でキーバーを隠すと端末が広がり、読み込み直しても隠れたまま。別のブラウザでは出たまま。もう一度押すと出る", async () => {
     const termHeight = async () => (await page.locator("#term").boundingBox())!.height;
     const shownHeight = await termHeight();
     const keyrowHeight = (await page.locator("#keyrow").boundingBox())!.height;
 
-    await page.locator("#tmux-btn").click();
-    await page.locator('#tmuxpanel button[title="Hide the key bar"]').click();
-    expect(await page.locator("#tmuxpanel").isHidden()).toBe(true);
+    await openSettings();
+    await page.locator('#settings button[title="Hide the key bar"]').click();
     expect(await page.locator("#keybar").isHidden()).toBe(true);
+    expect(await page.locator("#settings button.settings-keybar").textContent()).toBe("Show");
+    await page.locator("#settings-close").click();
     // タブ、tmux ボタン（タブバーの右端に移る）、入力バーは残る
     expect(await page.locator("#tabs").isVisible()).toBe(true);
     expect(await page.locator("#tabbar #tmux-btn").isVisible()).toBe(true);
@@ -485,8 +545,9 @@ describe("tmux のタブとパネル", () => {
       await other.close();
     }
 
-    await page.locator("#tmux-btn").click();
-    await page.locator('#tmuxpanel button[title="Show the key bar"]').click();
+    await openSettings();
+    await page.locator('#settings button[title="Show the key bar"]').click();
+    await page.locator("#settings-close").click();
     expect(await page.locator("#keybar").isVisible()).toBe(true);
     expect(await page.locator("#keyrow #tmux-btn").isVisible()).toBe(true);
     await waitUntil("端末が元の高さに戻る", async () => Math.abs((await termHeight()) - shownHeight) < 1);
@@ -595,12 +656,12 @@ text = ":wq"
     expect(await usedFont("text")).toBe("JetBrains Mono");
     await cdp.detach();
   });
-  it("tmux パネルの「フォント」から足したフォントは fonts/ に保存され、[font] の file で使え、一覧から2回押しで消せる。フォントでない・大きすぎるものは保存せず知らせる", async () => {
+  it("設定画面の「フォント」から足したフォントは fonts/ に保存され、[font] の file で使え、一覧から2回押しで消せる。フォントでない・大きすぎるものは保存せず知らせる", async () => {
     const fontsDir = join(dir, "fonts");
     rmSync(fontsDir, { recursive: true, force: true });
     const openFonts = async () => {
-      await page.locator("#tmux-btn").click();
-      await page.locator("#tmuxpanel button", { hasText: "Fonts" }).click();
+      if (await page.locator("#settings").isHidden()) await openSettings();
+      await page.locator("#settings .settings-fonts").click();
       await waitUntil("フォントの画面が出る", async () => (await page.locator("#fonts").isVisible()) && (await page.locator("#font-list li").count()) > 0 && !((await page.locator("#font-list").textContent()) ?? "").includes("Loading"));
     };
     await openFonts();
@@ -649,14 +710,14 @@ text = ":wq"
     expect(readdirSync(fontsDir)).toEqual(["Added_Probe.ttf"]);
   }, 30_000);
 
-  it("tmux パネルでテーマと fonts/ のフォントを選ぶとすぐ画面に反映され、設定ファイルの [theme] の name と [font] の file だけが書き換わる。無ければ作る。別の端末で読み込み直しても同じ。読めない設定ファイルには書かず知らせる", async () => {
+  it("設定画面でテーマと fonts/ のフォントを選ぶとすぐ画面に反映され、設定ファイルの [theme] の name と [font] の file だけが書き換わる。無ければ作る。別の端末で読み込み直しても同じ。読めない設定ファイルには書かず知らせる", async () => {
     mkdirSync(join(dir, "fonts"), { recursive: true });
     writeFileSync(join(dir, "fonts", "Chosen.ttf"), testFont("Palmterm Chose"));
     const termBg = (p: Page) => p.evaluate(() => getComputedStyle(document.getElementById("term")!).backgroundColor);
     const accent = (p: Page) => p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
     const chooseTheme = async (name: string) => {
-      if (await page.locator("#tmuxpanel").isHidden()) await page.locator("#tmux-btn").click();
-      await page.locator(`#tmuxpanel .tmux-theme[data-theme="${name}"]`).click();
+      if (await page.locator("#settings").isHidden()) await openSettings();
+      await page.locator(`#settings .settings-theme[data-theme="${name}"]`).click();
     };
     const mine = `# mine
 language = "en" # English
@@ -674,16 +735,16 @@ family = "Palmterm Local"
     await openPage();
     expect(await termBg(page)).toBe("rgb(255, 255, 255)");
 
-    // テーマ：押すとすぐ色が変わり、パネルは開いたまま、押したものに印が付く。書いた色（accent）はそのまま上書きする
+    // テーマ：押すとすぐ色が変わり、設定画面は開いたまま、押したものに印が付く。書いた色（accent）はそのまま上書きする
     await chooseTheme("solarized-dark");
     await waitUntil("色が変わる", async () => (await termBg(page)) === "rgb(0, 43, 54)");
     expect(await accent(page)).toBe("#0969da");
-    expect(await page.locator("#tmuxpanel").isVisible()).toBe(true);
-    expect(await page.locator("#tmuxpanel .tmux-theme.on").getAttribute("data-theme")).toBe("solarized-dark");
+    expect(await page.locator("#settings").isVisible()).toBe(true);
+    expect(await page.locator("#settings .settings-theme.on").getAttribute("data-theme")).toBe("solarized-dark");
     expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`name = "light"`, `name = "solarized-dark"`));
 
-    // フォント：パネルの「フォント」の一覧で「使う」を押すと、読み込み直さずに端末の文字がそのフォントになる
-    await page.locator("#tmuxpanel button", { hasText: "Fonts" }).click();
+    // フォント：設定画面の「フォント」の一覧で「使う」を押すと、読み込み直さずに端末の文字がそのフォントになる
+    await page.locator("#settings .settings-fonts").click();
     const row = page.locator(".font-file", { hasText: "Chosen.ttf" });
     await waitUntil("一覧に出る", async () => (await row.count()) === 1);
     await row.locator(".font-use").click();
@@ -713,9 +774,9 @@ family = "Palmterm Local"
       await other.close();
     }
 
-    // 「既定のフォント」に戻すと file の行だけ消える
-    await page.locator("#tmux-btn").click();
-    await page.locator("#tmuxpanel button", { hasText: "Fonts" }).click();
+    // 「既定のフォント」に戻すと file の行だけ消える（一覧を閉じると設定画面に戻っているので、そこから開き直す）
+    expect(await page.locator("#settings").isVisible()).toBe(true);
+    await page.locator("#settings .settings-fonts").click();
     await page.locator(".font-default .font-use").click();
     await waitUntil("既定に戻る", async () => ((await page.locator(".font-default .font-name").textContent()) ?? "").includes("in use"));
     expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`name = "light"`, `name = "solarized-dark"`));
@@ -738,7 +799,7 @@ family = "Palmterm Local"
     expect(await page.locator("#toast").textContent()).toContain("theme.backgroud");
     expect(readFileSync(configPath, "utf8")).toBe(bad);
     expect(await termBg(page)).toBe("rgb(30, 30, 30)");
-    expect(await page.locator("#tmuxpanel .tmux-theme.on").getAttribute("data-theme")).toBe("default");
+    expect(await page.locator("#settings .settings-theme.on").getAttribute("data-theme")).toBe("default");
 
     rmSync(configPath, { force: true });
     await openPage();
@@ -962,9 +1023,9 @@ describe("ログイン中の端末", () => {
       await pc.goto(`${base}/auth?token=${TOKEN}`);
       await pc.waitForFunction(() => document.querySelector(".term-row") !== null);
 
-      // tmux ボタンのパネルから一覧を開く。自分には印が付き、ボタンはログアウト
-      await pc.locator("#tmux-btn").click();
-      await pc.locator("#tmuxpanel button", { hasText: "Devices" }).click();
+      // 設定画面から一覧を開く。自分には印が付き、ボタンはログアウト
+      await openSettings(pc);
+      await pc.locator("#settings .settings-devices").click();
       const phoneRow = pc.locator(".device", { hasText: "iPhone · Safari" });
       await waitUntil("一覧が出る", async () => (await phoneRow.count()) === 1);
       const me = pc.locator(".device.current");
