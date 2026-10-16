@@ -1,6 +1,6 @@
 ---
 id: 0009
-status: doing        # todo / doing / blocked / done
+status: blocked       # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - "main.go"
   - "auth.go"
@@ -30,13 +30,23 @@ created: 2026-10-16
 - [ ] Go のテストで上の1〜8を確かめ、make test が通る。SPEC.md の「ログインと安全」と README を、今の動きに書き換える
 
 ## 本人に訊くこと
-（実行役が書く。本人は `task-loop answer` で答える）
+**scope の外（web/e2e）を直さないと、完了の条件「make test が通る」を満たせません。**
+
+- 何が起きるか: `make test` は `go test` のあとに `cd web && npm run test:e2e` を走らせる（Makefile の test）。通しのテスト `web/e2e/app.test.ts` は palmterm を `-token e2etoken` で起動し、`/auth?token=e2etoken` を開いてログインしている（起動待ちの fetch が 303 を待つ所、beforeAll の page.goto、LAN・端末一覧・ほかのブラウザのテストの goto など）。この課題で `-token` をなくし、固定のトークンではログインできなくすると、palmterm が起動しないか、全部のテストがログインできずに落ちる
+- 証拠: `web/e2e/app.test.ts` の 92 行目（`"-token", TOKEN`）、95・118・394・600・645・648 行目（`/auth?token=${TOKEN}`）
+- 被害規模と戻せるか: コードはまだ何も変えていない（文書もこの課題ファイルだけ）。いつでもやり直せる
+- 決めてほしいこと: scope に次を足してよいか
+  - `web/e2e/*.ts`
+  - 直し方の案: テストの起動時に palmterm のログ（起動時の案内に使い捨ての URL を出す）か、`XDG_RUNTIME_DIR` を分けたうえで `palmterm url -no-qr` を実行して URL を受け取り、その URL を開いて「ログイン」ボタンを押す手順をまとめた関数でログインする（端末ごとに新しい URL を取る）
+- ついでに決めてほしいこと（推奨案で進めてよければ答えは要らない）:
+  - 「ログイン中の端末」の記録はトークンのファイルの中身で鍵をかけてあり、それで「更新前からログインしていた端末はそのまま使える」を保つ。推奨案は、token ファイルはログインには使わず「端末の記録の鍵」として残す。`-token` と同じ固定のトークンとして `PALMTERM_TOKEN`（環境変数）もなくす。`-token`・`PALMTERM_TOKEN` で動かしていた人は、更新後に一度ログインし直す
+  - `palmterm url` は、サーバーの控えのファイル（login-urls）を読む代わりに、logout-all と同じ操作用のソケットで動いているサーバーに新しいトークンを出させる（控えのファイルはもう書かない）
 
 ## メモ
 （実行役が書く。試してだめだったこと）
 
 ## 結果
-（実行役が書く。何をしたか／どう確かめたか／本人が見るべき点）
+実装は始めていない。「本人に訊くこと」の scope の追加を待っている。
 
 ## レビュー
 （task-loop が Codex の指摘を書き足す）
