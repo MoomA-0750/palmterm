@@ -34,8 +34,12 @@
   - 確かめ方: 自動テスト `TestDevicesListLogoutAndRevoke`、`TestRevokeClosesThatDevicesTerminal`（auth_config_test.go）、通しのテスト「一覧で端末に名前を付けられ、ほかの端末を取り消すとその端末はつながらなくなり、自分はログアウトできる」（web/e2e/app.test.ts）
 - （確定）一覧の端末の名前を押すと、見分けやすい名前を付けられる（40 文字まで。前後の空白と制御文字は除く）。付けた名前を大きく出し、自動の名前は下の行に添える。空にすると自動の名前に戻る。名前はサーバーの記録に残るので、どの端末から付けても、再起動しても同じ
   - 確かめ方: 自動テスト `TestRenameDevice`（auth_config_test.go）、通しのテスト「一覧で端末に名前を付けられ、ほかの端末を取り消すとその端末はつながらなくなり、自分はログアウトできる」（web/e2e/app.test.ts）
-- （確定）全端末を一度に締め出すには、トークンを変えて再起動する。前のトークンで記録した端末は全部無効になる
+- （確定）トークンを変えて再起動しても、全端末を締め出せる。前のトークンで記録した端末は全部無効になる（漏れたのがトークンそのものなら、こちらを使う）
   - 確かめ方: 自動テスト `TestDevicesSurviveRestartButNotTokenChange`（auth_config_test.go）
+- （確定）`palmterm logout-all` で、動いている palmterm に記録された全端末のログインを取り消す。開いている接続もすぐ切れ、切られた画面には「取り消す」と同じく、読み込み直してログインし直す方法の案内が出る。取り消した台数（`Logged out N devices.`）を出して終了コード 0 で終わる。palmterm が動いていなければ、そう知らせて終了コード 1 で終わる。トークンは変わらないので、ログイン用の URL を開けばまたログインできる
+  - サーバーとのやり取りは、実行時のフォルダ（`$XDG_RUNTIME_DIR/palmterm`、無ければ `/tmp/palmterm-<uid>`）の `control.sock`（0600）で行う。フォルダは起動時に 0700 にそろえ、ほかの人のフォルダなら使わない。`-relay-browser=false` でも使える
+  - 確かめ方: 自動テスト `TestLogoutAllRevokesEveryDeviceAndClosesConnections`、`TestLogoutAllWithoutServer`（logoutall_test.go）
+  - 実物での確かめ方: palmterm を動かしてスマホでつないだまま `palmterm logout-all` → 台数が出て終了コード 0。スマホの画面はすぐ切れ、ログインし直す案内が出る。palmterm を止めて打つと「palmterm is not running」と出て終了コード 1
 - （確定）この仕組みより前の Cookie（トークンから計算した値）は通さない。前から使っていた端末は、一度ログインし直す
   - 確かめ方: 自動テスト `TestRequireAuth`（auth_config_test.go）
 - （仮）他のアプリから開いたリンクでもログインしたまま開ける。一方、別のサイトのページからは tmux を操作できない

@@ -67,6 +67,17 @@ func (c *clientSet) closeDevice(device string) {
 	}
 }
 
+// 全端末の接続を切る（palmterm logout-all）。
+func (c *clientSet) closeAll() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for tc := range c.clients {
+		if tc.close != nil {
+			go tc.close()
+		}
+	}
+}
+
 func (c *clientSet) touch(tc *termClient) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -163,8 +174,8 @@ func (l *limitedReader) Read(p []byte) (int, error) {
 
 // ブラウザで開く URL を受けるソケットと palmterm-open を用意する。使えなくても palmterm 自体は動かす。
 func (s *server) setupBrowserRelay() {
-	dir := runtimeDir()
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	dir, err := ensureRuntimeDir()
+	if err != nil {
 		log.Printf(tr("ブラウザの受け渡しを用意できませんでした: %v", "Could not set up the browser relay: %v"), err)
 		return
 	}

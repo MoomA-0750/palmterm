@@ -57,6 +57,10 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "url" {
 		os.Exit(runURL(os.Stdout, os.Args[2:]))
 	}
+	// palmterm logout-all：動いている palmterm の全端末のログインを取り消す。
+	if len(os.Args) > 1 && os.Args[1] == logoutAllCommand {
+		os.Exit(runLogoutAll(os.Stdout, os.Stderr, os.Args[2:]))
+	}
 
 	// 説明は英語で書く。-help では設定の言語が日本語なら help.go の flagUsageJa に差し替える。
 	listen := flag.String("listen", "127.0.0.1:7681", "address to listen on (HTTP)")
@@ -118,6 +122,7 @@ func main() {
 		s.origins = strings.Split(*allowOrigin, ",")
 	}
 
+	s.setupControlSocket()
 	if *relayBrowser {
 		s.setupBrowserRelay()
 	}

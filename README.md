@@ -170,7 +170,8 @@ palmterm url                                   # login URLs and a QR code to sca
 
 ### Options
 
-`palmterm url [-no-qr]` prints the login URLs and a QR code; `palmterm open URL` hands a URL to the palmterm page
+`palmterm url [-no-qr]` prints the login URLs and a QR code; `palmterm logout-all` logs out every device of the
+running palmterm and closes their open connections (e.g. after losing a phone; the token stays the same); `palmterm open URL` hands a URL to the palmterm page
 (see [Opening links on your phone](#opening-links-on-your-phone)).
 
 | Flag | Default | |

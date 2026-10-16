@@ -165,7 +165,8 @@ palmterm url                                   # ログイン用の URL と、�
 
 ### オプション
 
-`palmterm url [-no-qr]` はログイン用の URL と QR コードを出す。`palmterm open URL` は URL を palmterm の画面に渡す
+`palmterm url [-no-qr]` はログイン用の URL と QR コードを出す。`palmterm logout-all` は動いている palmterm の
+全端末のログインを取り消し、開いている接続も切る（端末をなくしたときなど。トークンは変わらない）。`palmterm open URL` は URL を palmterm の画面に渡す
 （[リンクをスマホで開く](#リンクをスマホで開く)）。
 
 | オプション | 既定 | |
