@@ -43,4 +43,6 @@ created: 2026-10-16
   - SPEC の版の2項目は自動テストがあるので「確定」にした。本人が確かめるまで「仮」にしたければ直す
 
 ## レビュー
-（task-loop が Codex の指摘を書き足す）
+Codex（2026-10-16、686aab6..7c57874）:
+
+- [中] `auth_config_test.go:334` の `TestConfigNewerVersionUsesWhatItCanRead` は `/api/config` の `newerConfig` しか確認しておらず、`web/src/main.ts:783` のトースト表示を検証していません。したがって「画面を開いたときに知らせる」という完了条件と、`SPEC.md:141` で確定扱いにした外部動作を自動テストで担保できていません。
