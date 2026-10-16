@@ -46,4 +46,6 @@ created: 2026-10-16
 - config.go の `/api/config` の `version` のコメントに「画面の tmux パネルに出す」と残っている（scope の外なので直していない。動きには関係しない）
 
 ## レビュー
-（task-loop が Codex の指摘を書き足す）
+Codex（2026-10-16、8854c2a..e43b904）:
+
+指摘なし
