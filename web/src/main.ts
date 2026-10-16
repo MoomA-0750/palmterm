@@ -264,6 +264,7 @@ function insertIntoLine(text: string) {
 // 1行のときはボタンと同じ高さ、改行したら 200px まで伸ばす。
 const LINE_MIN_HEIGHT = 36;
 function autosizeLine() {
+  updateSendButton();
   line.style.height = "";
   if (line.value === "") return; // 空なら CSS の高さ（プレースホルダーの折り返しで伸ばさない）
   const border = line.offsetHeight - line.clientHeight; // box-sizing: border-box なので枠の分を足す
@@ -323,6 +324,12 @@ async function flushLine(withEnter: boolean): Promise<boolean> {
   if (text) conn.send(text.includes("\n") ? bracketedPaste(text) : text);
   if (withEnter) conn.send("\r");
   return true;
+}
+
+// 送信ボタンは、送るもの（文字か添付）があるときだけ出す。空のときはテキストボックスがその分伸びる。
+// 空のままの Ctrl+Enter は今までどおり Enter だけを送る。
+function updateSendButton() {
+  sendBtn.hidden = line.value === "" && attachments.count === 0;
 }
 
 line.addEventListener("input", autosizeLine);
@@ -567,7 +574,8 @@ async function copyText(text: string): Promise<boolean> {
 // どちらも Claude Code などに画像を渡すため。HEIC などはサーバーが JPEG に変換してから返す。
 
 const uploadInput = $<HTMLInputElement>("upload-input");
-const attachments = new Attachments($("attachments"));
+const attachments = new Attachments($("attachments"), updateSendButton);
+updateSendButton();
 
 async function addImages(files: File[]) {
   if (files.length === 0) return;

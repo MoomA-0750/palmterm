@@ -254,6 +254,48 @@ describe("入力", () => {
     expect(await sent()).toEqual(["echo two", "\r", "\x7f"]);
   });
 
+  it("送信ボタンは、文字か添付があるときだけ出す。空の Ctrl+Enter は Enter だけを送る", async () => {
+    const send = page.locator("#send");
+    const lineWidth = async () => (await page.locator("#line").boundingBox())!.width;
+    // 空で添付もないときは出さず、テキストボックスがその分（ボタンの幅と間の 4px）伸びる
+    expect(await send.isHidden()).toBe(true);
+    const wide = await lineWidth();
+
+    await page.locator("#line").click();
+    await page.keyboard.type("a");
+    expect(await send.isVisible()).toBe(true);
+    const sendWidth = (await send.boundingBox())!.width;
+    expect(wide - (await lineWidth())).toBeCloseTo(sendWidth + 4, 0);
+    await page.keyboard.press("Backspace");
+    expect(await send.isHidden()).toBe(true);
+    expect(await lineWidth()).toBeCloseTo(wide, 0);
+
+    // 文字が空でも画像を添付すると出て、× で外すと消える
+    await page.locator("#upload-input").setInputFiles({ name: "only.png", mimeType: "image/png", buffer: Buffer.from("89504e470d0a1a0a", "hex") });
+    await waitUntil("送信ボタンが出る", () => send.isVisible());
+    await page.locator(".att-remove").click();
+    expect(await send.isHidden()).toBe(true);
+
+    // 送って空になると消える
+    await page.locator("#line").fill("echo three");
+    expect(await send.isVisible()).toBe(true);
+    await send.click();
+    expect(await page.inputValue("#line")).toBe("");
+    expect(await send.isHidden()).toBe(true);
+
+    // 空のままの Ctrl+Enter と、キーバーの Ctrl → Enter は Enter だけを送る
+    await clearSent();
+    await page.locator("#line").click();
+    await page.keyboard.press("Control+Enter");
+    expect(await sent()).toEqual(["\r"]);
+    await key("Ctrl").click();
+    await page.locator("#line").focus();
+    await page.keyboard.press("Enter");
+    expect(await sent()).toEqual(["\r", "\r"]);
+    expect(await page.inputValue("#line")).toBe("");
+    expect(await send.isHidden()).toBe(true);
+  });
+
   it("端末をタップすれば直接入力。Tab はテキストボックスの書きかけを送らない", async () => {
     await page.locator("#line").fill("LEFTOVER");
     await page.mouse.click(200, 150);

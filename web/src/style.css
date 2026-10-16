@@ -360,6 +360,10 @@ button:active {
   place-items: center;
 }
 
+#inputbar button[hidden] {
+  display: none;
+}
+
 #line {
   flex: 1;
   min-width: 0;
