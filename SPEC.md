@@ -160,6 +160,13 @@
 - （確定）フォントを配るのはログインした端末にだけで、配るのは `[font]` で決めた1つのファイルだけ。URL に何を付けてもほかのファイルは選べない
   - 確かめ方: `TestFontIsServedOnlyToLoggedInDevicesAndOnlyThatFile`（fonts_test.go）
 - （仮）配るのは1ファイル（普通の太さ）だけなので、太字・斜体はブラウザが作って描く
+- （確定）tmux ボタンのパネルの「文字」の行の「フォント」で、画面から足したフォントの一覧を開く。「追加」で .ttf・.otf・.woff・.woff2 を1つ選ぶと、設定ファイルのあるフォルダの `fonts/`（既定は `~/.config/palmterm/fonts/`）に保存し、`[font]` に書く行（`file = "fonts/名前"`）を知らせる。名前は英数字と `. _ -` だけに直し（`../` などのフォルダの部分は捨てる）、同じ名前があれば上書きせず `-1` などの番号を付ける。保存したフォントは `[font]` の `file = "fonts/名前"` で使える（ページを読み込み直すと反映）
+  - 確かめ方: `TestUploadedFontIsSavedAndUsable`（fonts_upload_test.go）、単体テスト「画面から足したフォントの一覧」（web/src/fontfiles.test.ts）、通しのテスト「tmux パネルの「フォント」から足したフォントは fonts/ に保存され、…」（web/e2e/app.test.ts。保存したファイルを `[font]` に書き、ブラウザが実際に描いたフォントの名前を確かめる）
+  - 実機での確かめ方: スマホで tmux パネル →「フォント」→「追加」でフォントを選ぶ → 一覧に出て、PC の `~/.config/palmterm/fonts/` にファイルができる。設定ファイルに `[font]` と知らせの行を書き、ページを読み込み直す → 端末の文字がそのフォントになり、一覧のその行に「使用中」が付く
+- （確定）拡張子が .ttf・.otf・.woff・.woff2 でないもの、中身の先頭がそのどれでもないもの（.ttc も）、32 MB より大きいものは保存せず、理由を画面に知らせる。ファイル名に `../` などを入れても `fonts/` の外には書かない。保存・一覧・削除はログインした端末だけ
+  - 確かめ方: `TestFontUploadRejectsNonFontsAndStaysInFontsDir`（fonts_upload_test.go）と上の通しのテスト
+- （確定）一覧には名前・大きさ・設定ファイルに書く行を出し、各行の「削除」を2回押すと消す（1回目は「消す?」になり、3秒で戻る）。消せるのは `fonts/` の直下のフォントのファイルだけ
+  - 確かめ方: `TestFontDelete`（fonts_upload_test.go）、単体テストと通しのテスト（上と同じ）
 
 ## サービスとして動かす
 

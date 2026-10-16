@@ -31,6 +31,8 @@ export interface TmuxPanelOptions {
   version?: string;
   /** ログイン中の端末の一覧を開く。 */
   openDevices: () => void;
+  /** 画面から足したフォントの一覧を開く。 */
+  openFonts: () => void;
   /** キーバーと同じ押し方（フォーカスを奪わない、横スクロールでは押さない）でボタンをつなぐ。 */
   bind: (btn: HTMLButtonElement, fire: () => void, repeat: boolean) => void;
 }
@@ -278,6 +280,10 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
       sizeBtn({ icon: "textSmaller" }, t("textSmaller"), -1),
       sizeLabel,
       sizeBtn({ icon: "textLarger" }, t("textLarger"), 1),
+      makeBtn(t("fonts"), t("fontsTitle"), () => {
+        close();
+        opts.openFonts();
+      }),
     ),
     row(t("rowKeybar"), keybarBtn),
   );

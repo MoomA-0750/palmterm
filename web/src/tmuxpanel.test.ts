@@ -16,6 +16,7 @@ function makePanel(version?: string, keybar = { shown: () => true, set: (_: bool
     toast: () => {},
     version,
     openDevices: () => {},
+    openFonts: () => {},
     bind: (btn, fire) => btn.addEventListener("click", fire),
   });
   return panel;

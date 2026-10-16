@@ -5,6 +5,7 @@ import "./style.css";
 import { Attachments, uploadFile } from "./attachments";
 import { type ClipItem, clipPreview, deleteClip, fetchClips, renderClips } from "./clips";
 import { Connection } from "./connection";
+import { setupFonts } from "./fontfiles";
 import { type DeviceItem, fetchDevices, renameDevice, renderDevices, revokeDevice } from "./devices";
 import { setupDragSelect } from "./dragselect";
 import { type Lang, setLang, t } from "./i18n";
@@ -466,6 +467,7 @@ const tmuxPanel = setupTmuxPanel({
   toast,
   version: serverConfig.version,
   openDevices: () => openDevices(),
+  openFonts: () => fonts.open(),
   bind: bindKeyButton,
 });
 // 端末に触れたらパネルを閉じる。
@@ -785,6 +787,10 @@ async function renameAndRefresh(item: DeviceItem, name: string) {
 }
 
 $("devices-close").addEventListener("click", () => (devicesEl.hidden = true));
+
+// ---- 画面から足したフォント：追加と削除 ----
+
+const fonts = setupFonts((message) => toast(message, 5000));
 
 // ほかの端末から取り消されたら、つなぎ直さずに読み込み直す（ログインし直す方法の案内が出る）。
 conn.onLoggedOut = () => location.reload();

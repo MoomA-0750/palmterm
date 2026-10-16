@@ -4,7 +4,7 @@
 // 一時ディレクトリの設定ファイル・アップロード先で動かすので、ふだんの環境には触れない。
 
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -195,6 +195,44 @@ beforeEach(async () => {
   await openPage();
   await clearSent();
 });
+
+/**
+ * 文字とアイコン（U+F418）を出し、それぞれ実際にどのフォントで描いたかをブラウザに訊く。
+ * ページを読み込み直したあとも使える（printf の出力は tmux に残る）。終わったら cdp.detach() する。
+ */
+async function fontProbe() {
+  tmux("send-keys", "-t", SESSION, "printf 'WWW \\357\\220\\230 X\\n'", "Enter");
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("DOM.enable");
+  await cdp.send("CSS.enable");
+  const usedFont = async (what: "text" | "icon"): Promise<string> => {
+    let found = "";
+    await waitUntil(`${what} のフォントがわかる`, async () => {
+      const marked = await page.evaluate((what) => {
+        document.querySelectorAll("[data-probe]").forEach((e) => e.removeAttribute("data-probe"));
+        const want = what === "text" ? "WWW" : "\uf418";
+        const walker = document.createTreeWalker(document.getElementById("term")!, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const text = n.textContent ?? "";
+          if (text.includes(want) && !text.includes("printf")) {
+            n.parentElement!.setAttribute("data-probe", "");
+            return true;
+          }
+        }
+        return false;
+      }, what);
+      if (!marked || !(await page.evaluate(() => document.fonts.ready.then(() => true)))) return false;
+      const { root } = await cdp.send("DOM.getDocument");
+      const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: "[data-probe]" });
+      if (!nodeId) return false;
+      const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
+      found = fonts.map((f) => f.familyName).join(",");
+      return found !== "";
+    });
+    return found;
+  };
+  return { usedFont, cdp };
+}
 
 describe("キーバー", () => {
   it("既定の並びと英語の表示", async () => {
@@ -520,37 +558,7 @@ text = ":wq"
   });
 
   it("[font] の family・file のフォントを PC から配って端末の文字に使う。PC に無ければスマホのもの、それも無ければ JetBrains Mono。アイコンは変わらない", async () => {
-    // 文字とアイコン（U+F418）を出し、それぞれ実際にどのフォントで描いたかをブラウザに訊く。
-    tmux("send-keys", "-t", SESSION, "printf 'WWW \\357\\220\\230 X\\n'", "Enter");
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send("DOM.enable");
-    await cdp.send("CSS.enable");
-    const usedFont = async (what: "text" | "icon"): Promise<string> => {
-      let found = "";
-      await waitUntil(`${what} のフォントがわかる`, async () => {
-        const marked = await page.evaluate((what) => {
-          document.querySelectorAll("[data-probe]").forEach((e) => e.removeAttribute("data-probe"));
-          const want = what === "text" ? "WWW" : "\uf418";
-          const walker = document.createTreeWalker(document.getElementById("term")!, NodeFilter.SHOW_TEXT);
-          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-            const text = n.textContent ?? "";
-            if (text.includes(want) && !text.includes("printf")) {
-              n.parentElement!.setAttribute("data-probe", "");
-              return true;
-            }
-          }
-          return false;
-        }, what);
-        if (!marked || !(await page.evaluate(() => document.fonts.ready.then(() => true)))) return false;
-        const { root } = await cdp.send("DOM.getDocument");
-        const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: "[data-probe]" });
-        if (!nodeId) return false;
-        const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
-        found = fonts.map((f) => f.familyName).join(",");
-        return found !== "";
-      });
-      return found;
-    };
+    const { usedFont, cdp } = await fontProbe();
     const icon = await usedFont("icon");
     expect(await usedFont("text")).toBe("JetBrains Mono");
 
@@ -587,6 +595,59 @@ text = ":wq"
     expect(await usedFont("text")).toBe("JetBrains Mono");
     await cdp.detach();
   });
+  it("tmux パネルの「フォント」から足したフォントは fonts/ に保存され、[font] の file で使え、一覧から2回押しで消せる。フォントでない・大きすぎるものは保存せず知らせる", async () => {
+    const fontsDir = join(dir, "fonts");
+    rmSync(fontsDir, { recursive: true, force: true });
+    const openFonts = async () => {
+      await page.locator("#tmux-btn").click();
+      await page.locator("#tmuxpanel button", { hasText: "Fonts" }).click();
+      await waitUntil("フォントの画面が出る", async () => (await page.locator("#fonts").isVisible()) && (await page.locator("#font-list li").count()) > 0 && !((await page.locator("#font-list").textContent()) ?? "").includes("Loading"));
+    };
+    await openFonts();
+    expect(await page.locator(".fonts-empty").count()).toBe(1);
+    expect(await page.locator("#fonts-hint").textContent()).toContain(fontsDir);
+
+    // フォントを選ぶと保存され、一覧に設定ファイルに書く行が出る
+    const added = testFont("Palmterm Added");
+    await page.locator("#fonts-input").setInputFiles({ name: "Added Probe.ttf", mimeType: "font/ttf", buffer: added });
+    const row = page.locator(".font-file", { hasText: "Added_Probe.ttf" });
+    await waitUntil("一覧に出る", async () => (await row.count()) === 1);
+    expect(await row.locator(".font-meta").textContent()).toContain('file = "fonts/Added_Probe.ttf"');
+    expect(await page.locator("#toast").textContent()).toContain('file = "fonts/Added_Probe.ttf"');
+    expect(readFileSync(join(fontsDir, "Added_Probe.ttf")).equals(added)).toBe(true);
+
+    // フォントでないもの・大きすぎるものは保存せず知らせる。名前に ../ があっても fonts/ の外には書かない
+    await page.locator("#fonts-input").setInputFiles({ name: "notes.ttf", mimeType: "font/ttf", buffer: Buffer.from("this is not a font") });
+    await waitUntil("フォントでないと知らせる", async () => ((await page.locator("#toast").textContent()) ?? "").includes("not a font file"));
+    const big = Buffer.concat([added, Buffer.alloc(33 << 20)]);
+    await page.locator("#fonts-input").setInputFiles({ name: "big.ttf", mimeType: "font/ttf", buffer: big });
+    await waitUntil("大きすぎると知らせる", async () => ((await page.locator("#toast").textContent()) ?? "").includes("too large"), 15_000);
+    await page.locator("#fonts-input").setInputFiles({ name: "../escape.ttf", mimeType: "font/ttf", buffer: added });
+    await waitUntil("保存の結果が出る", async () => ((await page.locator("#toast").textContent()) ?? "").includes("Saved"));
+    expect(existsSync(join(dir, "escape.ttf"))).toBe(false);
+    expect(existsSync(join(dir, "notes.ttf")) || existsSync(join(fontsDir, "notes.ttf")) || existsSync(join(fontsDir, "big.ttf"))).toBe(false);
+    expect(readdirSync(fontsDir).sort()).toEqual(["Added_Probe.ttf", "escape.ttf"]);
+    await page.locator("#fonts-close").click();
+
+    // [font] の file = "fonts/…" で端末の文字に使える。一覧では使っているものに印が付く
+    tmux("send-keys", "-t", SESSION, "clear", "Enter");
+    writeFileSync(configPath, `[font]\nfile = "fonts/Added_Probe.ttf"\n`);
+    await openPage();
+    const { usedFont, cdp } = await fontProbe();
+    expect(await usedFont("text")).toBe("Palmterm Added");
+    await cdp.detach();
+    await openFonts();
+    expect(await page.locator(".font-file.in-use .font-name").textContent()).toBe("Added_Probe.ttf（in use）");
+
+    // 削除は2回押し
+    const del = page.locator(".font-file", { hasText: "escape.ttf" }).locator(".font-delete");
+    await del.click();
+    expect(await del.textContent()).toBe("Delete?");
+    expect(existsSync(join(fontsDir, "escape.ttf"))).toBe(true);
+    await del.click();
+    await waitUntil("一覧から消える", async () => (await page.locator(".font-file").count()) === 1);
+    expect(readdirSync(fontsDir)).toEqual(["Added_Probe.ttf"]);
+  }, 30_000);
 });
 
 describe("複数行の送信", () => {

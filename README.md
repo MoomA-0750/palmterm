@@ -251,6 +251,9 @@ family = "Liberation Mono"   # name of a font installed on the PC (as fc-list sh
 - `file` serves that file instead of looking up `family` (.ttf, .otf, .woff or .woff2). Put the font in
   `~/.config/palmterm/` and use a relative path, and copying the folder carries it to another PC. A file that
   cannot be used is reported when the page opens.
+- You can also add font files from the phone: in the tmux button's panel, tap Fonts → Add and pick a .ttf,
+  .otf, .woff or .woff2 (up to 32 MB). It is saved in `~/.config/palmterm/fonts/` and the line to put under
+  `[font]` (`file = "fonts/NAME"`) is shown. The same screen deletes saved fonts (tap twice).
 - The font is served only to logged-in devices, and only that one font file.
 - Only the regular weight is served, so the browser draws bold by thickening it. Nerd Font icons are always
   drawn with the icon font palmterm serves, whichever font you pick.
