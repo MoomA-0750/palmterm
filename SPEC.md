@@ -141,7 +141,7 @@
 - （確定）`version` がこの palmterm の知らない新しい値なら、読める項目（`language`、`[[keys]]`、`[theme]`、`[font]`）だけ使い、知らない項目や書き方が変わって読めない項目は飛ばす。画面を開いたときに、書き間違いの知らせと同じ出し方で「新しい版の設定ファイルです」と知らせる（`/api/config` の応答の `newerConfig` に版が入る）。TOML として読めないときは今までどおり書き間違いとして知らせ、既定の設定を使う
   - 確かめ方: 自動テスト `TestConfigNewerVersionUsesWhatItCanRead`（auth_config_test.go）
   - 実物での確かめ方: 設定ファイルに `version = 2` と知らない項目を書き、ページを読み込み直す → 下に「新しい版の設定ファイルです（…、版 2）。この palmterm が読める項目だけ使います」と出て、言語とキーバーは書いたとおりになる
-- （確定）`[theme]` の `name` で組み込みのテーマを選ぶ。`default`（今までの暗い色。書かなければこれ）、`light`（明るい色）、`solarized-dark`、`solarized-light`。端末の文字・背景・16色と、ボタン・帯・パネル・入力欄の色がまとめて変わる。ページを読み込み直すと反映する。知らない名前は画面を開いたときに知らせ、default を使う
+- （確定）`[theme]` の `name` で組み込みのテーマを選ぶ。`default`（今までの暗い色。書かなければこれ）、`light`（明るい色）、`solarized-dark`、`solarized-light`。端末の文字・背景・16色と、ボタン・帯・パネル・入力欄の色がまとめて変わる。ページを読み込み直すと反映する。知らない名前は画面を開いたときに知らせ、default を使う。画面の tmux パネルからも選べる（「画面でテーマとフォントを選ぶ」の節）
   - 確かめ方: 単体テスト「設定ファイルの [theme]」（web/src/theme.test.ts）、通しのテスト「[theme] でテーマを選ぶと端末とボタンの色が変わり、書いた色だけ上書きする。書き間違えた色は知らせて既定に戻す」（web/e2e/app.test.ts）、`TestConfigTheme`（auth_config_test.go）
   - 実物での確かめ方: 設定ファイルに `[theme]` と `name = "light"` を書き、ページを読み込み直す → 端末が白地に黒い文字になり、キーバーなどのボタンも明るい色になる。消して読み込み直すと元の色に戻る
 - （確定）`[theme]` に `background`（端末と画面の背景）・`foreground`（端末の文字）・`cursor`・`accent`（ボタンの強調の色）・16色（`black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` と `bright_` を付けた8つ）を書くと、その色だけテーマの色を上書きする。色は `#rrggbb` か `#rgb`
@@ -160,13 +160,30 @@
 - （確定）フォントを配るのはログインした端末にだけで、配るのは `[font]` で決めた1つのファイルだけ。URL に何を付けてもほかのファイルは選べない
   - 確かめ方: `TestFontIsServedOnlyToLoggedInDevicesAndOnlyThatFile`（fonts_test.go）
 - （仮）配るのは1ファイル（普通の太さ）だけなので、太字・斜体はブラウザが作って描く
-- （確定）tmux ボタンのパネルの「文字」の行の「フォント」で、画面から足したフォントの一覧を開く。「追加」で .ttf・.otf・.woff・.woff2 を1つ選ぶと、設定ファイルのあるフォルダの `fonts/`（既定は `~/.config/palmterm/fonts/`）に保存し、`[font]` に書く行（`file = "fonts/名前"`）を知らせる。名前は英数字と `. _ -` だけに直し（`../` などのフォルダの部分は捨てる）、同じ名前があれば上書きせず `-1` などの番号を付ける。保存したフォントは `[font]` の `file = "fonts/名前"` で使える（ページを読み込み直すと反映）
+- （確定）tmux ボタンのパネルの「文字」の行の「フォント」で、画面から足したフォントの一覧を開く。「追加」で .ttf・.otf・.woff・.woff2 を1つ選ぶと、設定ファイルのあるフォルダの `fonts/`（既定は `~/.config/palmterm/fonts/`）に保存し、`[font]` に書く行（`file = "fonts/名前"`）と「使う」で使えることを知らせる。名前は英数字と `. _ -` だけに直し（`../` などのフォルダの部分は捨てる）、同じ名前があれば上書きせず `-1` などの番号を付ける。保存したフォントは `[font]` の `file = "fonts/名前"` で使える（ページを読み込み直すと反映）
   - 確かめ方: `TestUploadedFontIsSavedAndUsable`（fonts_upload_test.go）、単体テスト「画面から足したフォントの一覧」（web/src/fontfiles.test.ts）、通しのテスト「tmux パネルの「フォント」から足したフォントは fonts/ に保存され、…」（web/e2e/app.test.ts。保存したファイルを `[font]` に書き、ブラウザが実際に描いたフォントの名前を確かめる）
   - 実機での確かめ方: スマホで tmux パネル →「フォント」→「追加」でフォントを選ぶ → 一覧に出て、PC の `~/.config/palmterm/fonts/` にファイルができる。設定ファイルに `[font]` と知らせの行を書き、ページを読み込み直す → 端末の文字がそのフォントになり、一覧のその行に「使用中」が付く
 - （確定）拡張子が .ttf・.otf・.woff・.woff2 でないもの、中身の先頭がそのどれでもないもの（.ttc も）、32 MB より大きいものは保存せず、理由を画面に知らせる。ファイル名に `../` などを入れても `fonts/` の外には書かない。保存・一覧・削除はログインした端末だけ
   - 確かめ方: `TestFontUploadRejectsNonFontsAndStaysInFontsDir`（fonts_upload_test.go）と上の通しのテスト
 - （確定）一覧には名前・大きさ・設定ファイルに書く行を出し、各行の「削除」を2回押すと消す（1回目は「消す?」になり、3秒で戻る）。消せるのは `fonts/` の直下のフォントのファイルだけ
   - 確かめ方: `TestFontDelete`（fonts_upload_test.go）、単体テストと通しのテスト（上と同じ）
+
+## 画面でテーマとフォントを選ぶ
+
+- （確定）tmux ボタンのパネルの「テーマ」の行に組み込みのテーマ（既定・明るい・Solarized 暗・Solarized 明）を並べ、今のものに印を付ける。押すと読み込み直さずにすぐ色が変わり、設定ファイルの `[theme]` の `name` を書き換える。`[theme]` に書いた色（`accent` など）は今までどおりその上に重ねる。続けて見比べられるよう、パネルは閉じない
+  - 確かめ方: `TestAppearanceIsWrittenBackKeepingTheRest`（configwrite_test.go）、単体テスト「tmux パネルのテーマの行」（web/src/tmuxpanel.test.ts）、通しのテスト「tmux パネルでテーマと fonts/ のフォントを選ぶとすぐ画面に反映され、…」（web/e2e/app.test.ts）
+  - 実機での確かめ方: `make install` して palmterm を再起動し、スマホで tmux パネル →「テーマ」の「明るい」→ すぐ白地になり、PC の `~/.config/palmterm/config.toml` の `[theme]` に `name = "light"` が入る
+- （確定）フォントの一覧の各行の「使う」を押すと、読み込み直さずにすぐ端末の文字がそのフォントになり（一覧に「使用中」が付く）、設定ファイルの `[font]` の `file` を `"fonts/名前"` に書き換える。`family` の行は残す。一覧の先頭の「既定のフォント」の「使う」は `file` の行を消す（`family` か JetBrains Mono で描く）
+  - 確かめ方: 上と同じテスト、単体テスト「画面から足したフォントの一覧」（web/src/fontfiles.test.ts）。通しのテストはブラウザが実際に描いたフォントの名前を確かめる
+  - 実機での確かめ方: スマホで tmux パネル →「フォント」→ 足したフォントの「使う」→ すぐ端末の文字が変わり、設定ファイルの `[font]` に `file = "fonts/名前"` が入る
+- （確定）書き戻すのは `[theme]` の `name` と `[font]` の `file` の行だけで、本人が書いたコメント（行の後ろのものも）、ほかの項目、並び順、改行の形（CRLF）、ファイルの権限はそのまま。行が無ければテーブルの最後の項目の後ろに、テーブルが無ければファイルの最後に足す。設定ファイルが無ければ `version = 1` と、そのテーブルだけのファイルを作る。設定ファイルがリンクなら、リンクは残して先を書き換える。書き換えたあと読み直して、変わったのがその所だけであることを確かめてから、一時ファイルを置き換える形で保存する
+  - 確かめ方: `TestAppearanceIsWrittenBackKeepingTheRest`、`TestAppearanceCreatesTheFileAndTables`（configwrite_test.go）と上の通しのテスト（書き戻したファイルの中身を丸ごと比べる）
+- （確定）書き換えたあと、別の端末でページを読み込み直すと同じテーマ・フォントになる（設定ファイルが正本で、端末ごとには覚えない）
+  - 確かめ方: `TestAppearanceIsWrittenBackKeepingTheRest` と上の通しのテスト（別のブラウザで開き直す）
+- （確定）設定ファイルに書き間違いがあって読めないとき（TOML として読めない・知らない項目・値の間違い）は書き戻さず、画面に「書き間違いがあるので、書き戻しませんでした」と理由を知らせ、色もフォントも変えない。書き換える行を見つけられない書き方（`theme = { … }` のインラインのテーブル、`theme.name = …` のドットの付いた書き方、複数行の文字列）も書き戻さず、手で直すよう知らせる
+  - 確かめ方: `TestAppearanceIsNotWrittenToAnUnreadableConfig`（configwrite_test.go）と上の通しのテスト
+- （確定）選べるのは組み込みのテーマと `fonts/` の直下にあるフォントの名前だけで、ほかの値は断る。書き戻せるのはログインした端末だけ
+  - 確かめ方: `TestAppearanceRejectsUnknownNames`、`TestThemeNamesMatchTheScreen`（configwrite_test.go。サーバーの知っているテーマの名前が画面の組み込みのテーマと同じ）
 
 ## サービスとして動かす
 

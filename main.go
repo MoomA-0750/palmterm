@@ -205,6 +205,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /auth", s.handleAuth)
 	mux.Handle("GET /ws", s.requireAuth(http.HandlerFunc(s.handleTerminal)))
 	mux.Handle("GET /api/config", s.requireAuth(http.HandlerFunc(s.handleConfig)))
+	mux.Handle("POST /api/config/appearance", s.requireAuth(http.HandlerFunc(s.handleAppearance)))
 	mux.Handle("GET /api/font", s.requireAuth(http.HandlerFunc(s.handleFont)))
 	mux.Handle("GET /api/fonts", s.requireAuth(http.HandlerFunc(s.handleFonts)))
 	mux.Handle("POST /api/fonts", s.requireAuth(http.HandlerFunc(s.handleFontUpload)))

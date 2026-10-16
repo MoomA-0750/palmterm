@@ -1,7 +1,7 @@
 // tmux のウィンドウのタブバー（常に出す）と、キーバーの右端の tmux ボタンで開くペインの操作パネル。
 // 操作はサーバーが tmux のコマンドで直接行うので、プレフィックスキーの割り当てに左右されない。
 
-import { t } from "./i18n";
+import { hasMessage, type MessageKey, t } from "./i18n";
 import { icon, type IconName } from "./icons";
 import { Refresher } from "./refresher";
 
@@ -31,8 +31,10 @@ export interface TmuxPanelOptions {
   version?: string;
   /** ログイン中の端末の一覧を開く。 */
   openDevices: () => void;
-  /** 画面から足したフォントの一覧を開く。 */
+  /** 画面から足したフォントの一覧を開く（そこでフォントを選ぶ）。 */
   openFonts: () => void;
+  /** 組み込みのテーマ（パネルの「テーマ」の行で選ぶ）。choose は設定ファイルに書き戻せたら true。 */
+  theme: { names: string[]; current: () => string; choose: (name: string) => Promise<boolean> };
   /** キーバーと同じ押し方（フォーカスを奪わない、横スクロールでは押さない）でボタンをつなぐ。 */
   bind: (btn: HTMLButtonElement, fire: () => void, repeat: boolean) => void;
 }
@@ -42,6 +44,12 @@ const KEEP_OPEN = new Set(["pane-left", "pane-right", "pane-up", "pane-down", "p
 
 // 閉じるボタンは、間違えて押しても消えないよう、2回目で閉じる。1回目から戻るまでの時間。
 const ARM_MS = 3000;
+
+/** テーマの名前の表示（知らない名前はそのまま）。 */
+function themeLabel(name: string): string {
+  const key = `theme.${name}` as MessageKey;
+  return hasMessage(key) ? t(key) : name;
+}
 
 export function setupTmuxPanel(opts: TmuxPanelOptions) {
   const { button, panel, tabs } = opts;
@@ -247,6 +255,20 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
   };
   showKeybarState();
 
+  // テーマ。押すとすぐ画面に当てて設定ファイルに書き戻す。続けて見比べられるよう、パネルは閉じない。
+  const themeBtns = opts.theme.names.map((name) => {
+    const b = makeBtn(themeLabel(name), t("themeTitle", { name }), async () => {
+      if (await opts.theme.choose(name)) showTheme();
+    }, "tmux-theme");
+    b.dataset.theme = name;
+    return b;
+  });
+  const showTheme = () => {
+    const current = opts.theme.current();
+    for (const b of themeBtns) b.classList.toggle("on", b.dataset.theme === current);
+  };
+  showTheme();
+
   panel.append(
     row(
       t("rowSplit"),
@@ -285,6 +307,7 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
         opts.openFonts();
       }),
     ),
+    row(t("rowTheme"), ...themeBtns),
     row(t("rowKeybar"), keybarBtn),
   );
   if (opts.version) {
@@ -313,6 +336,7 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
   function open() {
     showSize(); // ピンチで変わっていることがある
     showKeybarState();
+    showTheme();
     panel.hidden = false;
     button.setAttribute("aria-expanded", "true");
   }

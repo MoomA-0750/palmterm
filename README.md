@@ -236,6 +236,11 @@ The 16 colors are `black` `red` `green` `yellow` `blue` `magenta` `cyan` `white`
 color (such as `#12345`) or an unknown theme name is reported when the page opens, and only that part
 falls back to the default.
 
+You can also pick the theme on the page: tap one in the Theme row of the tmux button's panel. The colors
+change at once and the `name` line under `[theme]` in the config file is rewritten (other lines, comments
+and their order stay as they are; the file is created if missing). If the config file has a mistake and
+cannot be read, it is left alone and the reason is shown.
+
 ### Font
 
 `[font]` sets the terminal font. For a font installed on the PC, palmterm finds its file and serves it to the phone.
@@ -252,8 +257,10 @@ family = "Liberation Mono"   # name of a font installed on the PC (as fc-list sh
   `~/.config/palmterm/` and use a relative path, and copying the folder carries it to another PC. A file that
   cannot be used is reported when the page opens.
 - You can also add font files from the phone: in the tmux button's panel, tap Fonts → Add and pick a .ttf,
-  .otf, .woff or .woff2 (up to 32 MB). It is saved in `~/.config/palmterm/fonts/` and the line to put under
-  `[font]` (`file = "fonts/NAME"`) is shown. The same screen deletes saved fonts (tap twice).
+  .otf, .woff or .woff2 (up to 32 MB). It is saved in `~/.config/palmterm/fonts/`. Tap Use in the list to
+  switch the terminal to it at once; the `file` line under `[font]` (`file = "fonts/NAME"`) in the config
+  file is rewritten, leaving the other lines alone as with the theme. Use on "Default font" at the top
+  removes the `file` line. The same screen deletes saved fonts (tap twice).
 - The font is served only to logged-in devices, and only that one font file.
 - Only the regular weight is served, so the browser draws bold by thickening it. Nerd Font icons are always
   drawn with the icon font palmterm serves, whichever font you pick.

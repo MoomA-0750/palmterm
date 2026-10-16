@@ -16,7 +16,8 @@ import { setupNerdIcons } from "./nerd";
 import { pasteSequence } from "./paste";
 import { SoftKeyboard } from "./softkeyboard";
 import { applyFont, type FontConfig } from "./font";
-import { applyTheme, resolveTheme, type ThemeConfig } from "./theme";
+import { applyTheme, resolveTheme, THEMES, type ThemeConfig } from "./theme";
+import { chooseAppearance, type AppearanceChange } from "./appearance";
 import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
 
@@ -47,7 +48,7 @@ interface ServerConfig {
   /** 設定ファイルの版がこの palmterm より新しいときの版（読める項目だけ使っている）。 */
   newerConfig?: number;
 }
-const serverConfig: ServerConfig = (await fetch("/api/config", { cache: "no-store" })
+let serverConfig: ServerConfig = (await fetch("/api/config", { cache: "no-store" })
   .then((r) => (r.ok ? r.json() : null))
   .catch(() => null)) ?? { language: "en", path: "" };
 setLang(serverConfig.language);
@@ -468,6 +469,11 @@ const tmuxPanel = setupTmuxPanel({
   version: serverConfig.version,
   openDevices: () => openDevices(),
   openFonts: () => fonts.open(),
+  theme: {
+    names: Object.keys(THEMES),
+    current: () => (serverConfig.theme?.name && Object.hasOwn(THEMES, serverConfig.theme.name) ? serverConfig.theme.name : "default"),
+    choose: (name) => changeAppearance({ theme: name }),
+  },
   bind: bindKeyButton,
 });
 // 端末に触れたらパネルを閉じる。
@@ -790,7 +796,25 @@ $("devices-close").addEventListener("click", () => (devicesEl.hidden = true));
 
 // ---- 画面から足したフォント：追加と削除 ----
 
-const fonts = setupFonts((message) => toast(message, 5000));
+const fonts = setupFonts((message) => toast(message, 5000), (name) => changeAppearance({ font: name }));
+
+// ---- テーマとフォントを画面で選ぶ：設定ファイルに書き戻し、すぐ画面に当てる ----
+
+/** 書き戻せたら、書き戻したあとの設定を当てて true。書き間違いがあって読めない設定ファイルなどは理由を知らせて false。 */
+async function changeAppearance(change: AppearanceChange): Promise<boolean> {
+  try {
+    serverConfig = await chooseAppearance<ServerConfig>(change);
+  } catch (e) {
+    toast(t("appearanceFailed", { error: e instanceof Error ? e.message : String(e) }), 10000);
+    return false;
+  }
+  const { theme, errors } = resolveTheme(serverConfig.theme);
+  applyTheme(theme, document.documentElement, termEl);
+  applyFont(serverConfig.font, serverConfig.fontURL, document.documentElement);
+  const problems = [...errors, ...(serverConfig.fontError ? [t("fontFileError", { error: serverConfig.fontError })] : [])];
+  if (problems.length) toast(problems.join("\n"), 10000);
+  return true;
+}
 
 // ほかの端末から取り消されたら、つなぎ直さずに読み込み直す（ログインし直す方法の案内が出る）。
 conn.onLoggedOut = () => location.reload();

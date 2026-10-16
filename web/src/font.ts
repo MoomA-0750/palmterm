@@ -31,10 +31,19 @@ export function fontFamily(cfg: FontConfig | undefined, servedURL: string | unde
     .join(", ");
 }
 
-/** [font] を画面に当てる。配られたフォントは読み込み終わるまで文字を出さない（終わると wterm が測り直す）。 */
+/**
+ * [font] を画面に当てる。配られたフォントは読み込み終わるまで文字を出さない（終わると wterm が測り直す）。
+ * 画面でフォントを選び直したときも呼ぶので、前に配られたフォントは外し、[font] が無くなれば既定に戻す。
+ */
 export function applyFont(cfg: FontConfig | undefined, servedURL: string | undefined, root: HTMLElement) {
+  for (const face of [...(document.fonts ?? [])]) {
+    if (face.family.replace(/^"|"$/g, "") === SERVED_FONT) document.fonts.delete(face);
+  }
   const stack = fontFamily(cfg, servedURL);
-  if (!stack) return;
+  if (!stack) {
+    root.style.removeProperty("--mono-font");
+    return;
+  }
   if (servedURL) {
     const face = new FontFace(SERVED_FONT, `url(${JSON.stringify(servedURL)})`, { display: "block" });
     document.fonts.add(face);

@@ -648,6 +648,101 @@ text = ":wq"
     await waitUntil("一覧から消える", async () => (await page.locator(".font-file").count()) === 1);
     expect(readdirSync(fontsDir)).toEqual(["Added_Probe.ttf"]);
   }, 30_000);
+
+  it("tmux パネルでテーマと fonts/ のフォントを選ぶとすぐ画面に反映され、設定ファイルの [theme] の name と [font] の file だけが書き換わる。無ければ作る。別の端末で読み込み直しても同じ。読めない設定ファイルには書かず知らせる", async () => {
+    mkdirSync(join(dir, "fonts"), { recursive: true });
+    writeFileSync(join(dir, "fonts", "Chosen.ttf"), testFont("Palmterm Chose"));
+    const termBg = (p: Page) => p.evaluate(() => getComputedStyle(document.getElementById("term")!).backgroundColor);
+    const accent = (p: Page) => p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
+    const chooseTheme = async (name: string) => {
+      if (await page.locator("#tmuxpanel").isHidden()) await page.locator("#tmux-btn").click();
+      await page.locator(`#tmuxpanel .tmux-theme[data-theme="${name}"]`).click();
+    };
+    const mine = `# mine
+language = "en" # English
+
+[theme]
+# colors
+name = "light"  # change later
+accent = "#0969da"
+
+[font]
+family = "Palmterm Local"
+`;
+    writeFileSync(configPath, mine);
+    tmux("send-keys", "-t", SESSION, "clear", "Enter");
+    await openPage();
+    expect(await termBg(page)).toBe("rgb(255, 255, 255)");
+
+    // テーマ：押すとすぐ色が変わり、パネルは開いたまま、押したものに印が付く。書いた色（accent）はそのまま上書きする
+    await chooseTheme("solarized-dark");
+    await waitUntil("色が変わる", async () => (await termBg(page)) === "rgb(0, 43, 54)");
+    expect(await accent(page)).toBe("#0969da");
+    expect(await page.locator("#tmuxpanel").isVisible()).toBe(true);
+    expect(await page.locator("#tmuxpanel .tmux-theme.on").getAttribute("data-theme")).toBe("solarized-dark");
+    expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`name = "light"`, `name = "solarized-dark"`));
+
+    // フォント：パネルの「フォント」の一覧で「使う」を押すと、読み込み直さずに端末の文字がそのフォントになる
+    await page.locator("#tmuxpanel button", { hasText: "Fonts" }).click();
+    const row = page.locator(".font-file", { hasText: "Chosen.ttf" });
+    await waitUntil("一覧に出る", async () => (await row.count()) === 1);
+    await row.locator(".font-use").click();
+    await waitUntil("使用中になる", async () => ((await row.locator(".font-name").textContent()) ?? "").includes("in use"));
+    const { usedFont, cdp } = await fontProbe();
+    expect(await usedFont("text")).toBe("Palmterm Chose");
+    await cdp.detach();
+    await page.locator("#fonts-close").click();
+    const written = mine.replace(`name = "light"`, `name = "solarized-dark"`).replace(`family = "Palmterm Local"\n`, `family = "Palmterm Local"\nfile = "fonts/Chosen.ttf"\n`);
+    expect(readFileSync(configPath, "utf8")).toBe(written);
+
+    // 別の端末で読み込み直しても同じテーマ・フォント
+    const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
+    try {
+      const otherPage = await other.newPage();
+      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await otherPage.waitForFunction(() => document.querySelector(".term-row") !== null);
+      expect(await termBg(otherPage)).toBe("rgb(0, 43, 54)");
+      expect(
+        await otherPage.evaluate(async () => {
+          await document.fonts.ready;
+          const served = [...document.fonts].find((f) => f.family.replace(/"/g, "") === "palmterm font");
+          return [served?.status, getComputedStyle(document.documentElement).getPropertyValue("--mono-font").includes("palmterm font")];
+        }),
+      ).toEqual(["loaded", true]);
+    } finally {
+      await other.close();
+    }
+
+    // 「既定のフォント」に戻すと file の行だけ消える
+    await page.locator("#tmux-btn").click();
+    await page.locator("#tmuxpanel button", { hasText: "Fonts" }).click();
+    await page.locator(".font-default .font-use").click();
+    await waitUntil("既定に戻る", async () => ((await page.locator(".font-default .font-name").textContent()) ?? "").includes("in use"));
+    expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`name = "light"`, `name = "solarized-dark"`));
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--mono-font").includes("palmterm font"))).toBe(false);
+    await page.locator("#fonts-close").click();
+
+    // 設定ファイルが無ければ作る
+    rmSync(configPath, { force: true });
+    await chooseTheme("light");
+    await waitUntil("色が変わる", async () => (await termBg(page)) === "rgb(255, 255, 255)");
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 1\n\n[theme]\nname = "light"\n`);
+
+    // 書き間違いがあって読めない設定ファイルには書かず、知らせる。色も変えない
+    const bad = `[theme]\nname = "light"\nbackgroud = "#000000"\n`;
+    writeFileSync(configPath, bad);
+    await openPage();
+    expect(await termBg(page)).toBe("rgb(30, 30, 30)");
+    await chooseTheme("solarized-light");
+    await waitUntil("知らせる", async () => ((await page.locator("#toast").textContent()) ?? "").includes("has a mistake"));
+    expect(await page.locator("#toast").textContent()).toContain("theme.backgroud");
+    expect(readFileSync(configPath, "utf8")).toBe(bad);
+    expect(await termBg(page)).toBe("rgb(30, 30, 30)");
+    expect(await page.locator("#tmuxpanel .tmux-theme.on").getAttribute("data-theme")).toBe("default");
+
+    rmSync(configPath, { force: true });
+    await openPage();
+  }, 30_000);
 });
 
 describe("複数行の送信", () => {

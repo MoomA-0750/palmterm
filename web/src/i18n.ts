@@ -100,12 +100,24 @@ const ja = {
   "fonts": "フォント",
   "fontsTitle": "フォントの追加・削除",
   "fontAdd": "追加",
-  "fontsHint": "PC の {dir} に保存します。設定ファイルの [font] に下の file = … の行を書き、ページを読み込み直すと使えます",
+  "fontsHint": "PC の {dir} に保存します。「使う」を押すとすぐ端末の文字になり、設定ファイルの [font] に file = … の行を書き戻します",
   "fontsEmpty": "まだありません。「追加」から .ttf・.otf・.woff・.woff2 を選んでください",
   "fontsError": "フォントの一覧を取れませんでした（{error}）",
   "fontInUse": "使用中",
   "fontUploading": "{name} を送っています…",
-  "fontSaved": "保存しました。[font] に {line} と書くと使えます",
+  "fontSaved": "保存しました。「使う」で使えます（[font] に {line} と書いても使えます）",
+  "fontUse": "使う",
+  "fontUseTitle": "{name} を端末の文字に使う",
+  "fontDefault": "既定のフォント",
+  "fontDefaultMeta": "[font] の file を消す（family か JetBrains Mono で描く）",
+  "fontChosen": "{name} にしました",
+  "appearanceFailed": "設定ファイルに書き戻せませんでした: {error}",
+  "rowTheme": "テーマ",
+  "themeTitle": "テーマを {name} にする",
+  "theme.default": "既定",
+  "theme.light": "明るい",
+  "theme.solarized-dark": "Solarized 暗",
+  "theme.solarized-light": "Solarized 明",
   "fontUploadFailed": "フォントを保存できませんでした: {error}",
   "rowVersion": "版",
   "rowKeybar": "キーバー",
@@ -224,12 +236,24 @@ const en: Messages = {
   "fonts": "Fonts",
   "fontsTitle": "Add or delete fonts",
   "fontAdd": "Add",
-  "fontsHint": "Saved in {dir} on the PC. Put the file = … line below under [font] in the config file and reload the page to use it",
+  "fontsHint": "Saved in {dir} on the PC. Tap Use to switch the terminal to it now; it is written back under [font] as file = … in the config file",
   "fontsEmpty": "No fonts yet. Tap Add and choose a .ttf, .otf, .woff or .woff2 file",
   "fontsError": "Could not load the fonts ({error})",
   "fontInUse": "in use",
   "fontUploading": "Sending {name}…",
-  "fontSaved": "Saved. Write {line} under [font] to use it",
+  "fontSaved": "Saved. Tap Use to use it (or write {line} under [font])",
+  "fontUse": "Use",
+  "fontUseTitle": "Use {name} for the terminal",
+  "fontDefault": "Default font",
+  "fontDefaultMeta": "Remove file from [font] (use the family or JetBrains Mono)",
+  "fontChosen": "Switched to {name}",
+  "appearanceFailed": "Could not write back to the config file: {error}",
+  "rowTheme": "Theme",
+  "themeTitle": "Switch the theme to {name}",
+  "theme.default": "Default",
+  "theme.light": "Light",
+  "theme.solarized-dark": "Solarized dark",
+  "theme.solarized-light": "Solarized light",
   "fontUploadFailed": "Could not save the font: {error}",
   "rowVersion": "Version",
   "rowKeybar": "Key bar",
@@ -252,6 +276,10 @@ let messages: Messages = ja;
 export function setLang(lang: Lang) {
   messages = lang === "en" ? en : ja;
   document.documentElement.lang = lang;
+}
+
+export function hasMessage(key: string): key is MessageKey {
+  return Object.hasOwn(messages, key);
 }
 
 export function t(key: MessageKey, params: Record<string, string | number> = {}): string {

@@ -27,6 +27,13 @@ describe("設定ファイルの [font]", () => {
     expect(root.style.getPropertyValue("--mono-font")).toBe(stack);
   });
 
+  it("選び直して [font] が無くなったら既定（JetBrains Mono）に戻す", () => {
+    const root = document.createElement("div");
+    applyFont({ family: "Menlo" }, undefined, root);
+    applyFont({}, undefined, root);
+    expect(root.style.getPropertyValue("--mono-font")).toBe("");
+  });
+
   it("Nerd Font のアイコンは、どのフォントにしても Nerd Symbols で描く（いちばん先に置く）", () => {
     for (const stack of [fontFamily({ family: "Some Nerd Font" }, "/api/font"), fontFamily({ family: "X" }, undefined)]) {
       expect(stack!.startsWith(`"Nerd Symbols", `)).toBe(true);

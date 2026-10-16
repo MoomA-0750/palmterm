@@ -199,6 +199,11 @@ func tr(ja, en string) string {
 
 // 画面の設定（言語・キーバー・色・フォント）を返す。設定ファイルを読めなかったときは、既定の設定と理由を返す。
 func (s *server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	writeConfigResponse(w)
+}
+
+// 今の設定を /api/config の形で返す（画面でテーマやフォントを選んだあとの応答にも使う）。
+func writeConfigResponse(w http.ResponseWriter) {
 	cfg, err := settings.get()
 	resp := struct {
 		config

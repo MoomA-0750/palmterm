@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { setLang } from "./i18n";
 import { setupTmuxPanel } from "./tmuxpanel";
 
-function makePanel(version?: string, keybar = { shown: () => true, set: (_: boolean) => {} }) {
+const noTheme = { names: ["default", "light"], current: () => "default", choose: async (_: string) => true };
+
+function makePanel(version?: string, keybar = { shown: () => true, set: (_: boolean) => {} }, theme = noTheme) {
   const panel = document.createElement("div");
   setupTmuxPanel({
     tabs: document.createElement("div"),
@@ -17,6 +19,7 @@ function makePanel(version?: string, keybar = { shown: () => true, set: (_: bool
     version,
     openDevices: () => {},
     openFonts: () => {},
+    theme,
     bind: (btn, fire) => btn.addEventListener("click", fire),
   });
   return panel;
@@ -68,5 +71,39 @@ describe("tmux パネルのキーバーの行", () => {
     setLang("en");
     const rows = [...makePanel("v1").querySelectorAll(".tmux-row .tmux-label")].map((l) => l.textContent);
     expect(rows.slice(-2)).toEqual(["Key bar", "Version"]);
+  });
+});
+
+describe("tmux パネルのテーマの行", () => {
+  it("組み込みのテーマを並べ、今のものに印を付ける。押すと選び、書き戻せたら印が移る。断られたら移らない", async () => {
+    setLang("ja");
+    let current = "default";
+    let accept = true;
+    const chosen: string[] = [];
+    const panel = makePanel(undefined, undefined, {
+      names: ["default", "light", "solarized-dark", "solarized-light"],
+      current: () => current,
+      choose: async (name) => {
+        chosen.push(name);
+        if (accept) current = name;
+        return accept;
+      },
+    });
+    const btns = [...panel.querySelectorAll<HTMLButtonElement>(".tmux-theme")];
+    expect(btns[0].parentElement?.querySelector(".tmux-label")?.textContent).toBe("テーマ");
+    expect(btns.map((b) => b.textContent)).toEqual(["既定", "明るい", "Solarized 暗", "Solarized 明"]);
+    const on = () => btns.filter((b) => b.classList.contains("on")).map((b) => b.dataset.theme);
+    expect(on()).toEqual(["default"]);
+
+    btns[1].click();
+    await new Promise((r) => setTimeout(r));
+    expect(chosen).toEqual(["light"]);
+    expect(on()).toEqual(["light"]);
+
+    accept = false;
+    btns[2].click();
+    await new Promise((r) => setTimeout(r));
+    expect(chosen).toEqual(["light", "solarized-dark"]);
+    expect(on()).toEqual(["light"]);
   });
 });

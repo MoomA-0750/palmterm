@@ -34,6 +34,26 @@ describe("画面から足したフォントの一覧", () => {
     expect(list.querySelector(".fonts-empty")?.textContent).toContain(".woff2");
   });
 
+  it("「使う」でフォントを選ぶ。使っているものには出さない。先頭の「既定のフォント」は file を消す", () => {
+    setLang("ja");
+    const list = document.createElement("ul");
+    const used: (string | null)[] = [];
+    const data = { dir: "", file: "fonts/B.ttf", fonts: [{ name: "A.ttf", size: 1 }, { name: "B.ttf", size: 1 }] };
+    renderFonts(list, data, () => {}, (f) => used.push(f?.name ?? null));
+    const rows = [...list.children];
+    expect(rows[0].classList.contains("font-default")).toBe(true);
+    expect(rows.map((r) => r.querySelector(".font-use") !== null)).toEqual([true, true, false]);
+    rows[1].querySelector<HTMLButtonElement>(".font-use")!.click();
+    rows[0].querySelector<HTMLButtonElement>(".font-use")!.click();
+    expect(used).toEqual(["A.ttf", null]);
+
+    // file を書いていなければ「既定のフォント」が使用中
+    renderFonts(list, { ...data, file: "" }, () => {});
+    expect(list.querySelector(".font-default .font-name")?.textContent).toBe("既定のフォント（使用中）");
+    expect(list.querySelector(".font-default .font-use")).toBeNull();
+    expect(list.querySelectorAll(".font-file .font-use").length).toBe(2);
+  });
+
   it("設定ファイルの行と大きさの書き方", () => {
     expect(fontConfigLine("My_Font.otf")).toBe('file = "fonts/My_Font.otf"');
     expect(fontSize(500)).toBe("500 B");
