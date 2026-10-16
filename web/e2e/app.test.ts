@@ -429,6 +429,46 @@ text = ":wq"
     await key("S-Tab").click();
     expect(await sent()).toEqual(["\x1b[Z"]);
   });
+
+  it("[theme] でテーマを選ぶと端末とボタンの色が変わり、書いた色だけ上書きする。書き間違えた色は知らせて既定に戻す", async () => {
+    const colors = () =>
+      page.evaluate(() => {
+        const term = getComputedStyle(document.getElementById("term")!);
+        const key = getComputedStyle(document.querySelector("#keybar button")!);
+        return {
+          termBg: term.backgroundColor,
+          termFg: term.getPropertyValue("--term-fg").trim(),
+          red: term.getPropertyValue("--term-color-1").trim(),
+          blue: term.getPropertyValue("--term-color-4").trim(),
+          keyBg: key.backgroundColor,
+          tmuxBtn: getComputedStyle(document.getElementById("tmux-btn")!).color,
+        };
+      });
+    const before = await colors();
+    expect(before.termBg).toBe("rgb(30, 30, 30)");
+
+    writeFileSync(configPath, `[theme]\nname = "light"\n`);
+    await openPage();
+    const light = await colors();
+    expect(light.termBg).toBe("rgb(255, 255, 255)");
+    expect(light.keyBg).not.toBe(before.keyBg);
+    expect(light.red).toBe("#cf222e");
+
+    writeFileSync(configPath, `[theme]\nname = "light"\nbackground = "#fafafa"\naccent = "#0969da"\nblue = "#0000ff"\nred = "#12345"\n`);
+    await openPage();
+    const custom = await colors();
+    expect(custom.termBg).toBe("rgb(250, 250, 250)");
+    expect(custom.tmuxBtn).toBe("rgb(9, 105, 218)");
+    expect(custom.blue).toBe("#0000ff");
+    expect(custom.red).toBe("#cf222e"); // 書き間違えた色は light の色のまま
+    expect(custom.termFg).toBe(light.termFg); // 書いていない色もそのまま
+    expect(custom.keyBg).toBe(light.keyBg);
+    expect(await page.locator("#toast").textContent()).toContain("[theme] red");
+
+    rmSync(configPath, { force: true });
+    await openPage();
+    expect(await colors()).toEqual(before);
+  });
 });
 
 describe("複数行の送信", () => {

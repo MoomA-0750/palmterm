@@ -21,6 +21,34 @@ type config struct {
 	Version  int         `toml:"version" json:"-"` // 書き方の版。書かなければ 1（configVersion より新しければ読める項目だけ使う）
 	Language string      `toml:"language" json:"language"`
 	Keys     []keyConfig `toml:"keys" json:"keys,omitempty"` // 空なら画面側の既定の並び
+	Theme    themeConfig `toml:"theme" json:"theme"`
+}
+
+// 画面の色。name で組み込みのテーマを選び（空なら default）、書いた色だけ上書きする。
+// 色は "#rrggbb" か "#rgb"。名前と色の確かめは画面側で行う（間違えた色だけ既定に戻して知らせる）。
+type themeConfig struct {
+	Name       string `toml:"name" json:"name,omitempty"`
+	Background string `toml:"background" json:"background,omitempty"`
+	Foreground string `toml:"foreground" json:"foreground,omitempty"`
+	Cursor     string `toml:"cursor" json:"cursor,omitempty"`
+	Accent     string `toml:"accent" json:"accent,omitempty"` // ボタンの強調の色（既定は緑）
+	// 端末の16色（ANSI の 0〜15 の順）
+	Black         string `toml:"black" json:"black,omitempty"`
+	Red           string `toml:"red" json:"red,omitempty"`
+	Green         string `toml:"green" json:"green,omitempty"`
+	Yellow        string `toml:"yellow" json:"yellow,omitempty"`
+	Blue          string `toml:"blue" json:"blue,omitempty"`
+	Magenta       string `toml:"magenta" json:"magenta,omitempty"`
+	Cyan          string `toml:"cyan" json:"cyan,omitempty"`
+	White         string `toml:"white" json:"white,omitempty"`
+	BrightBlack   string `toml:"bright_black" json:"bright_black,omitempty"`
+	BrightRed     string `toml:"bright_red" json:"bright_red,omitempty"`
+	BrightGreen   string `toml:"bright_green" json:"bright_green,omitempty"`
+	BrightYellow  string `toml:"bright_yellow" json:"bright_yellow,omitempty"`
+	BrightBlue    string `toml:"bright_blue" json:"bright_blue,omitempty"`
+	BrightMagenta string `toml:"bright_magenta" json:"bright_magenta,omitempty"`
+	BrightCyan    string `toml:"bright_cyan" json:"bright_cyan,omitempty"`
+	BrightWhite   string `toml:"bright_white" json:"bright_white,omitempty"`
 }
 
 // キーバーのキー1つ。key・mod・text のどれか1つを書く（中身の確かめは画面側で行う）。
@@ -121,6 +149,7 @@ func loadNewerConfig(path string, version int) (config, error) {
 	var raw struct {
 		Language toml.Primitive `toml:"language"`
 		Keys     toml.Primitive `toml:"keys"`
+		Theme    toml.Primitive `toml:"theme"`
 	}
 	md, err := toml.DecodeFile(path, &raw)
 	if err != nil {
@@ -139,6 +168,12 @@ func loadNewerConfig(path string, version int) (config, error) {
 			cfg.Keys = keys
 		}
 	}
+	if md.IsDefined("theme") {
+		var theme themeConfig
+		if md.PrimitiveDecode(raw.Theme, &theme) == nil {
+			cfg.Theme = theme
+		}
+	}
 	return cfg, nil
 }
 
@@ -154,7 +189,7 @@ func tr(ja, en string) string {
 	return en
 }
 
-// 画面の設定（言語とキーバー）を返す。設定ファイルを読めなかったときは、既定の設定と理由を返す。
+// 画面の設定（言語・キーバー・色）を返す。設定ファイルを読めなかったときは、既定の設定と理由を返す。
 func (s *server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	cfg, err := settings.get()
 	resp := struct {

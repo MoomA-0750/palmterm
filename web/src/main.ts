@@ -14,6 +14,7 @@ import { applyToChar, isSingleChar, keySequenceWithMods, Modifiers, type ModName
 import { setupNerdIcons } from "./nerd";
 import { pasteSequence } from "./paste";
 import { SoftKeyboard } from "./softkeyboard";
+import { applyTheme, resolveTheme, type ThemeConfig } from "./theme";
 import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
 
@@ -26,11 +27,12 @@ const sendBtn = $<HTMLButtonElement>("send");
 const statusEl = $<HTMLDivElement>("status");
 const toastEl = $<HTMLDivElement>("toast");
 
-// ---- 設定ファイル（サーバーの ~/.config/palmterm/config.toml：言語とキーバー） ----
+// ---- 設定ファイル（サーバーの ~/.config/palmterm/config.toml：言語・キーバー・色） ----
 
 interface ServerConfig {
   language: Lang;
   keys?: KeyConfig[];
+  theme?: ThemeConfig;
   path: string;
   /** palmterm の版（`palmterm -version` と同じ）。 */
   version?: string;
@@ -43,6 +45,9 @@ const serverConfig: ServerConfig = (await fetch("/api/config", { cache: "no-stor
   .catch(() => null)) ?? { language: "en", path: "" };
 setLang(serverConfig.language);
 applyStaticTexts();
+// 色は [theme] で選んだテーマに、書いた色だけ上書きする。書き間違えた色は既定に戻して知らせる（起動の所）。
+const { theme, errors: themeErrors } = resolveTheme(serverConfig.theme);
+applyTheme(theme, document.documentElement, termEl);
 
 /** index.html に書いてある文言を、設定の言語に置き換える。 */
 function applyStaticTexts() {
@@ -787,6 +792,7 @@ const configProblems = [
     ? [t("configNewer", { path: serverConfig.path, version: String(serverConfig.newerConfig) })]
     : []),
   ...keyErrors,
+  ...themeErrors,
 ];
 if (configProblems.length) toast(configProblems.join("\n"), 10000);
 

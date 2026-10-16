@@ -189,7 +189,7 @@ running palmterm and closes their open connections (e.g. after losing a phone; t
 
 ## Configuration
 
-`~/.config/palmterm/config.toml` sets the UI language and the key bar. Reload the page to apply
+`~/.config/palmterm/config.toml` sets the UI language, the key bar and the colors (theme). Reload the page to apply
 changes; no restart is needed. [config.example.toml](config.example.toml) contains the default key bar,
 so it is a good starting point.
 
@@ -215,6 +215,27 @@ label = ":wq"
 `version` is the config format version. A config file from a newer palmterm is read as far as this
 palmterm understands it, and the page tells you so when it opens. Your settings live in
 `~/.config/palmterm/`, so copying that folder gives you the same setup on another PC.
+
+### Colors (theme)
+
+`name` in `[theme]` picks a built-in theme; any color you write overrides just that color.
+
+```toml
+[theme]
+name = "light"         # "default" (default), "light", "solarized-dark" or "solarized-light"
+background = "#fafafa" # terminal and page background
+foreground = "#1f2328" # terminal text
+cursor = "#1f2328"
+accent = "#0969da"     # button accent (green by default)
+red = "#d1242f"        # one of the 16 terminal colors
+```
+
+The 16 colors are `black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` and their
+`bright_` versions (`bright_black` … `bright_white`). Write colors as `#rrggbb` or `#rgb`. A mistyped
+color (such as `#12345`) or an unknown theme name is reported when the page opens, and only that part
+falls back to the default.
+
+### Key bar
 
 Each `[[keys]]` entry has exactly one of:
 

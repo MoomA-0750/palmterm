@@ -10,6 +10,21 @@ version = 1
 # 画面の言語 / UI language: "en"（既定 / default）or "ja"
 language = "en"
 
+# 画面の色 / Colors
+[theme]
+# 組み込みのテーマ / Built-in theme: "default"（既定 / default）, "light", "solarized-dark", "solarized-light"
+name = "default"
+# 書いた色だけ、テーマの色を上書きする（"#rrggbb" か "#rgb"）。書き間違えた色は画面で知らせ、テーマの色に戻す。
+# Colors you write override the theme ("#rrggbb" or "#rgb"). A mistyped color is reported on the page and ignored.
+# background = "#1e1e1e"   # 端末と画面の背景 / terminal and page background
+# foreground = "#d4d4d4"   # 端末の文字 / terminal text
+# cursor = "#aeafad"
+# accent = "#3fb950"       # ボタンの強調の色 / button accent
+# 端末の16色 / The 16 terminal colors:
+#   black red green yellow blue magenta cyan white
+#   bright_black bright_red bright_green bright_yellow bright_blue bright_magenta bright_cyan bright_white
+# red = "#f44747"
+
 # キーバーのキー。書いた順に左から並ぶ。[[keys]] を1つでも書くと、既定の並びを丸ごと置き換える。
 # Keys on the key bar, left to right. Any [[keys]] entry replaces the whole default set.
 #

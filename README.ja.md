@@ -184,7 +184,7 @@ palmterm url                                   # ログイン用の URL と、�
 
 ## 設定ファイル
 
-`~/.config/palmterm/config.toml` で、画面の言語とキーバーを決める。書き換えたらページを読み込み直すだけで
+`~/.config/palmterm/config.toml` で、画面の言語とキーバー、色（テーマ）を決める。書き換えたらページを読み込み直すだけで
 反映する（再起動は要らない）。[config.example.toml](config.example.toml) に既定のキーバーがそのまま
 書いてあるので、コピーして編集するとよい。
 
@@ -209,6 +209,26 @@ label = ":wq"
 
 `version` は書き方の版。この palmterm より新しい版の設定ファイルは、読める項目だけ使い、画面を開いたときに
 知らせる。好みの設定は `~/.config/palmterm/` にまとめて置くので、このフォルダを写せば別の PC でも同じになる。
+
+### 色（テーマ）
+
+`[theme]` の `name` で組み込みのテーマを選び、書いた色だけ上書きする。
+
+```toml
+[theme]
+name = "light"         # "default"（既定）・"light"・"solarized-dark"・"solarized-light"
+background = "#fafafa" # 端末と画面の背景
+foreground = "#1f2328" # 端末の文字
+cursor = "#1f2328"
+accent = "#0969da"     # ボタンの強調の色（既定は緑）
+red = "#d1242f"        # 端末の16色の1つ
+```
+
+16色は `black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` と、`bright_` を付けた
+`bright_black`〜`bright_white`。色は `#rrggbb` か `#rgb` で書く。書き間違えた色（`#12345` など）や
+知らないテーマの名前は画面を開いたときに知らせ、その所だけ既定の色に戻す。
+
+### キーバー
 
 `[[keys]]` の1つ1つには、次のどれか1つを書く。
 

@@ -205,6 +205,7 @@ func TestDevicesSurviveRestartButNotTokenChange(t *testing.T) {
 type configResponse struct {
 	Language string      `json:"language"`
 	Keys     []keyConfig `json:"keys"`
+	Theme    themeConfig `json:"theme"`
 	Path     string      `json:"path"`
 	Version  string      `json:"version"`
 	Error    string      `json:"error"`
@@ -386,7 +387,46 @@ func TestConfigExampleReadsAsIs(t *testing.T) {
 	s := newTestServer(t)
 	writeConfig(t, string(body))
 	c := getConfig(t, s)
-	if c.Error != "" || c.Newer != 0 || c.Language != "en" || len(c.Keys) == 0 {
+	if c.Error != "" || c.Newer != 0 || c.Language != "en" || len(c.Keys) == 0 || c.Theme.Name != "default" {
+		t.Fatalf("%+v", c)
+	}
+}
+
+// [theme] の name と色は、書いたとおり画面に渡す（色の確かめと既定への戻しは画面側）。
+// [theme] の中の知らない項目は、ほかの項目と同じく書き間違いとして知らせる。
+func TestConfigTheme(t *testing.T) {
+	s := newTestServer(t)
+	writeConfig(t, `
+[theme]
+name = "light"
+background = "#fafafa"
+foreground = "#123"
+cursor = "#ff0000"
+accent = "#0969da"
+red = "#12345"
+bright_white = "#ffffff"
+`)
+	c := getConfig(t, s)
+	want := themeConfig{Name: "light", Background: "#fafafa", Foreground: "#123", Cursor: "#ff0000",
+		Accent: "#0969da", Red: "#12345", BrightWhite: "#ffffff"}
+	if c.Error != "" || c.Theme != want {
+		t.Fatalf("%+v", c)
+	}
+
+	writeConfig(t, "[theme]\nname = \"light\"\nbackgroud = \"#000000\"\n")
+	if c := getConfig(t, s); !strings.Contains(c.Error, "theme.backgroud") || c.Theme != (themeConfig{}) {
+		t.Fatalf("%+v", c)
+	}
+
+	// 書いていなければ空（画面側で default になる）。
+	writeConfig(t, "language = \"ja\"\n")
+	if c := getConfig(t, s); c.Error != "" || c.Theme != (themeConfig{}) {
+		t.Fatalf("%+v", c)
+	}
+
+	// 新しい版の設定ファイルでも [theme] は読む。
+	writeConfig(t, "version = 2\n[theme]\nname = \"light\"\naccent = \"#0969da\"\nglow = true\n")
+	if c := getConfig(t, s); c.Newer != 2 || c.Error != "" || c.Theme != (themeConfig{Name: "light", Accent: "#0969da"}) {
 		t.Fatalf("%+v", c)
 	}
 }
