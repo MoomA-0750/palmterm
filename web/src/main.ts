@@ -19,6 +19,7 @@ import { applyFont, type FontConfig } from "./font";
 import { applyTheme, resolveTheme, THEMES, type ThemeConfig } from "./theme";
 import { chooseAppearance, type AppearanceChange } from "./appearance";
 import { setupSettings } from "./settings";
+import { setupSheets } from "./sheets";
 import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
 
@@ -803,6 +804,16 @@ $("devices-close").addEventListener("click", () => (devicesEl.hidden = true));
 // ---- 画面から足したフォント：追加と削除 ----
 
 const fonts = setupFonts((message) => toast(message, 5000), (name) => changeAppearance({ font: name }));
+
+// 大きい画面では板を中央に浮かせ、周りの暗い所か Esc で閉じる（下から上の順に並べる）。
+setupSheets(
+  [
+    ["copymode", "copy-close"],
+    ["settings", "settings-close"],
+    ["devices", "devices-close"],
+    ["fonts", "fonts-close"],
+  ].map(([el, close]) => ({ el: $(el), close: $(close) })),
+);
 
 // ---- テーマとフォントを画面で選ぶ：設定ファイルに書き戻し、すぐ画面に当てる ----
 

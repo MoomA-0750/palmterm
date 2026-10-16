@@ -858,6 +858,119 @@ describe("画像とコピー", () => {
   });
 });
 
+describe("大きい画面の板", () => {
+  /** 板の位置と大きさ、周りの幕が見えているか。 */
+  const layout = (id: string) =>
+    page.evaluate((id) => {
+      const r = document.getElementById(id)!.getBoundingClientRect();
+      const backdrop = document.getElementById("sheet-backdrop")!;
+      return { x: r.x, y: r.y, w: r.width, h: r.height, vw: innerWidth, vh: innerHeight, backdrop: getComputedStyle(backdrop).display !== "none" };
+    }, id);
+
+  /** 浮いて中央に出ているか（幅は 560px、高さは画面の8割まで、周りは暗い）。 */
+  async function expectFloating(id: string) {
+    await page.locator(`#${id}`).waitFor({ state: "visible" });
+    const l = await layout(id);
+    expect(l.backdrop).toBe(true);
+    expect(l.w).toBeCloseTo(560, 0);
+    expect(l.h).toBeLessThanOrEqual(l.vh * 0.8 + 1);
+    expect(l.h).toBeGreaterThan(50);
+    expect(Math.abs(l.x + l.w / 2 - l.vw / 2)).toBeLessThan(2);
+    expect(Math.abs(l.y + l.h / 2 - l.vh / 2)).toBeLessThan(2);
+  }
+
+  /** 全画面で出ているか（幕は出ない）。 */
+  async function expectFullScreen(id: string) {
+    await page.locator(`#${id}`).waitFor({ state: "visible" });
+    const l = await layout(id);
+    expect(l.backdrop).toBe(false);
+    expect([l.x, l.y, l.w, l.h]).toEqual([0, 0, l.vw, l.vh]);
+  }
+
+  /** 暗い所（左上の隅）を押す。 */
+  const clickBackdrop = () => page.mouse.click(5, 5);
+
+  it("幅 700px 以上かつ高さ 600px 以上では、板が周りを暗くして中央に浮き、暗い所か Esc で閉じる。設定画面から開いた一覧なら設定画面に戻る", async () => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    try {
+      // 設定画面：暗い所で閉じる
+      await openSettings();
+      await expectFloating("settings");
+      await clickBackdrop();
+      expect(await page.locator("#settings").isHidden()).toBe(true);
+      expect(await page.locator("#sheet-backdrop").isHidden()).toBe(true);
+
+      // 設定画面：Esc で閉じる
+      await openSettings();
+      await page.keyboard.press("Escape");
+      expect(await page.locator("#settings").isHidden()).toBe(true);
+
+      // フォントの一覧：暗い所で設定画面に戻る
+      await openSettings();
+      await page.locator("#settings .settings-fonts").click();
+      await expectFloating("fonts");
+      await clickBackdrop();
+      expect(await page.locator("#fonts").isHidden()).toBe(true);
+      expect(await page.locator("#settings").isVisible()).toBe(true);
+      await expectFloating("settings");
+
+      // ログイン中の端末：Esc で設定画面に戻る
+      await page.locator("#settings .settings-devices").click();
+      await expectFloating("devices");
+      await page.keyboard.press("Escape");
+      expect(await page.locator("#devices").isHidden()).toBe(true);
+      expect(await page.locator("#settings").isVisible()).toBe(true);
+      await page.keyboard.press("Escape");
+      expect(await page.locator("#settings").isHidden()).toBe(true);
+
+      // 履歴/クリップボード：Esc でも暗い所でも閉じ、端末に Esc を送らない
+      await clearSent();
+      await page.locator("#copy").click();
+      await page.locator("#tab-history").click();
+      await expectFloating("copymode");
+      await page.keyboard.press("Escape");
+      expect(await page.locator("#copymode").isHidden()).toBe(true);
+      expect((await sent()).some((s) => s.includes("\x1b"))).toBe(false);
+      await page.locator("#copy").click();
+      await expectFloating("copymode");
+      await waitUntil("履歴が出る", async () => (await page.locator("#copy-text").textContent())?.includes("$") ?? false);
+      await clickBackdrop();
+      expect(await page.locator("#copymode").isHidden()).toBe(true);
+      expect(await page.locator("#copy-text").textContent()).toBe(""); // 閉じるボタンと同じ片付け
+    } finally {
+      await page.setViewportSize({ width: 400, height: 760 });
+    }
+  });
+
+  it("それより小さい画面（スマホの縦・横、幅だけ広い画面）では今までどおり全画面で出る", async () => {
+    for (const size of [
+      { width: 400, height: 760 },
+      { width: 760, height: 400 },
+      { width: 1024, height: 560 },
+      { width: 680, height: 1000 },
+    ]) {
+      await page.setViewportSize(size);
+      try {
+        await openSettings();
+        await expectFullScreen("settings");
+        await page.locator("#settings .settings-fonts").click();
+        await expectFullScreen("fonts");
+        await page.locator("#fonts-close").click();
+        await page.locator("#settings .settings-devices").click();
+        await expectFullScreen("devices");
+        await page.locator("#devices-close").click();
+        await page.locator("#settings-close").click();
+        await page.locator("#copy").click();
+        await expectFullScreen("copymode");
+        await page.locator("#copy-close").click();
+        expect(await page.locator("#copymode").isHidden()).toBe(true);
+      } finally {
+        await page.setViewportSize({ width: 400, height: 760 });
+      }
+    }
+  });
+});
+
 describe("タッチ操作", () => {
   let cdp: CDPSession;
   beforeAll(async () => {

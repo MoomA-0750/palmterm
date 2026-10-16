@@ -501,10 +501,45 @@ button:active {
   background: var(--accent);
 }
 
-/* 設定画面から開く一覧は、設定画面の上に重ねる（閉じると設定画面に戻る）。 */
+/* 設定画面から開く一覧は、設定画面の上に重ねる（閉じると設定画面に戻る）。
+   間の 11 は、板が浮いているときの周りの幕（sheets.ts が一番上の板のすぐ下に置く）。 */
 #devices,
 #fonts {
-  z-index: 11;
+  z-index: 12;
+}
+
+/* 板が浮いているときの周りの幕。押すと一番上の板を閉じる。 */
+#sheet-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+/* 大きい画面では板を中央に浮かせる（条件は sheets.ts の FLOAT_QUERY と同じ）。
+   高さは中身に合わせ、画面の8割まで。超えた分は板の中の一覧がスクロールする。 */
+@media (min-width: 700px) and (min-height: 600px) {
+  #sheet-backdrop:not([hidden]) {
+    display: block;
+  }
+
+  #copymode,
+  #devices,
+  #fonts,
+  #settings {
+    inset: auto;
+    top: calc(var(--app-top, 0px) + var(--app-h) / 2);
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(560px, calc(100vw - 32px));
+    height: auto;
+    max-height: calc(var(--app-h) * 0.8);
+    padding-top: 0;
+    border: 1px solid var(--btn-bg);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  }
 }
 
 /* 設定画面。 */
