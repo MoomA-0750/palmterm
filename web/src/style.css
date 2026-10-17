@@ -235,21 +235,6 @@ button:active {
   color: var(--label-fg);
 }
 
-.tmux-version {
-  font-size: 12px;
-  color: var(--muted-fg);
-  white-space: nowrap;
-  user-select: text;
-}
-
-.tmux-size {
-  flex: none;
-  min-width: 3.5em;
-  text-align: center;
-  font-size: 13px;
-  color: var(--muted-fg);
-}
-
 #tmuxpanel button {
   flex: none;
   min-width: 40px;
@@ -408,7 +393,8 @@ button:active {
 
 #copymode,
 #devices,
-#fonts {
+#fonts,
+#settings {
   position: fixed;
   inset: 0 0 auto 0;
   height: var(--app-h);
@@ -423,6 +409,7 @@ button:active {
 #copymode[hidden],
 #devices[hidden],
 #fonts[hidden],
+#settings[hidden],
 #history-bar[hidden],
 #clips[hidden],
 #keyrow[hidden],
@@ -512,6 +499,177 @@ button:active {
 .clip-actions .clip-copy {
   color: var(--on-accent);
   background: var(--accent);
+}
+
+/* 設定画面から開く一覧は、設定画面の上に重ねる（閉じると設定画面に戻る）。
+   間の 11 は、板が浮いているときの周りの幕（sheets.ts が一番上の板のすぐ下に置く）。 */
+#devices,
+#fonts {
+  z-index: 12;
+}
+
+/* 板が浮いているときの周りの幕。押すと一番上の板を閉じる。 */
+#sheet-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+/* 大きい画面では板を中央に浮かせる（条件は sheets.ts の FLOAT_QUERY と同じ）。
+   高さは中身に合わせ、画面の8割まで。超えた分は板の中の一覧がスクロールする。 */
+@media (min-width: 700px) and (min-height: 600px) {
+  #sheet-backdrop:not([hidden]) {
+    display: block;
+  }
+
+  #copymode,
+  #devices,
+  #fonts,
+  #settings {
+    inset: auto;
+    top: calc(var(--app-top, 0px) + var(--app-h) / 2);
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(560px, calc(100vw - 32px));
+    height: auto;
+    max-height: calc(var(--app-h) * 0.8);
+    padding-top: 0;
+    border: 1px solid var(--btn-bg);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* 大きい画面の設定画面は2列にする。左に設定の行、右に「ログイン中の端末」かフォントの一覧（settings.ts が移す）。 */
+@media (min-width: 700px) and (min-height: 600px) {
+  #settings.two-columns {
+    flex-direction: row;
+    width: min(900px, 90vw);
+  }
+
+  #settings.two-columns #settings-main {
+    flex: 1 1 0;
+  }
+
+  #settings.two-columns #settings-side {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    border-left: 1px solid var(--btn-bg);
+  }
+
+  #settings-side > #devices,
+  #settings-side > #fonts {
+    position: static;
+    inset: auto;
+    transform: none;
+    flex: 1;
+    min-height: 0;
+    width: auto;
+    height: auto;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    z-index: auto;
+  }
+
+  #settings-side .copy-bar {
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+
+  /* 右の一覧は設定画面と一緒に閉じるので、一覧の「閉じる」は出さない。 */
+  #settings-side #devices-close,
+  #settings-side #fonts-close {
+    display: none;
+  }
+}
+
+#settings-side {
+  display: none;
+}
+
+/* 設定画面。 */
+#settings-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+#settings-title {
+  align-self: center;
+  padding: 0 8px;
+}
+
+#settings-body {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 8px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--btn-bg);
+}
+
+.settings-label {
+  flex: none;
+  width: 8em;
+  font-size: 13px;
+  color: var(--label-fg);
+}
+
+.settings-items {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+}
+
+#settings-body button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: none;
+  min-width: 40px;
+  height: 36px;
+  padding: 0 10px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+#settings-body button.on {
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
+.settings-size {
+  flex: none;
+  min-width: 3.5em;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted-fg);
+}
+
+.settings-version {
+  font-size: 13px;
+  color: var(--muted-fg);
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* ログイン中の端末の一覧。 */
@@ -608,7 +766,77 @@ button:active {
   list-style: none;
 }
 
+#fonts-filter {
+  margin: 8px 8px 0;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--btn-bg);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+}
+
+/* 「使う順」の欄（[font] の stack の並び）。一覧より上に置き、長くなれば欄の中でスクロールする。 */
+#font-stack {
+  flex: none;
+  margin: 8px 8px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--btn-bg);
+  border-radius: 6px;
+  max-height: 35vh;
+  overflow: auto;
+}
+
+#font-stack-title {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+#font-stack-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.font-stack-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.font-stack-item .font-head {
+  flex: 1;
+}
+
+.font-stack-empty {
+  padding: 6px 0;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.font-up,
+.font-down {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+
+.font-up:disabled,
+.font-down:disabled {
+  opacity: 0.35;
+}
+
+.font-remove,
+.font-add {
+  height: 36px;
+  padding: 0 12px;
+}
+
 .font-file,
+.font-system,
+.font-builtin,
 .font-default {
   display: flex;
   align-items: center;
@@ -617,9 +845,30 @@ button:active {
   border-bottom: 1px solid var(--btn-bg);
 }
 
+#font-list li[hidden] {
+  display: none;
+}
+
 .font-info {
   flex: 1;
   min-width: 0;
+}
+
+/* 名前の前の出どころの印（追加・PC・組み込み）。 */
+.font-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.font-source {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 11px;
+  opacity: 0.7;
 }
 
 .font-name {
@@ -629,6 +878,8 @@ button:active {
 }
 
 .font-file.in-use .font-name,
+.font-system.in-use .font-name,
+.font-builtin.in-use .font-name,
 .font-default.in-use .font-name {
   color: var(--accent);
 }

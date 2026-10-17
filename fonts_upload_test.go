@@ -83,10 +83,10 @@ func TestUploadedFontIsSavedAndUsable(t *testing.T) {
 
 	writeConfig(t, "[font]\nfile = \"fonts/My_Font.ttf\"\n")
 	r := getFontConfig(t, s, c)
-	if r.FontURL == "" || r.FontError != "" {
+	if r.FontURL() == "" || r.FontError != "" {
 		t.Fatalf("file = fonts/My_Font.ttf を配りません: %+v", r)
 	}
-	w := authed(s, "GET", r.FontURL, "", c)
+	w := authed(s, "GET", r.FontURL(), "", c)
 	if w.Code != http.StatusOK || !bytes.Equal(w.Body.Bytes(), font) {
 		t.Fatalf("配ったフォント: code=%d", w.Code)
 	}

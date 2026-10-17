@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { fontConfigLine, fontSize, renderFonts } from "./fontfiles";
+import { filterFonts, fontConfigLine, fontSize, renderFonts, renderStack } from "./fontfiles";
 import { setLang } from "./i18n";
 
 describe("画面から足したフォントの一覧", () => {
@@ -54,9 +54,106 @@ describe("画面から足したフォントの一覧", () => {
     expect(list.querySelectorAll(".font-file .font-use").length).toBe(2);
   });
 
+  it("組み込みの JetBrains Mono・足したフォント・PC のフォントを出どころの印を付けて並べ、PC と組み込みの「使う」は名前を渡す", () => {
+    setLang("ja");
+    const list = document.createElement("ul");
+    const named: string[] = [];
+    const data = { dir: "", file: "Liberation Mono", fonts: [{ name: "A.ttf", size: 1 }], system: ["DejaVu Sans Mono", "Liberation Mono"], builtin: "JetBrains Mono" };
+    renderFonts(list, data, () => {}, () => {}, (name) => named.push(name));
+    const rows = [...list.children] as HTMLElement[];
+    expect(rows.map((r) => r.className)).toEqual(["font-default", "font-builtin", "font-file", "font-system", "font-system in-use"]);
+    expect(rows.slice(1).map((r) => r.querySelector(".font-source")?.textContent)).toEqual(["組み込み", "追加", "PC", "PC"]);
+    expect(rows.slice(1).map((r) => r.querySelector(".font-name")?.textContent)).toEqual(["JetBrains Mono", "A.ttf", "DejaVu Sans Mono", "Liberation Mono（使用中）"]);
+    expect(rows[3].querySelector(".font-meta")?.textContent).toBe('stack = ["DejaVu Sans Mono"]');
+    // 使っている PC のフォントには「使う」を出さず、PC のフォントには「削除」も無い
+    expect(rows[4].querySelector(".font-use")).toBeNull();
+    expect(list.querySelectorAll(".font-system .font-delete").length).toBe(0);
+    rows[3].querySelector<HTMLButtonElement>(".font-use")!.click();
+    rows[1].querySelector<HTMLButtonElement>(".font-use")!.click();
+    expect(named).toEqual(["DejaVu Sans Mono", "JetBrains Mono"]);
+
+    // 並びの先頭の名前は大文字小文字を問わず「使用中」。足したフォントが無くても PC と組み込みの行は出す
+    renderFonts(list, { ...data, file: "jetbrains mono", fonts: [] }, () => {});
+    expect(list.querySelector(".font-builtin")?.classList.contains("in-use")).toBe(true);
+    expect([...list.children].map((r) => r.className)).toEqual(["font-default", "font-builtin in-use", "fonts-empty", "font-system", "font-system"]);
+  });
+
+  it("名前で絞り込む（大文字小文字は問わない）。既定のフォントの行と案内はいつも出す", () => {
+    setLang("en");
+    const list = document.createElement("ul");
+    renderFonts(list, { dir: "", file: "x", fonts: [{ name: "MyMono.ttf", size: 1 }], system: ["DejaVu Sans Mono", "Noto Sans CJK JP"], builtin: "JetBrains Mono" }, () => {});
+    const shown = () => [...list.children].filter((r) => !(r as HTMLElement).hidden).map((r) => r.querySelector(".font-name")?.textContent);
+    filterFonts(list, " MONO ");
+    expect(shown()).toEqual(["Default font", "JetBrains Mono", "MyMono.ttf", "DejaVu Sans Mono"]);
+    filterFonts(list, "noto");
+    expect(shown()).toEqual(["Default font", "Noto Sans CJK JP"]);
+    filterFonts(list, "");
+    expect(shown().length).toBe(5);
+  });
+
   it("設定ファイルの行と大きさの書き方", () => {
     expect(fontConfigLine("My_Font.otf")).toBe('file = "fonts/My_Font.otf"');
     expect(fontSize(500)).toBe("500 B");
     expect(fontSize(1536 * 1024)).toBe("1.5 MB");
+  });
+});
+
+describe("使う順の欄（[font] の stack）", () => {
+  const data = {
+    dir: "",
+    file: "fonts/A.ttf",
+    fonts: [{ name: "A.ttf", size: 1 }, { name: "B.ttf", size: 1 }],
+    system: ["DejaVu Sans Mono"],
+    builtin: "JetBrains Mono",
+    stack: ["fonts/A.ttf", "dejavu sans mono", "JetBrains Mono", "Phone Only Sans"],
+  };
+
+  it("並びの順に出どころの印付きで出し、上下で入れ替え、「外す」で抜いた並びを渡す", () => {
+    setLang("ja");
+    const list = document.createElement("ol");
+    const changes: string[][] = [];
+    renderStack(list, data, (s) => changes.push(s));
+    const rows = [...list.querySelectorAll<HTMLElement>(".font-stack-item")];
+    expect(rows.map((r) => r.querySelector(".font-name")?.textContent)).toEqual(["A.ttf", "dejavu sans mono", "JetBrains Mono", "Phone Only Sans"]);
+    expect(rows.map((r) => r.querySelector(".font-source")?.textContent)).toEqual(["追加", "PC", "組み込み", "設定"]);
+    // 先頭の「上へ」と最後の「下へ」は押せない
+    expect(rows[0].querySelector<HTMLButtonElement>(".font-up")!.disabled).toBe(true);
+    expect(rows[3].querySelector<HTMLButtonElement>(".font-down")!.disabled).toBe(true);
+    rows[1].querySelector<HTMLButtonElement>(".font-up")!.click();
+    rows[1].querySelector<HTMLButtonElement>(".font-down")!.click();
+    rows[0].querySelector<HTMLButtonElement>(".font-remove")!.click();
+    expect(changes).toEqual([
+      ["dejavu sans mono", "fonts/A.ttf", "JetBrains Mono", "Phone Only Sans"],
+      ["fonts/A.ttf", "JetBrains Mono", "dejavu sans mono", "Phone Only Sans"],
+      ["dejavu sans mono", "JetBrains Mono", "Phone Only Sans"],
+    ]);
+  });
+
+  it("空なら既定の JetBrains Mono で描くと出す", () => {
+    setLang("ja");
+    const list = document.createElement("ol");
+    renderStack(list, { ...data, stack: [] }, () => {});
+    expect(list.querySelector(".font-stack-item")).toBeNull();
+    expect(list.querySelector(".font-stack-empty")?.textContent).toContain("JetBrains Mono");
+  });
+
+  it("一覧の各行の「足す」は stack に書く形を渡し、もう欄にあるもの（大文字小文字は問わない）には出さない", () => {
+    setLang("ja");
+    const list = document.createElement("ul");
+    const added: string[] = [];
+    renderFonts(list, { ...data, stack: ["fonts/A.ttf", "dejavu sans mono"] }, () => {}, () => {}, () => {}, (e) => added.push(e));
+    const rows = [...list.children] as HTMLElement[];
+    expect(rows.map((r) => r.className)).toEqual(["font-default", "font-builtin", "font-file in-use", "font-file", "font-system"]);
+    expect(rows.map((r) => r.querySelector(".font-add") !== null)).toEqual([false, true, false, true, false]);
+    rows[1].querySelector<HTMLButtonElement>(".font-add")!.click();
+    rows[3].querySelector<HTMLButtonElement>(".font-add")!.click();
+    expect(added).toEqual(["JetBrains Mono", "fonts/B.ttf"]);
+  });
+
+  it("足したフォントが無く既定のフォントを使っていても「既定のフォント」の行は出す", () => {
+    setLang("ja");
+    const list = document.createElement("ul");
+    renderFonts(list, { dir: "", file: "", fonts: [], builtin: "JetBrains Mono" }, () => {});
+    expect([...list.children].map((r) => r.className)).toEqual(["font-default in-use", "font-builtin", "fonts-empty"]);
   });
 });

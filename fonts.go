@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -11,6 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,16 +22,39 @@ import (
 
 // 設定ファイルの [font]。family に PC に入っているフォントの名前を書くと、そのファイルを探して画面に配る。
 // file にフォントのファイルを書くと、そのファイルを配る（相対パスは設定ファイルのあるフォルダから数える）。
-// 配るのは /api/font の1つだけで、ここで決めたファイルのほかは配らない。
+// stack（版 2 の書き方）には、ファイル・PC のフォントの名前・JetBrains Mono を優先する順に並べる。
+// 画面は並びの先頭から順に、その文字を持つフォントで描く。stack は family・file と一緒には書けない。
+// 配るのは /api/font の、ここで決めたファイルだけ。
 type fontConfig struct {
-	Family string `toml:"family" json:"family,omitempty"`
-	File   string `toml:"file" json:"file,omitempty"`
+	Family string   `toml:"family" json:"family,omitempty"`
+	File   string   `toml:"file" json:"file,omitempty"`
+	Stack  []string `toml:"stack" json:"stack,omitempty"`
 }
 
-// 配るフォントのファイル（見つからなければ path は空）と、file を書いたのに使えないときの理由。
+// 組み込みのフォント（palmterm が配る。stack に書けば並びのその位置で使う）。
+const builtinFont = "JetBrains Mono"
+
+// 画面の font-family に並べる1つ。path があればそのファイルを配り、family はスマホ（か組み込み）のフォントの名前。
+type fontItem struct {
+	path   string
+	family string
+}
+
+// 配るフォントと並び、使えなかったファイルの理由。
 type fontChoice struct {
-	path string
-	err  error
+	items []fontItem
+	err   error
+}
+
+// 配るファイル（並びの順）。/api/font?i= の番号はこの中の位置。
+func (c fontChoice) served() []string {
+	var paths []string
+	for _, it := range c.items {
+		if it.path != "" {
+			paths = append(paths, it.path)
+		}
+	}
+	return paths
 }
 
 var fontCache struct {
@@ -41,24 +67,66 @@ var fontCache struct {
 // 探し直すまでの時間。設定を変えたときはすぐ探し直す（フォントを入れたあとは、少し待つか設定ファイルを保存し直す）。
 const fontCacheTTL = 30 * time.Second
 
-// 設定の [font] から配るファイルを決める。PC を探すのは時間がかかるので、同じ設定なら少しのあいだ覚えておく。
+// フォントのファイルとみなす拡張子（stack の項目がこれで終わればファイル、そうでなければフォントの名前）。
+var fontFileExts = map[string]bool{".ttf": true, ".otf": true, ".ttc": true, ".woff": true, ".woff2": true}
+
+// 設定の [font] から配るファイルと並びを決める。PC を探すのは時間がかかるので、同じ設定なら少しのあいだ覚えておく。
 func chooseFont(f fontConfig, configPath string) fontChoice {
-	if f.File == "" && f.Family == "" {
+	if f.File == "" && f.Family == "" && len(f.Stack) == 0 {
 		return fontChoice{}
 	}
-	key := f.Family + "\x00" + f.File + "\x00" + configPath
+	key := f.Family + "\x00" + f.File + "\x00" + strings.Join(f.Stack, "\x01") + "\x00" + configPath
 	fontCache.mu.Lock()
 	defer fontCache.mu.Unlock()
 	if fontCache.key == key && time.Since(fontCache.at) < fontCacheTTL {
 		return fontCache.choice
 	}
 	var c fontChoice
-	if f.File != "" {
-		c.path, c.err = fontFile(f.File, configPath)
+	if f.Stack != nil {
+		c = chooseFontStack(f.Stack, configPath)
 	} else {
-		c.path = findFont(f.Family, fontDirs())
+		if f.File != "" {
+			// file を使えなければ、family はスマホのものだけ探す（PC では探さない）
+			if path, err := fontFile(f.File, configPath); err != nil {
+				c.err = err
+			} else {
+				c.items = append(c.items, fontItem{path: path})
+			}
+			if f.Family != "" {
+				c.items = append(c.items, fontItem{family: f.Family})
+			}
+		} else {
+			c.items = []fontItem{{path: findFont(f.Family, fontDirs()), family: f.Family}}
+		}
 	}
 	fontCache.key, fontCache.choice, fontCache.at = key, c, time.Now()
+	return c
+}
+
+// stack の並びを、配るファイルとスマホのフォントの名前の並びにする。使えないファイルは理由を残して飛ばす。
+func chooseFontStack(stack []string, configPath string) fontChoice {
+	var c fontChoice
+	var errs []string
+	for _, entry := range stack {
+		entry = strings.TrimSpace(entry)
+		switch {
+		case entry == "":
+		case fontFileExts[strings.ToLower(filepath.Ext(entry))]:
+			if path, err := fontFile(entry, configPath); err != nil {
+				errs = append(errs, err.Error())
+			} else {
+				c.items = append(c.items, fontItem{path: path})
+			}
+		case strings.EqualFold(entry, builtinFont):
+			c.items = append(c.items, fontItem{family: builtinFont})
+		default:
+			// PC に無ければ配らず、スマホの同じ名前のフォントを使う
+			c.items = append(c.items, fontItem{path: findFont(entry, fontDirs()), family: entry})
+		}
+	}
+	if len(errs) > 0 {
+		c.err = errors.New(strings.Join(errs, "; "))
+	}
 	return c
 }
 
@@ -148,28 +216,45 @@ func fontDirs() []string {
 // family の名前のフォントのファイルを探す（見つからなければ空）。普通の太さで斜体でないものを選ぶ。
 // dirs の中を先に探し、無ければ fontconfig（fc-list）に訊く。
 func findFont(family string, dirs []string) string {
+	if best := bestFont(family, fontFilesIn(dirs)); best != "" {
+		return best
+	}
+	return bestFont(family, fcList(":family="+fcEscape(family)))
+}
+
+// dirs の中の、名前を読めるフォントのファイル（.ttf・.otf・.ttc）。
+func fontFilesIn(dirs []string) []string {
 	var files []string
 	for _, dir := range dirs {
 		filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-			if err == nil && !d.IsDir() {
-				switch strings.ToLower(filepath.Ext(path)) {
-				case ".ttf", ".otf", ".ttc":
-					files = append(files, path)
-				}
+			if err == nil && !d.IsDir() && isSfntFile(path) {
+				files = append(files, path)
 			}
 			return nil
 		})
 	}
-	if best := bestFont(family, files); best != "" {
-		return best
-	}
-	return bestFont(family, fcList(family))
+	return files
 }
 
-// fontconfig が知っている、その名前のフォントのファイル。
-func fcList(family string) []string {
-	r := strings.NewReplacer(`\`, `\\`, `-`, `\-`, `:`, `\:`, `,`, `\,`, `=`, `\=`)
-	out, err := exec.Command("fc-list", "--format", "%{file}\n", ":family="+r.Replace(family)).Output()
+func isSfntFile(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".ttf", ".otf", ".ttc":
+		return true
+	}
+	return false
+}
+
+func fcEscape(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `-`, `\-`, `:`, `\:`, `,`, `\,`, `=`, `\=`).Replace(s)
+}
+
+// fontconfig が知っている、pattern（例 ":family=名前"。空なら全部）に合うフォントのファイル。
+func fcList(pattern string) []string {
+	args := []string{"--format", "%{file}\n"}
+	if pattern != "" {
+		args = append(args, pattern)
+	}
+	out, err := exec.Command("fc-list", args...).Output()
 	if err != nil {
 		return nil
 	}
@@ -180,6 +265,59 @@ func fcList(family string) []string {
 		}
 	}
 	return files
+}
+
+var systemFontCache struct {
+	mu    sync.Mutex
+	key   string
+	names []string
+	at    time.Time
+}
+
+// PC に入っているフォントの名前（フォントごとに1つ。太さ違いはまとめる）。フォントの一覧の「PC」の行に出し、
+// stack に書けば findFont で探して配る。ファイルのパスは返さない。組み込みの JetBrains Mono は除く。
+func systemFonts() []string {
+	dirs := fontDirs()
+	key := strings.Join(dirs, "\x00")
+	systemFontCache.mu.Lock()
+	defer systemFontCache.mu.Unlock()
+	if systemFontCache.key == key && time.Since(systemFontCache.at) < fontCacheTTL {
+		return systemFontCache.names
+	}
+	byName := map[string]string{}
+	seen := map[string]bool{}
+	for _, path := range append(fontFilesIn(dirs), fcList("")...) {
+		if seen[path] || !isSfntFile(path) {
+			continue
+		}
+		seen[path] = true
+		for _, family := range sfntFamilies(path) {
+			k := strings.ToLower(family)
+			if _, ok := byName[k]; !ok && family != "" && k != strings.ToLower(builtinFont) {
+				byName[k] = family
+			}
+		}
+	}
+	names := make([]string, 0, len(byName))
+	for _, n := range byName {
+		names = append(names, n)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		a, b := strings.ToLower(names[i]), strings.ToLower(names[j])
+		return a < b || a == b && names[i] < names[j]
+	})
+	systemFontCache.key, systemFontCache.names, systemFontCache.at = key, names, time.Now()
+	return names
+}
+
+// 名前が PC のフォントにあれば、その書き方（大文字小文字）の名前。
+func findSystemFont(name string) (string, bool) {
+	for _, n := range systemFonts() {
+		if strings.EqualFold(n, name) {
+			return n, true
+		}
+	}
+	return "", false
 }
 
 func bestFont(family string, files []string) string {
@@ -213,6 +351,15 @@ type sfntName struct{ family, style string }
 // TrueType・OpenType（とその集まり）のファイルから、フォントの名前と太さ・斜体の名前を読む。
 // 名前は家族名（name ID 1・16）ごとに1つずつ返す。読めないファイルは空。
 func sfntNames(path string) []sfntName {
+	var names []sfntName
+	for _, face := range sfntFaces(path) {
+		names = append(names, face...)
+	}
+	return names
+}
+
+// ファイルの中のフォントごとの名前（.ttc なら複数）。
+func sfntFaces(path string) [][]sfntName {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil
@@ -237,11 +384,22 @@ func sfntNames(path string) []sfntName {
 			offsets = append(offsets, int64(binary.BigEndian.Uint32(buf[4*i:])))
 		}
 	}
-	var names []sfntName
+	var faces [][]sfntName
 	for _, off := range offsets {
-		names = append(names, sfntFontNames(f, off)...)
+		if names := sfntFontNames(f, off); len(names) > 0 {
+			faces = append(faces, names)
+		}
 	}
-	return names
+	return faces
+}
+
+// ファイルの中のフォントごとの代表の名前（太さ違いをまとめた名前を、英語のものから選ぶ）。
+func sfntFamilies(path string) []string {
+	var families []string
+	for _, face := range sfntFaces(path) {
+		families = append(families, face[0].family)
+	}
+	return families
 }
 
 func sfntFontNames(f io.ReaderAt, off int64) []sfntName {
@@ -279,14 +437,15 @@ func sfntFontNames(f io.ReaderAt, off int64) []sfntName {
 	}
 	count := int(binary.BigEndian.Uint16(table[2:]))
 	strOff := int(binary.BigEndian.Uint16(table[4:]))
-	byID := map[uint16][]string{}
+	// 英語の名前を先に並べる（フォントの一覧には先頭の名前を出す）
+	byID, other := map[uint16][]string{}, map[uint16][]string{}
 	for i := range count {
 		p := 6 + 12*i
 		if p+12 > len(table) {
 			break
 		}
 		rec := table[p:]
-		platform, id := binary.BigEndian.Uint16(rec), binary.BigEndian.Uint16(rec[6:])
+		platform, lang, id := binary.BigEndian.Uint16(rec), binary.BigEndian.Uint16(rec[4:]), binary.BigEndian.Uint16(rec[6:])
 		length, at := int(binary.BigEndian.Uint16(rec[8:])), strOff+int(binary.BigEndian.Uint16(rec[10:]))
 		if id != 1 && id != 2 && id != 16 && id != 17 || at+length > len(table) {
 			continue
@@ -305,7 +464,14 @@ func sfntFontNames(f io.ReaderAt, off int64) []sfntName {
 		default:
 			continue
 		}
-		byID[id] = append(byID[id], text)
+		if platform == 0 || platform == 1 && lang == 0 || platform == 3 && lang == 0x409 {
+			byID[id] = append(byID[id], text)
+		} else {
+			other[id] = append(other[id], text)
+		}
+	}
+	for id, texts := range other {
+		byID[id] = append(byID[id], texts...)
 	}
 	// 新しいフォントは、太さ違いをまとめた名前（16・17）と、太さごとの名前（1・2）の両方を持つ。
 	var names []sfntName
@@ -328,21 +494,31 @@ func first(lists ...[]string) string {
 }
 
 // 設定の [font] で決めたフォントのファイルを配る（ログインした端末だけ。requireAuth の内側に置く）。
-// 配るのはこの1つだけで、URL の中身からほかのファイルを選ぶことはない。
+// 配るのは並びにあるファイルだけで、選べるのは ?i= の番号（無ければ 0）だけ。URL の中身からほかのファイルを選ぶことはない。
 func (s *server) handleFont(w http.ResponseWriter, r *http.Request) {
 	cfg, _ := settings.get()
-	c := chooseFont(cfg.Font, settings.path)
-	if c.path == "" {
+	paths := chooseFont(cfg.Font, settings.path).served()
+	i := 0
+	if v := r.URL.Query().Get("i"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		i = n
+	}
+	if i < 0 || i >= len(paths) {
 		http.NotFound(w, r)
 		return
 	}
-	typ, err := fontFormat(c.path)
+	path := paths[i]
+	typ, err := fontFormat(path)
 	if err != nil {
 		forgetFont()
 		http.NotFound(w, r)
 		return
 	}
-	f, err := os.Open(c.path)
+	f, err := os.Open(path)
 	if err != nil {
 		forgetFont()
 		http.NotFound(w, r)
@@ -359,14 +535,28 @@ func (s *server) handleFont(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "", info.ModTime(), f)
 }
 
-// 画面に渡すフォントの URL（配るものが無ければ空）。中身が変われば URL も変わるようにする。
-func fontURL(c fontChoice) string {
-	if c.path == "" {
-		return ""
+// 画面に渡すフォントの並びの1つ。url は配るフォント、family はスマホ（か組み込み）のフォントの名前。
+type fontFace struct {
+	URL    string `json:"url,omitempty"`
+	Family string `json:"family,omitempty"`
+}
+
+// 画面に渡すフォントの並び（[font] が無ければ空）。中身が変われば URL も変わるようにする。
+// 配るファイルが消えていれば、その URL は渡さない。
+func fontFaces(c fontChoice) []fontFace {
+	var faces []fontFace
+	i := 0
+	for _, it := range c.items {
+		face := fontFace{Family: it.family}
+		if it.path != "" {
+			if info, err := os.Stat(it.path); err == nil {
+				face.URL = fmt.Sprintf("/api/font?i=%d&v=%x", i, info.ModTime().UnixNano()^info.Size())
+			}
+			i++
+		}
+		if face != (fontFace{}) {
+			faces = append(faces, face)
+		}
 	}
-	info, err := os.Stat(c.path)
-	if err != nil {
-		return ""
-	}
-	return fmt.Sprintf("/api/font?v=%x", info.ModTime().UnixNano()^info.Size())
+	return faces
 }

@@ -4,8 +4,8 @@
 # 書き換えたら、ブラウザでページを読み込み直せば反映される（サーバーの再起動は要らない）。
 # Put this at ~/.config/palmterm/config.toml (or pass -config). Reload the page to apply changes.
 
-# 設定ファイルの書き方の版 / Config format version（書かなければ 1 / defaults to 1）
-version = 1
+# 設定ファイルの書き方の版 / Config format version（書かなければ 1 / defaults to 1。版 1 の書き方もそのまま読める / version 1 files still work）
+version = 2
 
 # 画面の言語 / UI language: "en"（既定 / default）or "ja"
 language = "en"
@@ -28,15 +28,20 @@ name = "default"
 
 # 端末のフォント / Terminal font（書かなければ JetBrains Mono / JetBrains Mono if unset）
 [font]
-# PC に入っているフォントの名前。palmterm がファイルを探してスマホに配る。PC に無ければスマホの同じ名前のフォント、
-# それも無ければ JetBrains Mono。
-# Name of a font installed on the PC; palmterm finds and serves its file. Falls back to a font of that name
-# on the phone, then to JetBrains Mono.
-# family = "Liberation Mono"
-# フォントのファイル（family で探す代わりに配る）。相対パスはこのファイルのあるフォルダから数える。
-# A font file to serve instead (.ttf, .otf, .woff, .woff2). Relative paths start at this file's folder.
-# フォントの一覧の「使う」で選ぶと、file の行が書き換わる / Tapping Use in the font list rewrites the file line
-# file = "fonts/MyFont.ttf"
+# 使うフォントを優先する順に並べる。文字ごとに、並びの先頭から順にその文字を持つフォントで描く。
+# Fonts in order of preference. Each character is drawn with the first font in the list that has it.
+#   - .ttf・.otf・.ttc・.woff・.woff2 で終わればファイル（相対パスはこのファイルのあるフォルダから数える）
+#     Ends in .ttf, .otf, .ttc, .woff or .woff2: a font file (relative paths start at this file's folder)
+#   - "JetBrains Mono" は palmterm の組み込み / "JetBrains Mono": built into palmterm
+#   - ほかは PC に入っているフォントの名前。palmterm がファイルを探してスマホに配り、PC に無ければスマホの同じ名前のフォントを使う
+#     Anything else: the name of a font installed on the PC; palmterm finds and serves its file, or uses a font
+#     of that name on the phone if the PC does not have it
+# フォントの一覧の「使う」で選ぶと、stack はそのフォント1つになる / Tapping Use in the font list sets stack to that one font
+# stack = ["fonts/MyMono.woff2", "Noto Sans Mono CJK JP", "JetBrains Mono"]
+#
+# 版 1 の書き方（stack と一緒には書けない） / The version 1 way (cannot be used together with stack):
+# family = "Liberation Mono"   # PC に入っているフォントの名前 / name of a font installed on the PC
+# file = "fonts/MyFont.ttf"    # family で探す代わりに配るファイル / a font file to serve instead of looking up family
 
 # キーバーのキー。書いた順に左から並ぶ。[[keys]] を1つでも書くと、既定の並びを丸ごと置き換える。
 # Keys on the key bar, left to right. Any [[keys]] entry replaces the whole default set.

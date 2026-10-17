@@ -15,9 +15,11 @@ import { applyToChar, isSingleChar, keySequenceWithMods, Modifiers, type ModName
 import { setupNerdIcons } from "./nerd";
 import { pasteSequence } from "./paste";
 import { SoftKeyboard } from "./softkeyboard";
-import { applyFont, type FontConfig } from "./font";
+import { applyFont, type FontConfig, type FontEntry, fontErrorKey } from "./font";
 import { applyTheme, resolveTheme, THEMES, type ThemeConfig } from "./theme";
 import { chooseAppearance, type AppearanceChange } from "./appearance";
+import { setupSettings } from "./settings";
+import { setupSheets } from "./sheets";
 import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
 
@@ -37,9 +39,9 @@ interface ServerConfig {
   keys?: KeyConfig[];
   theme?: ThemeConfig;
   font?: FontConfig;
-  /** [font] のフォントを PC から配るときの URL（PC に無ければ無い）。 */
-  fontURL?: string;
-  /** [font] の file を使えなかった理由。 */
+  /** [font] から決めたフォントの並び（先頭から順に使う）。 */
+  fontFaces?: FontEntry[];
+  /** [font] のファイルを使えなかった理由。 */
   fontError?: string;
   path: string;
   /** palmterm の版（`palmterm -version` と同じ）。 */
@@ -56,8 +58,9 @@ applyStaticTexts();
 // 色は [theme] で選んだテーマに、書いた色だけ上書きする。書き間違えた色は既定に戻して知らせる（起動の所）。
 const { theme, errors: themeErrors } = resolveTheme(serverConfig.theme);
 applyTheme(theme, document.documentElement, termEl);
-// フォントは [font] で PC から配られたもの、無ければスマホの同じ名前のもの、それも無ければ JetBrains Mono。
-applyFont(serverConfig.font, serverConfig.fontURL, document.documentElement);
+// フォントは [font] の並びの先頭から順に、その文字を持つもの（PC から配られたもの、無ければスマホの同じ名前のもの）。
+// 並びのどれも持たない文字は JetBrains Mono。
+applyFont(serverConfig.fontFaces, document.documentElement);
 
 /** index.html に書いてある文言を、設定の言語に置き換える。 */
 function applyStaticTexts() {
@@ -457,23 +460,29 @@ function setKeybarShown(shown: boolean, save = true) {
 }
 setKeybarShown(loadSetting("keybar", "shown") !== "hidden", false);
 
+// 設定画面（tmux パネルの「設定」で開く）。フォントと端末の一覧はこの上に開く。
+const settings = setupSettings({
+  fontSize: { get: () => fontSize, change: (delta) => setFontSize(fontSize + delta) },
+  keybar: { shown: () => keybarShown, set: (shown) => setKeybarShown(shown) },
+  theme: {
+    names: Object.keys(THEMES),
+    current: () => (serverConfig.theme?.name && Object.hasOwn(THEMES, serverConfig.theme.name) ? serverConfig.theme.name : "default"),
+    choose: (name) => changeAppearance({ theme: name }),
+  },
+  language: { current: () => serverConfig.language, choose: (lang) => changeLanguage(lang) },
+  openDevices: () => openDevices(),
+  openFonts: () => fonts.open(),
+  version: serverConfig.version,
+});
+
 const tmuxPanel = setupTmuxPanel({
   tabs: $("tabs"),
   newWindow: $("new-window"),
   button: $("tmux-btn"),
   panel: $("tmuxpanel"),
   sendPrefix: () => conn.send("\x02"),
-  fontSize: { get: () => fontSize, change: (delta) => setFontSize(fontSize + delta) },
-  keybar: { shown: () => keybarShown, set: (shown) => setKeybarShown(shown) },
   toast,
-  version: serverConfig.version,
-  openDevices: () => openDevices(),
-  openFonts: () => fonts.open(),
-  theme: {
-    names: Object.keys(THEMES),
-    current: () => (serverConfig.theme?.name && Object.hasOwn(THEMES, serverConfig.theme.name) ? serverConfig.theme.name : "default"),
-    choose: (name) => changeAppearance({ theme: name }),
-  },
+  openSettings: () => settings.open(),
   bind: bindKeyButton,
 });
 // 端末に触れたらパネルを閉じる。
@@ -796,7 +805,17 @@ $("devices-close").addEventListener("click", () => (devicesEl.hidden = true));
 
 // ---- 画面から足したフォント：追加と削除 ----
 
-const fonts = setupFonts((message) => toast(message, 5000), (name) => changeAppearance({ font: name }));
+const fonts = setupFonts((message) => toast(message, 5000), (change) => changeAppearance(change));
+
+// 大きい画面では板を中央に浮かせ、周りの暗い所か Esc で閉じる（下から上の順に並べる）。
+setupSheets(
+  [
+    ["copymode", "copy-close"],
+    ["settings", "settings-close"],
+    ["devices", "devices-close"],
+    ["fonts", "fonts-close"],
+  ].map(([el, close]) => ({ el: $(el), close: $(close) })),
+);
 
 // ---- テーマとフォントを画面で選ぶ：設定ファイルに書き戻し、すぐ画面に当てる ----
 
@@ -810,10 +829,21 @@ async function changeAppearance(change: AppearanceChange): Promise<boolean> {
   }
   const { theme, errors } = resolveTheme(serverConfig.theme);
   applyTheme(theme, document.documentElement, termEl);
-  applyFont(serverConfig.font, serverConfig.fontURL, document.documentElement);
-  const problems = [...errors, ...(serverConfig.fontError ? [t("fontFileError", { error: serverConfig.fontError })] : [])];
+  applyFont(serverConfig.fontFaces, document.documentElement);
+  const problems = [...errors, ...(serverConfig.fontError ? [t(fontErrorKey(serverConfig.font), { error: serverConfig.fontError })] : [])];
   if (problems.length) toast(problems.join("\n"), 10000);
   return true;
+}
+
+/** 言語を設定ファイルに書き戻し、書き戻せたら読み込み直す（画面の文言は読み込むときに決める）。 */
+async function changeLanguage(language: Lang) {
+  try {
+    await chooseAppearance<ServerConfig>({ language });
+  } catch (e) {
+    toast(t("appearanceFailed", { error: e instanceof Error ? e.message : String(e) }), 10000);
+    return;
+  }
+  location.reload();
 }
 
 // ほかの端末から取り消されたら、つなぎ直さずに読み込み直す（ログインし直す方法の案内が出る）。
@@ -831,7 +861,7 @@ const configProblems = [
     : []),
   ...keyErrors,
   ...themeErrors,
-  ...(serverConfig.fontError ? [t("fontFileError", { error: serverConfig.fontError })] : []),
+  ...(serverConfig.fontError ? [t(fontErrorKey(serverConfig.font), { error: serverConfig.fontError })] : []),
 ];
 if (configProblems.length) toast(configProblems.join("\n"), 10000);
 

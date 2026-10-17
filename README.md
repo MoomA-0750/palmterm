@@ -41,8 +41,12 @@ for working with TUIs such as vim, lazygit and Claude Code.
   (an empty name restores tmux's automatic name).
 - **The green tmux button**, pinned to the right of the key bar, opens a panel to split panes, zoom,
   close a pane (tap twice), move between panes, enter tmux copy mode, send the prefix (Ctrl+B), and
-  change the font size.
-  Its "Devices" button lists the logged-in devices: log this one out, or revoke another (both tap
+  open Settings.
+- **Settings** (from the panel) lists the text size, fonts, theme, hiding or showing the key bar, the
+  logged-in devices, and the palmterm version. Close returns to the terminal.
+  Picking English or 日本語 in the Language row rewrites the `language` line of the config file and reloads
+  the page (like the theme, the other lines are kept, and every device shows the same language).
+  The "List" button in its Devices row lists the logged-in devices: log this one out, or revoke another (both tap
   twice) — for example a lost phone, from a device you still have. Tap a device's name to give it one
   you will recognize ("work iPad"); clear it to go back to the automatic name.
 - **Tap a pane** to select it.
@@ -195,7 +199,7 @@ changes; no restart is needed. [config.example.toml](config.example.toml) contai
 so it is a good starting point.
 
 ```toml
-version = 1            # config format version (defaults to 1)
+version = 2            # config format version (defaults to 1; version 1 files still work)
 language = "en"        # "en" (default) or "ja"
 
 [[keys]]
@@ -236,33 +240,48 @@ The 16 colors are `black` `red` `green` `yellow` `blue` `magenta` `cyan` `white`
 color (such as `#12345`) or an unknown theme name is reported when the page opens, and only that part
 falls back to the default.
 
-You can also pick the theme on the page: tap one in the Theme row of the tmux button's panel. The colors
+You can also pick the theme on the page: tap one in the Theme row of Settings. The colors
 change at once and the `name` line under `[theme]` in the config file is rewritten (other lines, comments
 and their order stay as they are; the file is created if missing). If the config file has a mistake and
 cannot be read, it is left alone and the reason is shown.
 
 ### Font
 
-`[font]` sets the terminal font. For a font installed on the PC, palmterm finds its file and serves it to the phone.
+`[font]` sets the terminal font. List fonts in order of preference in `stack`; each character is drawn with
+the first font in the list that has it (for example, Latin letters from your own font and kanji it lacks from
+a Japanese font).
 
 ```toml
 [font]
-family = "Liberation Mono"   # name of a font installed on the PC (as fc-list shows it)
-# file = "fonts/MyFont.ttf"  # a font file; relative paths start at ~/.config/palmterm/
+stack = ["fonts/MyMono.woff2", "Noto Sans Mono CJK JP", "JetBrains Mono"]
 ```
 
-- If the PC has no font with that `family` name, a font of the same name on the phone is used, and
-  otherwise JetBrains Mono.
-- `file` serves that file instead of looking up `family` (.ttf, .otf, .woff or .woff2). Put the font in
-  `~/.config/palmterm/` and use a relative path, and copying the folder carries it to another PC. A file that
-  cannot be used is reported when the page opens.
-- You can also add font files from the phone: in the tmux button's panel, tap Fonts → Add and pick a .ttf,
+- An entry ending in .ttf, .otf, .ttc, .woff or .woff2 is a font file; palmterm serves it. Relative paths start
+  at `~/.config/palmterm/`, so copying the folder carries it to another PC. A file that cannot be used is
+  skipped, and the reason is shown when the page opens.
+- `"JetBrains Mono"` is the font built into palmterm.
+- Anything else is the name of a font installed on the PC (as fc-list shows it); palmterm finds its file and
+  serves it. If the PC has no such font, a font of the same name on the phone is used.
+- Characters no font in the list has are drawn with JetBrains Mono.
+- The version 1 way still works: `family = "Liberation Mono"` (a font on the PC, or else on the phone) and
+  `file = "fonts/MyFont.ttf"` (a file served instead of looking up `family`). `stack` cannot be written
+  together with `family` or `file`; that is reported as a mistake.
+- You can also add font files from the phone: in Settings, tap List in the Fonts row → Add and pick a .ttf,
   .otf, .woff or .woff2 (up to 32 MB). It is saved in `~/.config/palmterm/fonts/`. Tap Use in the list to
-  switch the terminal to it at once; the `file` line under `[font]` (`file = "fonts/NAME"`) in the config
-  file is rewritten, leaving the other lines alone as with the theme. Use on "Default font" at the top
-  removes the `file` line. The same screen deletes saved fonts (tap twice).
-- The font is served only to logged-in devices, and only that one font file.
-- Only the regular weight is served, so the browser draws bold by thickening it. Nerd Font icons are always
+  switch the terminal to it at once. With `stack`, the list becomes just that font
+  (`stack = ["fonts/NAME"]`); with the version 1 way, the `file` line (`file = "fonts/NAME"`) is rewritten.
+  Other lines are left alone as with the theme. Use on "Default font" at the top removes the `stack` (or
+  `file`) line. The same screen deletes saved fonts (tap twice).
+- Besides added fonts (marked "Added"), the list shows the fonts installed on the PC (marked "PC", one row per
+  font name) and the built-in JetBrains Mono (marked "Built-in"); type in the box above it to filter by name.
+  Use on a PC or built-in font sets `[font]` to `stack = ["NAME"]` (the version 1 `family` and `file` lines are
+  removed). The PC font list is shown only to logged-in devices, with names only and no file paths.
+- The "Order" box above the list holds several fonts. Tap Add on a row to put it at the end, ↑ and ↓ to
+  reorder, and Remove to take it out. Each change is applied at once and rewrites `[font]` `stack` in that
+  order (the version 1 `family` and `file` lines are removed). Emptying the box removes the `stack` line and
+  goes back to JetBrains Mono.
+- Fonts are served only to logged-in devices, and only the font files in the list.
+- Only the regular weight of each font is served, so the browser draws bold by thickening it. Nerd Font icons are always
   drawn with the icon font palmterm serves, whichever font you pick.
 
 ### Key bar

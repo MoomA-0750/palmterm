@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -308,12 +309,13 @@ func TestConfigErrorsFallBackToDefaults(t *testing.T) {
 	}
 }
 
-// 設定ファイルの版。書いていなければ 1 とみなし、今までの設定ファイルはそのまま読める。
+// 設定ファイルの版。書いていなければ 1 とみなし、今までの設定ファイルはそのまま読める。今の版は 2。
 func TestConfigVersion(t *testing.T) {
 	s := newTestServer(t)
 	for name, body := range map[string]string{
 		"版なし":         "language = \"ja\"\n[[keys]]\nkey = \"esc\"\n",
 		"version = 1": "version = 1\nlanguage = \"ja\"\n[[keys]]\nkey = \"esc\"\n",
+		"version = 2": "version = 2\nlanguage = \"ja\"\n[[keys]]\nkey = \"esc\"\n",
 	} {
 		writeConfig(t, body)
 		c := getConfig(t, s)
@@ -336,7 +338,7 @@ func TestConfigVersion(t *testing.T) {
 func TestConfigNewerVersionUsesWhatItCanRead(t *testing.T) {
 	s := newTestServer(t)
 	writeConfig(t, `
-version = 2
+version = 3
 language = "ja"
 theme = "dark"
 
@@ -351,7 +353,7 @@ mod = "alt"
 rows = 2
 `)
 	c := getConfig(t, s)
-	if c.Newer != 2 || c.Error != "" {
+	if c.Newer != 3 || c.Error != "" {
 		t.Fatalf("新しい版の知らせ: %+v", c)
 	}
 	if c.Language != "ja" || len(c.Keys) != 2 || c.Keys[0].Key != "ctrl+c" || c.Keys[1].Mod != "alt" {
@@ -359,8 +361,8 @@ rows = 2
 	}
 
 	// 書き方が変わって読めない項目は飛ばし、残りは使う。
-	writeConfig(t, "version = 3\nlanguage = \"ja\"\nkeys = \"esc tab\"\n")
-	if c := getConfig(t, s); c.Newer != 3 || c.Error != "" || c.Language != "ja" || c.Keys != nil {
+	writeConfig(t, "version = 4\nlanguage = \"ja\"\nkeys = \"esc tab\"\n")
+	if c := getConfig(t, s); c.Newer != 4 || c.Error != "" || c.Language != "ja" || c.Keys != nil {
 		t.Fatalf("%+v", c)
 	}
 	writeConfig(t, "version = 3\nlanguage = \"fr\"\n")
@@ -369,20 +371,20 @@ rows = 2
 	}
 
 	// TOML として読めなければ、今までどおり書き間違いとして知らせる。
-	writeConfig(t, "version = 2\nlanguage = \n")
+	writeConfig(t, "version = 3\nlanguage = \n")
 	if c := getConfig(t, s); c.Error == "" || c.Newer != 0 {
 		t.Fatalf("%+v", c)
 	}
 }
 
-// 見本の設定ファイルは version = 1 で、そのまま読める。
+// 見本の設定ファイルは今の版（version = 2）で、そのまま読める。
 func TestConfigExampleReadsAsIs(t *testing.T) {
 	body, err := os.ReadFile("config.example.toml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(body), "\nversion = 1\n") {
-		t.Fatal("config.example.toml に version = 1 がありません")
+	if !strings.Contains(string(body), fmt.Sprintf("\nversion = %d\n", configVersion)) {
+		t.Fatalf("config.example.toml に version = %d がありません", configVersion)
 	}
 	s := newTestServer(t)
 	writeConfig(t, string(body))
@@ -425,8 +427,8 @@ bright_white = "#ffffff"
 	}
 
 	// 新しい版の設定ファイルでも [theme] は読む。
-	writeConfig(t, "version = 2\n[theme]\nname = \"light\"\naccent = \"#0969da\"\nglow = true\n")
-	if c := getConfig(t, s); c.Newer != 2 || c.Error != "" || c.Theme != (themeConfig{Name: "light", Accent: "#0969da"}) {
+	writeConfig(t, "version = 3\n[theme]\nname = \"light\"\naccent = \"#0969da\"\nglow = true\n")
+	if c := getConfig(t, s); c.Newer != 3 || c.Error != "" || c.Theme != (themeConfig{Name: "light", Accent: "#0969da"}) {
 		t.Fatalf("%+v", c)
 	}
 }

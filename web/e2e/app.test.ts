@@ -4,7 +4,7 @@
 // 一時ディレクトリの設定ファイル・アップロード先で動かすので、ふだんの環境には触れない。
 
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -30,11 +30,11 @@ const browserData = join(dir, "browser-data");
 
 /**
  * テスト用のフォント：JetBrains Mono の WOFF を TrueType に戻し、名前を family（14文字）に付け替えたもの。
- * 名前の長さが同じなので、名前の所を書き換えるだけで済む。
+ * 名前の長さが同じなので、名前の所を書き換えるだけで済む。subset は持つ文字（latin は英字だけ、cyrillic はキリル文字だけ）。
  */
-function testFont(family: string): Buffer {
+function testFont(family: string, subset: "latin" | "cyrillic" = "latin"): Buffer {
   if (family.length !== 14) throw new Error("名前は JetBrains Mono と同じ14文字にする");
-  const woff = readFileSync(resolve(__dirname, "../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff"));
+  const woff = readFileSync(resolve(__dirname, `../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-${subset}-400-normal.woff`));
   const n = woff.readUInt16BE(12);
   const tables = Array.from({ length: n }, (_, i) => {
     const e = 44 + 20 * i;
@@ -68,6 +68,7 @@ function testFont(family: string): Buffer {
 }
 mkdirSync(join(dir, "data", "fonts"), { recursive: true });
 writeFileSync(join(dir, "data", "fonts", "PalmtermProbe-Regular.ttf"), testFont("Palmterm Probe"));
+writeFileSync(join(dir, "data", "fonts", "PalmtermCyril-Regular.ttf"), testFont("Palmterm Cyril", "cyrillic"));
 mkdirSync(join(dir, "myfonts"));
 writeFileSync(join(dir, "myfonts", "files.ttf"), testFont("Palmterm Files"));
 mkdirSync(join(browserData, "fonts"), { recursive: true });
@@ -123,6 +124,13 @@ async function openPage() {
   await page.goto(`${base}/`);
   await page.waitForFunction(() => document.querySelector(".term-row") !== null);
   await waitUntil("つながる", async () => (await page.locator("#status").isHidden()) && tmux("list-clients").includes(SESSION));
+}
+
+/** tmux パネルの「設定」で設定画面を開く。 */
+async function openSettings(p: Page = page) {
+  await p.locator("#tmux-btn").click();
+  await p.locator('#tmuxpanel button[title^="Settings"]').click();
+  await p.locator("#settings").waitFor({ state: "visible" });
 }
 
 function paneText(): string {
@@ -197,20 +205,20 @@ beforeEach(async () => {
 });
 
 /**
- * 文字とアイコン（U+F418）を出し、それぞれ実際にどのフォントで描いたかをブラウザに訊く。
+ * 文字とアイコン（U+F418）、次の行にキリル文字（Ж。1文字ずつ別の span になる）を出し、それぞれ実際にどのフォントで描いたかをブラウザに訊く。
  * ページを読み込み直したあとも使える（printf の出力は tmux に残る）。終わったら cdp.detach() する。
  */
 async function fontProbe() {
-  tmux("send-keys", "-t", SESSION, "printf 'WWW \\357\\220\\230 X\\n'", "Enter");
+  tmux("send-keys", "-t", SESSION, "printf 'WWW \\357\\220\\230 X\\n\\320\\226\\320\\226\\320\\226\\n'", "Enter");
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("DOM.enable");
   await cdp.send("CSS.enable");
-  const usedFont = async (what: "text" | "icon"): Promise<string> => {
+  const usedFont = async (what: "text" | "icon" | "cyrillic"): Promise<string> => {
     let found = "";
     await waitUntil(`${what} のフォントがわかる`, async () => {
       const marked = await page.evaluate((what) => {
         document.querySelectorAll("[data-probe]").forEach((e) => e.removeAttribute("data-probe"));
-        const want = what === "text" ? "WWW" : "\uf418";
+        const want = { text: "WWW", icon: "\uf418", cyrillic: "\u0416" }[what];
         const walker = document.createTreeWalker(document.getElementById("term")!, NodeFilter.SHOW_TEXT);
         for (let n = walker.nextNode(); n; n = walker.nextNode()) {
           const text = n.textContent ?? "";
@@ -428,7 +436,7 @@ describe("tmux のタブとパネル", () => {
     await waitUntil("タブに映る", async () => (await page.locator(".tmux-tab").allTextContents()).some((t) => t.includes("1:outside")));
   });
 
-  it("パネルで分割し、端末をタップしたペインに移り、文字サイズを変える", async () => {
+  it("パネルで分割し、端末をタップしたペインに移り、設定画面で文字サイズを変える", async () => {
     await page.locator("#tmux-btn").click();
     expect(await page.locator("#tmuxpanel").isVisible()).toBe(true);
     await page.locator('#tmuxpanel button[title="Split side by side"]').click();
@@ -443,27 +451,80 @@ describe("tmux のタブとパネル", () => {
     await page.mouse.click(box!.x + box!.width - 30, 100);
     await waitUntil("右のペインに移る", () => tmux("display-message", "-p", "-t", SESSION, "#{pane_id}") !== leftPane);
 
-    await page.locator("#tmux-btn").click();
-    const size = page.locator(".tmux-size");
+    await openSettings();
+    const size = page.locator(".settings-size");
     const before = Number.parseInt((await size.textContent()) ?? "");
-    await page.locator('#tmuxpanel button[title="Larger text"]').click();
+    const cellWidth = async () => (await page.locator(".term-row").first().evaluate((r) => getComputedStyle(r).fontSize));
+    expect(await cellWidth()).toBe(`${before}px`);
+    await page.locator('#settings button[title="Larger text"]').click();
     expect(await size.textContent()).toBe(`${before + 1}px`);
-    expect(await page.locator("#tmuxpanel").isVisible()).toBe(true); // 文字サイズでは閉じない
-    await page.locator('#tmuxpanel button[title="Smaller text"]').click();
-    await page.locator("#tmux-btn").click();
-    expect(await page.locator("#tmuxpanel").isHidden()).toBe(true);
+    expect(await page.locator("#settings").isVisible()).toBe(true); // 文字サイズでは閉じない
+    await page.locator("#settings-close").click();
+    await waitUntil("端末の文字が大きくなる", async () => (await cellWidth()) === `${before + 1}px`);
+    await openSettings();
+    await page.locator('#settings button[title="Smaller text"]').click();
+    await page.locator("#settings-close").click();
+    await waitUntil("端末の文字が元に戻る", async () => (await cellWidth()) === `${before}px`);
 
     tmux("kill-pane", "-t", SESSION);
   });
-  it("パネルでキーバーを隠すと端末が広がり、読み込み直しても隠れたまま。別のブラウザでは出たまま。もう一度押すと出る", async () => {
+  it("tmux パネルに残るのは分割・ペイン・コピーモード・Ctrl+B・設定だけ。「設定」で設定画面が出て、文字サイズ・フォント・テーマ・言語・キーバー・ログイン中の端末・版が並ぶ。一覧を開いて閉じると設定画面に戻り、設定画面を閉じると端末に戻る", async () => {
+    await page.locator("#tmux-btn").click();
+    const rows = page.locator("#tmuxpanel .tmux-row");
+    expect(await rows.locator(".tmux-label").allTextContents()).toEqual(["Split", "Pane", "Other"]);
+    expect(await rows.nth(2).locator("button").allTextContents()).toEqual(["Copy mode", "Ctrl+B", "Settings"]);
+    for (const gone of ["Theme", "Key bar", "Devices", "Fonts", "Larger text", "Version"]) {
+      expect(await page.locator("#tmuxpanel").textContent()).not.toContain(gone);
+    }
+    await page.locator('#tmuxpanel button[title^="Settings"]').click();
+    expect(await page.locator("#tmuxpanel").isHidden()).toBe(true);
+    await page.locator("#settings").waitFor({ state: "visible" });
+    const labels = await page.locator("#settings .settings-label").allTextContents();
+    expect(labels.slice(0, 6)).toEqual(["Text", "Fonts", "Theme", "Language", "Key bar", "Devices"]);
+    // 版（サーバーはいつも版を返す。make の外で作れば dev）
+    expect(labels.slice(6)).toEqual(["Version"]);
+    expect(await page.locator("#settings .settings-version").textContent()).toMatch(/^palmterm \S+/);
+
+    // 上に重なって見えているもの（端末の画面の真ん中）
+    const topAt = () =>
+      page.evaluate(() => {
+        const box = document.getElementById("term")!.getBoundingClientRect();
+        const el = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return el?.closest("#settings, #fonts, #devices, #term")?.id ?? "";
+      });
+    expect(await topAt()).toBe("settings");
+
+    await page.locator("#settings .settings-fonts").click();
+    await page.locator("#fonts").waitFor({ state: "visible" });
+    expect(await topAt()).toBe("fonts");
+    await page.locator("#fonts-close").click();
+    expect(await page.locator("#fonts").isHidden()).toBe(true);
+    expect(await page.locator("#settings").isVisible()).toBe(true);
+    expect(await topAt()).toBe("settings");
+
+    await page.locator("#settings .settings-devices").click();
+    await page.locator("#devices").waitFor({ state: "visible" });
+    expect(await topAt()).toBe("devices");
+    await page.locator("#devices-close").click();
+    expect(await page.locator("#devices").isHidden()).toBe(true);
+    expect(await page.locator("#settings").isVisible()).toBe(true);
+    expect(await topAt()).toBe("settings");
+
+    await page.locator("#settings-close").click();
+    expect(await page.locator("#settings").isHidden()).toBe(true);
+    expect(await topAt()).toBe("term");
+  });
+
+  it("設定画面でキーバーを隠すと端末が広がり、読み込み直しても隠れたまま。別のブラウザでは出たまま。もう一度押すと出る", async () => {
     const termHeight = async () => (await page.locator("#term").boundingBox())!.height;
     const shownHeight = await termHeight();
     const keyrowHeight = (await page.locator("#keyrow").boundingBox())!.height;
 
-    await page.locator("#tmux-btn").click();
-    await page.locator('#tmuxpanel button[title="Hide the key bar"]').click();
-    expect(await page.locator("#tmuxpanel").isHidden()).toBe(true);
+    await openSettings();
+    await page.locator('#settings button[title="Hide the key bar"]').click();
     expect(await page.locator("#keybar").isHidden()).toBe(true);
+    expect(await page.locator("#settings button.settings-keybar").textContent()).toBe("Show");
+    await page.locator("#settings-close").click();
     // タブ、tmux ボタン（タブバーの右端に移る）、入力バーは残る
     expect(await page.locator("#tabs").isVisible()).toBe(true);
     expect(await page.locator("#tabbar #tmux-btn").isVisible()).toBe(true);
@@ -485,8 +546,9 @@ describe("tmux のタブとパネル", () => {
       await other.close();
     }
 
-    await page.locator("#tmux-btn").click();
-    await page.locator('#tmuxpanel button[title="Show the key bar"]').click();
+    await openSettings();
+    await page.locator('#settings button[title="Show the key bar"]').click();
+    await page.locator("#settings-close").click();
     expect(await page.locator("#keybar").isVisible()).toBe(true);
     expect(await page.locator("#keyrow #tmux-btn").isVisible()).toBe(true);
     await waitUntil("端末が元の高さに戻る", async () => Math.abs((await termHeight()) - shownHeight) < 1);
@@ -595,12 +657,220 @@ text = ":wq"
     expect(await usedFont("text")).toBe("JetBrains Mono");
     await cdp.detach();
   });
-  it("tmux パネルの「フォント」から足したフォントは fonts/ に保存され、[font] の file で使え、一覧から2回押しで消せる。フォントでない・大きすぎるものは保存せず知らせる", async () => {
+  it("[font] の stack（版 2）は並びの先頭から順に、その文字を持つフォントで描く。ファイル・PC のフォント・スマホのフォント・JetBrains Mono を並べられ、無いファイルは知らせて飛ばす。配るのは並びのファイルだけ。一覧の「使う」は並びをそのフォント1つにする", async () => {
+    const { usedFont, cdp } = await fontProbe();
+    const icon = await usedFont("icon");
+
+    // 英字はファイルのフォント（キリル文字を持たない）、キリル文字は PC のフォント（英字を持たない）で描く。アイコンは今までどおり
+    writeFileSync(configPath, `version = 2\n[font]\nstack = ["myfonts/files.ttf", "Palmterm Cyril", "JetBrains Mono"]\n`);
+    await openPage();
+    expect(await usedFont("text")).toBe("Palmterm Files");
+    expect(await usedFont("cyrillic")).toBe("Palmterm Cyril");
+    expect(await usedFont("icon")).toBe(icon);
+    // 配るのは並びにある2つのファイルだけ。ログインしていなければ配らない
+    expect(await page.evaluate(() => Promise.all(["/api/font?i=0", "/api/font?i=1", "/api/font?i=2", "/api/font?i=../config.toml"].map(async (u) => (await fetch(u)).status)))).toEqual([200, 200, 404, 404]);
+    for (const u of ["/api/font?i=0", "/api/font?i=1"]) expect((await fetch(`${base}${u}`, { redirect: "manual" })).status).not.toBe(200);
+
+    // 並びを入れ替えると、先にあるものが勝つ。PC に無い名前はスマホのもの。無いファイルは知らせて飛ばす
+    writeFileSync(configPath, `version = 2\n[font]\nstack = ["myfonts/missing.woff2", "Palmterm Local", "Palmterm Cyril", "myfonts/files.ttf"]\n`);
+    await openPage();
+    await waitUntil("無いファイルを知らせる", async () => ((await page.locator("#toast").textContent()) ?? "").includes("missing.woff2"));
+    expect(await page.locator("#toast").textContent()).toContain("[font] stack");
+    expect(await usedFont("text")).toBe("Palmterm Local");
+    expect(await usedFont("cyrillic")).toBe("Palmterm Cyril");
+
+    // stack と family を一緒に書くと書き間違いとして知らせ、既定の JetBrains Mono で描く
+    writeFileSync(configPath, `version = 2\n[font]\nstack = ["Palmterm Cyril"]\nfamily = "Palmterm Probe"\n`);
+    await openPage();
+    await waitUntil("書き間違いを知らせる", async () => ((await page.locator("#toast").textContent()) ?? "").includes("stack cannot be used together"));
+    expect(await usedFont("text")).toBe("JetBrains Mono");
+
+    // 版 1 の書き方も今までどおり
+    writeFileSync(configPath, `version = 1\n[font]\nfile = "myfonts/files.ttf"\n`);
+    await openPage();
+    expect(await usedFont("text")).toBe("Palmterm Files");
+
+    // 一覧の「使う」は、stack をそのフォント1つに書き換える。「既定のフォント」は stack の行を消す
+    mkdirSync(join(dir, "fonts"), { recursive: true });
+    writeFileSync(join(dir, "fonts", "Picked.ttf"), testFont("Palmterm Picks"));
+    const mine = `version = 2\n\n[font]\n# order\nstack = ["Palmterm Cyril", "JetBrains Mono"] # mine\n`;
+    writeFileSync(configPath, mine);
+    await openPage();
+    await openSettings();
+    await page.locator("#settings .settings-fonts").click();
+    const row = page.locator(".font-file", { hasText: "Picked.ttf" });
+    await waitUntil("一覧に出る", async () => (await row.count()) === 1);
+    expect(await page.locator(".font-default .font-name").textContent()).not.toContain("in use");
+    await row.locator(".font-use").click();
+    await waitUntil("使用中になる", async () => ((await row.locator(".font-name").textContent()) ?? "").includes("in use"));
+    expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`["Palmterm Cyril", "JetBrains Mono"]`, `["fonts/Picked.ttf"]`));
+    expect(await usedFont("text")).toBe("Palmterm Picks");
+    expect(await usedFont("cyrillic")).not.toBe("Palmterm Cyril");
+    await page.locator(".font-default .font-use").click();
+    await waitUntil("既定に戻る", async () => ((await page.locator(".font-default .font-name").textContent()) ?? "").includes("in use"));
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 2\n\n[font]\n# order\n`);
+    expect(await usedFont("text")).toBe("JetBrains Mono");
+    rmSync(join(dir, "fonts", "Picked.ttf"));
+    await cdp.detach();
+  });
+
+  it("フォントの一覧に組み込み・足したフォント・PC のフォントが出どころの印付きで並び、PC のフォントは名前ごとに1行で名前で絞り込める。「使う」で読み込み直さずに変わり、stack がそのフォント1つになる。一覧と配るのはログインした端末だけで、パスは出さない", async () => {
+    rmSync(join(dir, "fonts"), { recursive: true, force: true });
+    mkdirSync(join(dir, "fonts"), { recursive: true });
+    writeFileSync(join(dir, "fonts", "Mine.ttf"), testFont("Palmterm Mines"));
+    // PC に同じ名前のファイルが2つあっても1行（太さ違いのつもり）
+    writeFileSync(join(dir, "data", "fonts", "PalmtermProbe-Copy.ttf"), testFont("Palmterm Probe"));
+    writeFileSync(configPath, `[font]\nfamily = "Palmterm Local"\n`);
+    await openPage();
+    const { usedFont, cdp } = await fontProbe();
+    expect(await usedFont("text")).toBe("Palmterm Local");
+    await page.evaluate(() => ((window as unknown as { notReloaded: boolean }).notReloaded = true));
+
+    await openSettings();
+    await page.locator("#settings .settings-fonts").click();
+    const probe = page.locator(".font-system", { hasText: "Palmterm Probe" });
+    await waitUntil("PC のフォントが出る", async () => (await probe.count()) > 0);
+    expect(await probe.count()).toBe(1);
+    expect(await probe.locator(".font-source").textContent()).toBe("PC");
+    expect(await page.locator(".font-builtin .font-name").textContent()).toBe("JetBrains Mono");
+    expect(await page.locator(".font-builtin .font-source").textContent()).toBe("Built-in");
+    expect(await page.locator(".font-file", { hasText: "Mine.ttf" }).locator(".font-source").textContent()).toBe("Added");
+    // 名前だけを出し、PC のファイルのパスは出さない
+    const listText = (await page.locator("#font-list").textContent()) ?? "";
+    expect(listText).not.toContain(join(dir, "data"));
+    expect(listText).not.toContain("PalmtermProbe-Regular");
+    const listed = await page.evaluate(() => fetch("/api/fonts").then((r) => r.text()));
+    expect(listed).toContain('"Palmterm Probe"');
+    expect(listed).not.toContain(join(dir, "data"));
+    expect(listed).not.toContain("PalmtermProbe-Regular");
+    expect((await fetch(`${base}/api/fonts`, { redirect: "manual" })).status).not.toBe(200);
+
+    // 名前で絞り込む（大文字小文字は問わない）
+    await page.locator("#fonts-filter").fill("PALMTERM");
+    const visibleNames = () => page.locator("#font-list li:visible .font-name").allTextContents();
+    expect((await visibleNames()).slice(1).every((n) => n.includes("Palmterm"))).toBe(true);
+    expect(await visibleNames()).toContain("Palmterm Cyril");
+    await page.locator("#fonts-filter").fill("probe");
+    expect(await visibleNames()).toEqual(["Default font（in use）", "Palmterm Probe"]);
+
+    // 「使う」で読み込み直さずに端末の文字が変わり、版 1 の family の行は stack になる
+    await probe.locator(".font-use").click();
+    await waitUntil("使用中になる", async () => ((await probe.locator(".font-name").textContent()) ?? "").includes("in use"));
+    expect(readFileSync(configPath, "utf8")).toBe(`[font]\nstack = ["Palmterm Probe"]\n`);
+    expect(await usedFont("text")).toBe("Palmterm Probe");
+    expect(await page.evaluate(() => (window as unknown as { notReloaded?: boolean }).notReloaded)).toBe(true);
+    // 配ったのは PC のそのファイルで、ログインしていなければ配らない
+    expect(await page.evaluate(() => fetch("/api/font?i=0").then((r) => r.status))).toBe(200);
+    expect((await fetch(`${base}/api/font?i=0`, { redirect: "manual" })).status).not.toBe(200);
+
+    // 組み込みの JetBrains Mono も選べる（絞り込みは開き直しても残る）
+    await page.locator("#fonts-filter").fill("jetbrains");
+    await page.locator(".font-builtin .font-use").click();
+    await waitUntil("使用中になる", async () => ((await page.locator(".font-builtin .font-name").textContent()) ?? "").includes("in use"));
+    expect(readFileSync(configPath, "utf8")).toBe(`[font]\nstack = ["JetBrains Mono"]\n`);
+    expect(await usedFont("text")).toBe("JetBrains Mono");
+    await page.locator("#fonts-filter").fill("");
+    rmSync(join(dir, "data", "fonts", "PalmtermProbe-Copy.ttf"));
+    rmSync(join(dir, "fonts"), { recursive: true, force: true });
+    await cdp.detach();
+  }, 30_000);
+
+  it("フォントの一覧の上の「使う順」の欄に各行の「足す」で入れ、上下で順を変え、「外す」で抜ける。欄の項目にも出どころの印が付く。変えるたびに読み込み直さずに当て、stack を欄の順に書き換え、別の端末でも同じ順になる。空にすると stack の行を消して JetBrains Mono で描く", async () => {
+    rmSync(join(dir, "fonts"), { recursive: true, force: true });
+    mkdirSync(join(dir, "fonts"), { recursive: true });
+    writeFileSync(join(dir, "fonts", "Picked.ttf"), testFont("Palmterm Picks"));
+    // 手で書いた、スマホにだけあるフォントの名前（一覧には無い）
+    writeFileSync(configPath, `version = 2\n[font]\nstack = ["Palmterm Local"] # mine\n`);
+    await openPage();
+    const { usedFont, cdp } = await fontProbe();
+    expect(await usedFont("text")).toBe("Palmterm Local");
+    await page.evaluate(() => ((window as unknown as { notReloaded: boolean }).notReloaded = true));
+
+    await openSettings();
+    await page.locator("#settings .settings-fonts").click();
+    const items = page.locator("#font-stack-list .font-stack-item");
+    const stackNames = (p: Page = page) => p.locator("#font-stack-list .font-stack-item .font-name").allTextContents();
+    await waitUntil("使う順が出る", async () => (await items.count()) === 1);
+    expect(await items.locator(".font-source").allTextContents()).toEqual(["Config"]);
+    // 欄は一覧の上にある
+    const [stackBox, listBox] = await Promise.all([page.locator("#font-stack").boundingBox(), page.locator("#font-list").boundingBox()]);
+    expect(stackBox!.y).toBeLessThan(listBox!.y);
+
+    // 「足す」で欄の最後に入る。欄にあるものには「足す」を出さない
+    const cyril = page.locator(".font-system", { hasText: "Palmterm Cyril" });
+    await cyril.locator(".font-add").click();
+    await waitUntil("足す", async () => (await items.count()) === 2);
+    expect(await cyril.locator(".font-add").count()).toBe(0);
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 2\n[font]\nstack = ["Palmterm Local", "Palmterm Cyril"] # mine\n`);
+    expect(await usedFont("cyrillic")).toBe("Palmterm Cyril");
+    const picked = page.locator(".font-file", { hasText: "Picked.ttf" });
+    await picked.locator(".font-add").click();
+    await waitUntil("足す", async () => (await items.count()) === 3);
+    expect(await stackNames()).toEqual(["Palmterm Local", "Palmterm Cyril", "Picked.ttf"]);
+    expect(await items.locator(".font-source").allTextContents()).toEqual(["Config", "PC", "Added"]);
+    await page.locator(".font-builtin .font-add").click();
+    await waitUntil("足す", async () => (await items.count()) === 4);
+    expect(await items.nth(3).locator(".font-source").textContent()).toBe("Built-in");
+
+    // 上下で順を変える。先頭の「↑」と最後の「↓」は押せない
+    expect(await items.nth(0).locator(".font-up").isDisabled()).toBe(true);
+    expect(await items.nth(3).locator(".font-down").isDisabled()).toBe(true);
+    await items.nth(2).locator(".font-up").click();
+    await waitUntil("上へ", async () => (await stackNames())[1] === "Picked.ttf");
+    await items.nth(1).locator(".font-up").click();
+    await waitUntil("上へ", async () => (await stackNames())[0] === "Picked.ttf");
+    await items.nth(1).locator(".font-down").click();
+    await waitUntil("下へ", async () => (await stackNames())[2] === "Palmterm Local");
+    expect(await stackNames()).toEqual(["Picked.ttf", "Palmterm Cyril", "Palmterm Local", "JetBrains Mono"]);
+    const ordered = `version = 2\n[font]\nstack = ["fonts/Picked.ttf", "Palmterm Cyril", "Palmterm Local", "JetBrains Mono"] # mine\n`;
+    expect(readFileSync(configPath, "utf8")).toBe(ordered);
+    // 読み込み直さずに当てる。英字は先頭の Picked、キリル文字は Picked に無いので次の Cyril
+    expect(await usedFont("text")).toBe("Palmterm Picks");
+    expect(await usedFont("cyrillic")).toBe("Palmterm Cyril");
+    expect(await page.evaluate(() => (window as unknown as { notReloaded?: boolean }).notReloaded)).toBe(true);
+
+    // 別の端末で読み込み直しても同じ順
+    const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
+    try {
+      const otherPage = await other.newPage();
+      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await otherPage.waitForFunction(() => document.querySelector(".term-row") !== null);
+      expect(await otherPage.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--mono-font"))).toMatch(
+        /palmterm font 1.*Palmterm Cyril.*Palmterm Local.*JetBrains Mono/,
+      );
+      await openSettings(otherPage);
+      await otherPage.locator("#settings .settings-fonts").click();
+      await waitUntil("使う順が出る", async () => (await otherPage.locator("#font-stack-list .font-stack-item").count()) === 4);
+      expect(await stackNames(otherPage)).toEqual(["Picked.ttf", "Palmterm Cyril", "Palmterm Local", "JetBrains Mono"]);
+    } finally {
+      await other.close();
+    }
+
+    // 「外す」で抜ける。空にすると stack の行を消し、既定の JetBrains Mono で描く
+    await items.nth(0).locator(".font-remove").click();
+    await waitUntil("外す", async () => (await items.count()) === 3);
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 2\n[font]\nstack = ["Palmterm Cyril", "Palmterm Local", "JetBrains Mono"] # mine\n`);
+    expect((await usedFont("text")).split(",")[0]).toBe("Palmterm Local"); // 空白はキリル文字のフォントも持つ
+    for (let n = 2; n >= 0; n--) {
+      await items.nth(0).locator(".font-remove").click();
+      await waitUntil("外す", async () => (await items.count()) === n);
+    }
+    expect(await page.locator("#font-stack-list .font-stack-empty").isVisible()).toBe(true);
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 2\n[font]\n`);
+    expect(await usedFont("text")).toBe("JetBrains Mono");
+    expect(await usedFont("cyrillic")).not.toBe("Palmterm Cyril");
+    expect(await page.locator(".font-default .font-name").textContent()).toContain("in use");
+    expect(await page.evaluate(() => (window as unknown as { notReloaded?: boolean }).notReloaded)).toBe(true);
+    rmSync(join(dir, "fonts"), { recursive: true, force: true });
+    await cdp.detach();
+  }, 30_000);
+
+  it("設定画面の「フォント」から足したフォントは fonts/ に保存され、[font] の file で使え、一覧から2回押しで消せる。フォントでない・大きすぎるものは保存せず知らせる", async () => {
     const fontsDir = join(dir, "fonts");
     rmSync(fontsDir, { recursive: true, force: true });
     const openFonts = async () => {
-      await page.locator("#tmux-btn").click();
-      await page.locator("#tmuxpanel button", { hasText: "Fonts" }).click();
+      if (await page.locator("#settings").isHidden()) await openSettings();
+      await page.locator("#settings .settings-fonts").click();
       await waitUntil("フォントの画面が出る", async () => (await page.locator("#fonts").isVisible()) && (await page.locator("#font-list li").count()) > 0 && !((await page.locator("#font-list").textContent()) ?? "").includes("Loading"));
     };
     await openFonts();
@@ -649,14 +919,14 @@ text = ":wq"
     expect(readdirSync(fontsDir)).toEqual(["Added_Probe.ttf"]);
   }, 30_000);
 
-  it("tmux パネルでテーマと fonts/ のフォントを選ぶとすぐ画面に反映され、設定ファイルの [theme] の name と [font] の file だけが書き換わる。無ければ作る。別の端末で読み込み直しても同じ。読めない設定ファイルには書かず知らせる", async () => {
+  it("設定画面でテーマと fonts/ のフォントを選ぶとすぐ画面に反映され、設定ファイルの [theme] の name と [font] の file だけが書き換わる。無ければ作る。別の端末で読み込み直しても同じ。読めない設定ファイルには書かず知らせる", async () => {
     mkdirSync(join(dir, "fonts"), { recursive: true });
     writeFileSync(join(dir, "fonts", "Chosen.ttf"), testFont("Palmterm Chose"));
     const termBg = (p: Page) => p.evaluate(() => getComputedStyle(document.getElementById("term")!).backgroundColor);
     const accent = (p: Page) => p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
     const chooseTheme = async (name: string) => {
-      if (await page.locator("#tmuxpanel").isHidden()) await page.locator("#tmux-btn").click();
-      await page.locator(`#tmuxpanel .tmux-theme[data-theme="${name}"]`).click();
+      if (await page.locator("#settings").isHidden()) await openSettings();
+      await page.locator(`#settings .settings-theme[data-theme="${name}"]`).click();
     };
     const mine = `# mine
 language = "en" # English
@@ -674,16 +944,16 @@ family = "Palmterm Local"
     await openPage();
     expect(await termBg(page)).toBe("rgb(255, 255, 255)");
 
-    // テーマ：押すとすぐ色が変わり、パネルは開いたまま、押したものに印が付く。書いた色（accent）はそのまま上書きする
+    // テーマ：押すとすぐ色が変わり、設定画面は開いたまま、押したものに印が付く。書いた色（accent）はそのまま上書きする
     await chooseTheme("solarized-dark");
     await waitUntil("色が変わる", async () => (await termBg(page)) === "rgb(0, 43, 54)");
     expect(await accent(page)).toBe("#0969da");
-    expect(await page.locator("#tmuxpanel").isVisible()).toBe(true);
-    expect(await page.locator("#tmuxpanel .tmux-theme.on").getAttribute("data-theme")).toBe("solarized-dark");
+    expect(await page.locator("#settings").isVisible()).toBe(true);
+    expect(await page.locator("#settings .settings-theme.on").getAttribute("data-theme")).toBe("solarized-dark");
     expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`name = "light"`, `name = "solarized-dark"`));
 
-    // フォント：パネルの「フォント」の一覧で「使う」を押すと、読み込み直さずに端末の文字がそのフォントになる
-    await page.locator("#tmuxpanel button", { hasText: "Fonts" }).click();
+    // フォント：設定画面の「フォント」の一覧で「使う」を押すと、読み込み直さずに端末の文字がそのフォントになる
+    await page.locator("#settings .settings-fonts").click();
     const row = page.locator(".font-file", { hasText: "Chosen.ttf" });
     await waitUntil("一覧に出る", async () => (await row.count()) === 1);
     await row.locator(".font-use").click();
@@ -705,7 +975,7 @@ family = "Palmterm Local"
       expect(
         await otherPage.evaluate(async () => {
           await document.fonts.ready;
-          const served = [...document.fonts].find((f) => f.family.replace(/"/g, "") === "palmterm font");
+          const served = [...document.fonts].find((f) => f.family.replace(/"/g, "") === "palmterm font 1");
           return [served?.status, getComputedStyle(document.documentElement).getPropertyValue("--mono-font").includes("palmterm font")];
         }),
       ).toEqual(["loaded", true]);
@@ -713,9 +983,9 @@ family = "Palmterm Local"
       await other.close();
     }
 
-    // 「既定のフォント」に戻すと file の行だけ消える
-    await page.locator("#tmux-btn").click();
-    await page.locator("#tmuxpanel button", { hasText: "Fonts" }).click();
+    // 「既定のフォント」に戻すと file の行だけ消える（一覧を閉じると設定画面に戻っているので、そこから開き直す）
+    expect(await page.locator("#settings").isVisible()).toBe(true);
+    await page.locator("#settings .settings-fonts").click();
     await page.locator(".font-default .font-use").click();
     await waitUntil("既定に戻る", async () => ((await page.locator(".font-default .font-name").textContent()) ?? "").includes("in use"));
     expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`name = "light"`, `name = "solarized-dark"`));
@@ -726,7 +996,7 @@ family = "Palmterm Local"
     rmSync(configPath, { force: true });
     await chooseTheme("light");
     await waitUntil("色が変わる", async () => (await termBg(page)) === "rgb(255, 255, 255)");
-    expect(readFileSync(configPath, "utf8")).toBe(`version = 1\n\n[theme]\nname = "light"\n`);
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 2\n\n[theme]\nname = "light"\n`);
 
     // 書き間違いがあって読めない設定ファイルには書かず、知らせる。色も変えない
     const bad = `[theme]\nname = "light"\nbackgroud = "#000000"\n`;
@@ -738,11 +1008,81 @@ family = "Palmterm Local"
     expect(await page.locator("#toast").textContent()).toContain("theme.backgroud");
     expect(readFileSync(configPath, "utf8")).toBe(bad);
     expect(await termBg(page)).toBe("rgb(30, 30, 30)");
-    expect(await page.locator("#tmuxpanel .tmux-theme.on").getAttribute("data-theme")).toBe("default");
+    expect(await page.locator("#settings .settings-theme.on").getAttribute("data-theme")).toBe("default");
 
     rmSync(configPath, { force: true });
     await openPage();
   }, 30_000);
+
+  it("設定画面で言語を選ぶと設定ファイルの language の行だけが書き換わり、読み込み直してその言語になる。無ければ足し、無いファイルは作る。別の端末で読み込み直しても同じ。読めない設定ファイルには書かず知らせる", async () => {
+    const chooseLanguage = async (lang: string) => {
+      await page.locator("#tmux-btn").click();
+      await page.locator("#tmuxpanel .tmux-row").nth(2).locator("button").last().click(); // 「設定」（言語によらず最後のボタン）
+      await page.locator("#settings").waitFor({ state: "visible" });
+      const loaded = page.waitForEvent("load");
+      await page.locator(`#settings .settings-language[data-lang="${lang}"]`).click();
+      return loaded;
+    };
+    const settingsTitle = (p: Page) => p.evaluate(() => [document.documentElement.lang, document.getElementById("settings-title")?.textContent]);
+    const mine = `# mine\r\nversion = 1 # first\r\nlanguage = "en" # English\r\n\r\n# colors\r\n[theme]\r\nname = "light"\r\n`;
+    writeFileSync(configPath, mine);
+    chmodSync(configPath, 0o640);
+    await openPage();
+    expect(await settingsTitle(page)).toEqual(["en", "Settings"]);
+
+    // 選ぶと language の行だけが書き換わり（コメント・ほかの項目・並び順・CRLF・権限はそのまま）、読み込み直して日本語になる
+    await chooseLanguage("ja");
+    await page.waitForFunction(() => document.querySelector(".term-row") !== null);
+    expect(await settingsTitle(page)).toEqual(["ja", "設定"]);
+    expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`language = "en"`, `language = "ja"`));
+    expect(statSync(configPath).mode & 0o777).toBe(0o640);
+    expect(await page.locator("#settings .settings-language.on").getAttribute("data-lang")).toBe("ja");
+
+    // 別の端末で読み込み直しても日本語
+    const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
+    try {
+      const otherPage = await other.newPage();
+      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await otherPage.waitForFunction(() => document.querySelector(".term-row") !== null);
+      expect(await settingsTitle(otherPage)).toEqual(["ja", "設定"]);
+    } finally {
+      await other.close();
+    }
+
+    // 行が無ければ最初のテーブルより前に足す
+    const noLang = `# mine\nversion = 1\n\n# colors\n[theme]\nname = "light"\n`;
+    writeFileSync(configPath, noLang);
+    await openPage();
+    await chooseLanguage("ja");
+    await page.waitForFunction(() => document.querySelector(".term-row") !== null);
+    expect(await settingsTitle(page)).toEqual(["ja", "設定"]);
+    expect(readFileSync(configPath, "utf8")).toBe(noLang.replace(`version = 1\n`, `version = 1\nlanguage = "ja"\n`));
+
+    // 設定ファイルが無ければ作る
+    rmSync(configPath, { force: true });
+    await openPage();
+    await chooseLanguage("ja");
+    await page.waitForFunction(() => document.querySelector(".term-row") !== null);
+    expect(await settingsTitle(page)).toEqual(["ja", "設定"]);
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 2\nlanguage = "ja"\n`);
+
+    // 書き間違いがあって読めない設定ファイルには書かず、知らせる。読み込み直さない
+    const bad = `language = "ja"\n[theme]\nbackgroud = "#000000"\n`;
+    writeFileSync(configPath, bad);
+    await openPage();
+    expect(await settingsTitle(page)).toEqual(["en", "Settings"]); // 読めないので既定の英語
+    await page.evaluate(() => ((window as unknown as { __notReloaded: boolean }).__notReloaded = true));
+    await page.locator("#tmux-btn").click();
+    await page.locator('#tmuxpanel button[title^="Settings"]').click();
+    await page.locator('#settings .settings-language[data-lang="ja"]').click();
+    await waitUntil("知らせる", async () => ((await page.locator("#toast").textContent()) ?? "").includes("has a mistake"));
+    expect(await page.locator("#toast").textContent()).toContain("theme.backgroud");
+    expect(readFileSync(configPath, "utf8")).toBe(bad);
+    expect(await page.evaluate(() => (window as unknown as { __notReloaded?: boolean }).__notReloaded)).toBe(true);
+
+    rmSync(configPath, { force: true });
+    await openPage();
+  }, 45_000);
 });
 
 describe("複数行の送信", () => {
@@ -794,6 +1134,143 @@ describe("画像とコピー", () => {
     await waitUntil("履歴が出る", async () => (await page.locator("#copy-text").textContent())?.includes("\nhistory5\n") ?? false);
     await page.locator("#copy-close").click();
     expect(await page.locator("#copymode").isHidden()).toBe(true);
+  });
+});
+
+describe("大きい画面の板", () => {
+  /** 板の位置と大きさ、周りの幕が見えているか。 */
+  const layout = (id: string) =>
+    page.evaluate((id) => {
+      const r = document.getElementById(id)!.getBoundingClientRect();
+      const backdrop = document.getElementById("sheet-backdrop")!;
+      return { x: r.x, y: r.y, w: r.width, h: r.height, vw: innerWidth, vh: innerHeight, backdrop: getComputedStyle(backdrop).display !== "none" };
+    }, id);
+
+  /** 浮いて中央に出ているか（幅は 560px（2列の設定画面は 900px か画面の9割）、高さは画面の8割まで、周りは暗い）。 */
+  async function expectFloating(id: string, width = 560) {
+    await page.locator(`#${id}`).waitFor({ state: "visible" });
+    const l = await layout(id);
+    expect(l.backdrop).toBe(true);
+    expect(l.w).toBeCloseTo(width, 0);
+    expect(l.h).toBeLessThanOrEqual(l.vh * 0.8 + 1);
+    expect(l.h).toBeGreaterThan(50);
+    expect(Math.abs(l.x + l.w / 2 - l.vw / 2)).toBeLessThan(2);
+    expect(Math.abs(l.y + l.h / 2 - l.vh / 2)).toBeLessThan(2);
+  }
+
+  /** 全画面で出ているか（幕は出ない）。 */
+  async function expectFullScreen(id: string) {
+    await page.locator(`#${id}`).waitFor({ state: "visible" });
+    const l = await layout(id);
+    expect(l.backdrop).toBe(false);
+    expect([l.x, l.y, l.w, l.h]).toEqual([0, 0, l.vw, l.vh]);
+  }
+
+  /** 暗い所（左上の隅）を押す。 */
+  const clickBackdrop = () => page.mouse.click(5, 5);
+
+  /** 設定画面の右の列に、その一覧だけが出ているか（左の設定の行より右に並び、もう一方は隠れている）。 */
+  async function expectSide(id: "devices" | "fonts") {
+    await page.locator(`#${id}`).waitFor({ state: "visible" });
+    const other = id === "devices" ? "fonts" : "devices";
+    expect(await page.locator(`#${other}`).isHidden()).toBe(true);
+    const settings = await layout("settings");
+    const rows = await layout("settings-body");
+    const side = await layout(id);
+    expect(side.x).toBeGreaterThanOrEqual(rows.x + rows.w - 1);
+    expect(side.x + side.w).toBeLessThanOrEqual(settings.x + settings.w + 1);
+    expect(side.y).toBeGreaterThanOrEqual(settings.y - 1);
+    expect(side.y + side.h).toBeLessThanOrEqual(settings.y + settings.h + 1);
+    expect(side.w).toBeGreaterThan(300);
+    expect(await page.locator(`#${id}-close`).isVisible()).toBe(false); // 設定画面と一緒に閉じる
+  }
+
+  it("幅 700px 以上かつ高さ 600px 以上では、板が周りを暗くして中央に浮き、暗い所か Esc で閉じる。設定画面は2列で、右に「ログイン中の端末」かフォントの一覧が出る", async () => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    try {
+      // 設定画面：幅 900px の2列で、開いた直後の右は端末の一覧。暗い所で閉じる
+      await openSettings();
+      await expectFloating("settings", 900);
+      await expectSide("devices");
+      await waitUntil("端末の一覧が出る", async () => (await page.locator("#settings .device.current").count()) === 1);
+      await clickBackdrop();
+      expect(await page.locator("#settings").isHidden()).toBe(true);
+      expect(await page.locator("#devices").isHidden()).toBe(true);
+      expect(await page.locator("#sheet-backdrop").isHidden()).toBe(true);
+
+      // 左で押した方が右に出る。Esc で設定画面ごと閉じる
+      await openSettings();
+      await page.locator("#settings .settings-fonts").click();
+      await expectSide("fonts");
+      await page.locator("#settings .settings-devices").click();
+      await expectSide("devices");
+      await page.locator("#settings .settings-fonts").click();
+      await expectSide("fonts");
+      await page.keyboard.press("Escape");
+      expect(await page.locator("#settings").isHidden()).toBe(true);
+      expect(await page.locator("#fonts").isHidden()).toBe(true);
+
+      // 開き直すと右はまた端末の一覧
+      await openSettings();
+      await expectSide("devices");
+      await page.locator("#settings-close").click();
+      expect(await page.locator("#settings").isHidden()).toBe(true);
+
+      // 狭い画面（800×700）では板は画面の9割の幅
+      await page.setViewportSize({ width: 800, height: 700 });
+      await openSettings();
+      await expectFloating("settings", 720);
+      await expectSide("devices");
+      await page.keyboard.press("Escape");
+
+      // 履歴/クリップボード：Esc でも暗い所でも閉じ、端末に Esc を送らない
+      await clearSent();
+      await page.locator("#copy").click();
+      await page.locator("#tab-history").click();
+      await expectFloating("copymode");
+      await page.keyboard.press("Escape");
+      expect(await page.locator("#copymode").isHidden()).toBe(true);
+      expect((await sent()).some((s) => s.includes("\x1b"))).toBe(false);
+      await page.locator("#copy").click();
+      await expectFloating("copymode");
+      await waitUntil("履歴が出る", async () => (await page.locator("#copy-text").textContent())?.includes("$") ?? false);
+      await clickBackdrop();
+      expect(await page.locator("#copymode").isHidden()).toBe(true);
+      expect(await page.locator("#copy-text").textContent()).toBe(""); // 閉じるボタンと同じ片付け
+    } finally {
+      await page.setViewportSize({ width: 400, height: 760 });
+    }
+  });
+
+  it("それより小さい画面（スマホの縦・横、幅だけ広い画面）では今までどおり全画面で出る。設定画面は1列で、一覧は設定画面に代わって出て、閉じると設定画面に戻る", async () => {
+    for (const size of [
+      { width: 400, height: 760 },
+      { width: 760, height: 400 },
+      { width: 1024, height: 560 },
+      { width: 680, height: 1000 },
+    ]) {
+      await page.setViewportSize(size);
+      try {
+        await openSettings();
+        await expectFullScreen("settings");
+        expect(await page.locator("#devices").isHidden()).toBe(true); // 1列で、一覧は押すまで出ない
+        await page.locator("#settings .settings-fonts").click();
+        await expectFullScreen("fonts");
+        await page.locator("#fonts-close").click();
+        await expectFullScreen("settings");
+        await page.locator("#settings .settings-devices").click();
+        await expectFullScreen("devices");
+        await page.locator("#devices-close").click();
+        await expectFullScreen("settings");
+        await page.locator("#settings-close").click();
+        await page.locator("#copy").click();
+        await expectFullScreen("copymode");
+        await page.locator("#copy-close").click();
+        expect(await page.locator("#copymode").isHidden()).toBe(true);
+      } finally {
+        await page.setViewportSize({ width: 400, height: 760 });
+      }
+    }
   });
 });
 
@@ -962,9 +1439,9 @@ describe("ログイン中の端末", () => {
       await pc.goto(`${base}/auth?token=${TOKEN}`);
       await pc.waitForFunction(() => document.querySelector(".term-row") !== null);
 
-      // tmux ボタンのパネルから一覧を開く。自分には印が付き、ボタンはログアウト
-      await pc.locator("#tmux-btn").click();
-      await pc.locator("#tmuxpanel button", { hasText: "Devices" }).click();
+      // 設定画面から一覧を開く。自分には印が付き、ボタンはログアウト
+      await openSettings(pc);
+      await pc.locator("#settings .settings-devices").click();
       const phoneRow = pc.locator(".device", { hasText: "iPhone · Safari" });
       await waitUntil("一覧が出る", async () => (await phoneRow.count()) === 1);
       const me = pc.locator(".device.current");
