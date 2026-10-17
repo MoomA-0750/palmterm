@@ -1,9 +1,9 @@
 // 設定画面（tmux パネルの「設定」で開く）。文字サイズ・フォント・テーマ・言語・キーバー・ログイン中の端末・版を並べる。
-// index.html には置かず、ここで作って body に足す。小さい画面では、フォントと端末の一覧はこの画面の上に開き、
+// index.html には置かず、ここで作って body に足す。小さい画面では、フォント・テーマ・端末の一覧はこの画面の上に開き、
 // 閉じるとこの画面に戻る。板を浮かせる大きい画面では2列にし、左に設定の行、右にどちらかの一覧を出す
 // （一覧の要素を右の列に移す。小さい画面に戻ると body に戻して隠す）。
 
-import { hasMessage, type Lang, LANG_NAMES, type MessageKey, t } from "./i18n";
+import { type Lang, LANG_NAMES, t } from "./i18n";
 import { icon, type IconName } from "./icons";
 import { FLOAT_QUERY } from "./sheets";
 
@@ -12,27 +12,21 @@ export interface SettingsOptions {
   fontSize: { get: () => number; change: (delta: number) => void };
   /** キーバーを出しているか・出し分ける（このブラウザに覚える）。 */
   keybar: { shown: () => boolean; set: (shown: boolean) => void };
-  /** 組み込みのテーマと [themes.名前] の自分のテーマ。choose は設定ファイルに書き戻せたら true。 */
-  theme: { names: string[]; current: () => string; choose: (name: string) => Promise<boolean> };
   /** 画面の言語。choose は設定ファイルに書き戻す（書き戻せたらページを読み込み直す）。 */
   language: { current: () => Lang; choose: (lang: Lang) => void };
   /** ログイン中の端末の一覧（id が devices の要素）を開く。 */
   openDevices: () => void;
   /** 画面から足したフォントの一覧（id が fonts の要素）を開く（そこでフォントを選ぶ）。 */
   openFonts: () => void;
+  /** テーマの一覧（id が themes の要素）を開く（そこでテーマを選ぶ）。 */
+  openThemes: () => void;
   /** サーバーの版（`palmterm -version` と同じ）。分からなければ空で、その行を出さない。 */
   version?: string;
 }
 
-/** テーマの名前の表示（自分のテーマなど、訳の無い名前はそのまま）。 */
-function themeLabel(name: string): string {
-  const key = `theme.${name}` as MessageKey;
-  return hasMessage(key) ? t(key) : name;
-}
-
 /** 2列のときに右に出す一覧。値は一覧の要素の id。 */
-type Side = "devices" | "fonts";
-const SIDES: Side[] = ["devices", "fonts"];
+type Side = "devices" | "fonts" | "themes";
+const SIDES: Side[] = ["devices", "fonts", "themes"];
 
 type Label = string | { icon: IconName; text?: string };
 
@@ -101,19 +95,6 @@ export function setupSettings(opts: SettingsOptions) {
       showSize();
     });
 
-  // テーマ。押すとすぐ画面に当てて設定ファイルに書き戻す。
-  const themeBtns = opts.theme.names.map((name) => {
-    const b = makeBtn(themeLabel(name), t("themeTitle", { name }), async () => {
-      if (await opts.theme.choose(name)) showTheme();
-    }, "settings-theme");
-    b.dataset.theme = name;
-    return b;
-  });
-  const showTheme = () => {
-    const current = opts.theme.current();
-    for (const b of themeBtns) b.classList.toggle("on", b.dataset.theme === current);
-  };
-
   // 言語。名前はそれぞれの言語で出す。選ぶと設定ファイルに書き戻して読み込み直す。
   const langBtns = (Object.keys(LANG_NAMES) as Lang[]).map((lang) => {
     const b = makeBtn(LANG_NAMES[lang], t("languageTitle", { name: LANG_NAMES[lang] }), () => {
@@ -140,11 +121,12 @@ export function setupSettings(opts: SettingsOptions) {
     keybarBtn.setAttribute("aria-label", keybarBtn.title);
   };
 
-  // フォントと端末の一覧。小さい画面ではこの画面の上に開き、2列のときは右の列に出す。
-  const openList = { devices: () => opts.openDevices(), fonts: () => opts.openFonts() };
+  // フォント・テーマ・端末の一覧。小さい画面ではこの画面の上に開き、2列のときは右の列に出す。
+  const openList = { devices: () => opts.openDevices(), fonts: () => opts.openFonts(), themes: () => opts.openThemes() };
   const sideBtns = {
     devices: makeBtn(t("devicesOpen"), t("devicesTitle"), () => showList("devices"), "settings-devices"),
     fonts: makeBtn(t("fontsOpen"), t("fontsTitle"), () => showList("fonts"), "settings-fonts"),
+    themes: makeBtn(t("themesOpen"), t("themesTitle"), () => showList("themes"), "settings-themes"),
   };
   const twoColumns = () => window.matchMedia?.(FLOAT_QUERY).matches ?? false;
   let side: Side = "devices";
@@ -184,7 +166,7 @@ export function setupSettings(opts: SettingsOptions) {
       sizeBtn({ icon: "textLarger" }, t("textLarger"), 1),
     ),
     row(t("fonts"), sideBtns.fonts),
-    row(t("rowTheme"), ...themeBtns),
+    row(t("rowTheme"), sideBtns.themes),
     row(t("rowLanguage"), ...langBtns),
     row(t("rowKeybar"), keybarBtn),
     row(t("devices"), sideBtns.devices),
@@ -199,7 +181,6 @@ export function setupSettings(opts: SettingsOptions) {
 
   function refresh() {
     showSize(); // ピンチで変わっていることがある
-    showTheme();
     showLanguage();
     showKeybarState();
   }

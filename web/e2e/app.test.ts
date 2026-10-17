@@ -490,7 +490,7 @@ describe("tmux のタブとパネル", () => {
       page.evaluate(() => {
         const box = document.getElementById("term")!.getBoundingClientRect();
         const el = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-        return el?.closest("#settings, #fonts, #devices, #term")?.id ?? "";
+        return el?.closest("#settings, #fonts, #themes, #devices, #term")?.id ?? "";
       });
     expect(await topAt()).toBe("settings");
 
@@ -499,6 +499,16 @@ describe("tmux のタブとパネル", () => {
     expect(await topAt()).toBe("fonts");
     await page.locator("#fonts-close").click();
     expect(await page.locator("#fonts").isHidden()).toBe(true);
+    expect(await page.locator("#settings").isVisible()).toBe(true);
+    expect(await topAt()).toBe("settings");
+
+    // テーマの行は横並びのボタンの代わりに「一覧」で、押すとテーマの一覧が設定画面に代わって出る
+    expect(await page.locator("#settings .settings-row", { hasText: "Theme" }).locator("button").allTextContents()).toEqual(["List"]);
+    await page.locator("#settings .settings-themes").click();
+    await page.locator("#themes").waitFor({ state: "visible" });
+    expect(await topAt()).toBe("themes");
+    await page.locator("#themes-close").click();
+    expect(await page.locator("#themes").isHidden()).toBe(true);
     expect(await page.locator("#settings").isVisible()).toBe(true);
     expect(await topAt()).toBe("settings");
 
@@ -960,8 +970,10 @@ text = ":wq"
     const accent = (p: Page) => p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
     const chooseTheme = async (name: string) => {
       if (await page.locator("#settings").isHidden()) await openSettings();
-      await page.locator(`#settings .settings-theme[data-theme="${name}"]`).click();
+      if (await page.locator("#themes").isHidden()) await page.locator("#settings .settings-themes").click();
+      await page.locator(`#themes .theme-item[data-theme="${name}"]`).click();
     };
+    const marked = () => page.locator("#themes .theme-item.on").getAttribute("data-theme");
     const mine = `# mine
 language = "en" # English
 
@@ -981,26 +993,50 @@ family = "Palmterm Local"
     await openPage();
     expect(await termBg(page)).toBe("rgb(255, 255, 255)");
 
-    // 自分のテーマ（[themes.my-dark]）も組み込みのものの後ろに並び、押すと読み込み直さずにその色になる
+    // 一覧には組み込みのテーマ、その後ろに自分のテーマ（[themes.my-dark]）が並び、各行に名前と色見本、今のテーマに印
     await openSettings();
-    expect(await page.locator("#settings .settings-theme").evaluateAll((bs) => bs.map((b) => b.getAttribute("data-theme")))).toEqual([
+    await page.locator("#settings .settings-themes").click();
+    await page.locator("#themes").waitFor({ state: "visible" });
+    const items = page.locator("#themes .theme-item");
+    expect(await items.evaluateAll((bs) => bs.map((b) => b.getAttribute("data-theme")))).toEqual([
       "default", "light", "solarized-dark", "solarized-light", "my-dark",
     ]);
+    expect(await items.locator(".theme-name").allTextContents()).toEqual(["Default", "Light", "Solarized dark", "Solarized light", "my-dark"]);
+    expect(await marked()).toBe("light");
+    const swatch = (name: string) =>
+      page.locator(`#themes .theme-item[data-theme="${name}"] .theme-swatch`).evaluate((sw) => ({
+        bg: getComputedStyle(sw).backgroundColor,
+        fg: getComputedStyle(sw.querySelector(".theme-sample")!).color,
+        sample: sw.querySelector(".theme-sample")!.textContent,
+        colors: [...sw.querySelectorAll(".theme-color")].map((c) => getComputedStyle(c).backgroundColor),
+      }));
+    const sd = await swatch("solarized-dark");
+    expect([sd.bg, sd.fg]).toEqual(["rgb(0, 43, 54)", "rgb(131, 148, 150)"]);
+    expect(sd.sample).not.toBe("");
+    expect(sd.colors).toHaveLength(16);
+    expect(sd.colors.slice(0, 2)).toEqual(["rgb(7, 54, 66)", "rgb(220, 50, 47)"]);
+    const lt = await swatch("light");
+    expect([lt.bg, lt.fg]).toEqual(["rgb(255, 255, 255)", "rgb(31, 35, 40)"]);
+    expect((await swatch("my-dark")).bg).toBe("rgb(0, 43, 54)"); // 自分のテーマは base の色
+
+    // 行を押すと読み込み直さずにその色になり、name が書き換わり、印が移る
     await page.evaluate(() => ((window as unknown as { notReloaded: boolean }).notReloaded = true));
     await chooseTheme("my-dark");
     await waitUntil("色が変わる", async () => (await termBg(page)) === "rgb(0, 43, 54)");
     expect(await accent(page)).toBe("#ff5f87");
-    expect(await page.locator("#settings .settings-theme.on").getAttribute("data-theme")).toBe("my-dark");
+    await waitUntil("印が移る", async () => (await marked()) === "my-dark");
     expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`name = "light"`, `name = "my-dark"`));
     expect(await page.evaluate(() => (window as unknown as { notReloaded?: boolean }).notReloaded)).toBe(true);
 
-    // テーマ：押すとすぐ色が変わり、設定画面は開いたまま、押したものに印が付く
+    // 一覧は開いたままで、続けて押して見比べられる
+    expect(await page.locator("#themes").isVisible()).toBe(true);
     await chooseTheme("solarized-dark");
     await waitUntil("強調の色が戻る", async () => (await accent(page)) === "#859900");
     expect(await termBg(page)).toBe("rgb(0, 43, 54)");
-    expect(await page.locator("#settings").isVisible()).toBe(true);
-    expect(await page.locator("#settings .settings-theme.on").getAttribute("data-theme")).toBe("solarized-dark");
+    expect(await page.locator("#themes").isVisible()).toBe(true);
+    await waitUntil("印が移る", async () => (await marked()) === "solarized-dark");
     expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`name = "light"`, `name = "solarized-dark"`));
+    await page.locator("#themes-close").click();
 
     // フォント：設定画面の「フォント」の一覧で「使う」を押すと、読み込み直さずに端末の文字がそのフォントになる
     await page.locator("#settings .settings-fonts").click();
@@ -1058,7 +1094,7 @@ family = "Palmterm Local"
     expect(await page.locator("#toast").textContent()).toContain("theme.backgroud");
     expect(readFileSync(configPath, "utf8")).toBe(bad);
     expect(await termBg(page)).toBe("rgb(30, 30, 30)");
-    expect(await page.locator("#settings .settings-theme.on").getAttribute("data-theme")).toBe("default");
+    expect(await marked()).toBe("default");
 
     rmSync(configPath, { force: true });
     await openPage();
@@ -1220,10 +1256,11 @@ describe("大きい画面の板", () => {
   const clickBackdrop = () => page.mouse.click(5, 5);
 
   /** 設定画面の右の列に、その一覧だけが出ているか（左の設定の行より右に並び、もう一方は隠れている）。 */
-  async function expectSide(id: "devices" | "fonts") {
+  async function expectSide(id: "devices" | "fonts" | "themes") {
     await page.locator(`#${id}`).waitFor({ state: "visible" });
-    const other = id === "devices" ? "fonts" : "devices";
-    expect(await page.locator(`#${other}`).isHidden()).toBe(true);
+    for (const other of ["devices", "fonts", "themes"].filter((o) => o !== id)) {
+      expect(await page.locator(`#${other}`).isHidden()).toBe(true);
+    }
     const settings = await layout("settings");
     const rows = await layout("settings-body");
     const side = await layout(id);
@@ -1235,7 +1272,7 @@ describe("大きい画面の板", () => {
     expect(await page.locator(`#${id}-close`).isVisible()).toBe(false); // 設定画面と一緒に閉じる
   }
 
-  it("幅 700px 以上かつ高さ 600px 以上では、板が周りを暗くして中央に浮き、暗い所か Esc で閉じる。設定画面は2列で、右に「ログイン中の端末」かフォントの一覧が出る", async () => {
+  it("幅 700px 以上かつ高さ 600px 以上では、板が周りを暗くして中央に浮き、暗い所か Esc で閉じる。設定画面は2列で、右に「ログイン中の端末」・フォント・テーマの一覧が出る", async () => {
     await page.setViewportSize({ width: 1024, height: 768 });
     try {
       // 設定画面：幅 900px の2列で、開いた直後の右は端末の一覧。暗い所で閉じる
@@ -1254,11 +1291,24 @@ describe("大きい画面の板", () => {
       await expectSide("fonts");
       await page.locator("#settings .settings-devices").click();
       await expectSide("devices");
+      await page.locator("#settings .settings-themes").click();
+      await expectSide("themes");
+      expect(await page.locator("#settings-body button.on:not(.settings-language)").evaluateAll((bs) => bs.map((b) => b.className))).toEqual([
+        "settings-themes on",
+      ]);
+      // 右のテーマの一覧で選んでも、一覧は右に出たまま
+      await page.locator('#themes .theme-item[data-theme="light"]').click();
+      await waitUntil("印が移る", async () => (await page.locator("#themes .theme-item.on").getAttribute("data-theme")) === "light");
+      await expectSide("themes");
+      await page.locator('#themes .theme-item[data-theme="default"]').click();
+      await waitUntil("印が戻る", async () => (await page.locator("#themes .theme-item.on").getAttribute("data-theme")) === "default");
+      rmSync(configPath, { force: true }); // 書き戻した設定ファイルは残さない
       await page.locator("#settings .settings-fonts").click();
       await expectSide("fonts");
       await page.keyboard.press("Escape");
       expect(await page.locator("#settings").isHidden()).toBe(true);
       expect(await page.locator("#fonts").isHidden()).toBe(true);
+      expect(await page.locator("#themes").isHidden()).toBe(true);
 
       // 開き直すと右はまた端末の一覧
       await openSettings();
@@ -1307,6 +1357,10 @@ describe("大きい画面の板", () => {
         await page.locator("#settings .settings-fonts").click();
         await expectFullScreen("fonts");
         await page.locator("#fonts-close").click();
+        await expectFullScreen("settings");
+        await page.locator("#settings .settings-themes").click();
+        await expectFullScreen("themes");
+        await page.locator("#themes-close").click();
         await expectFullScreen("settings");
         await page.locator("#settings .settings-devices").click();
         await expectFullScreen("devices");

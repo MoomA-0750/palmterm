@@ -246,9 +246,10 @@ are reported when the page opens: a mistyped color (such as `#12345`) falls back
 and unknown keys, an unknown `base` and a name that a built-in theme already uses are reported too
 (the built-in theme wins). An unknown name in `[theme]` is reported and `default` is used.
 
-You can also pick the theme on the page: tap one in the Theme row of Settings (your own themes are
-listed after the built-in ones). The colors
-change at once and the `name` line under `[theme]` in the config file is rewritten (other lines, comments
+You can also pick the theme on the page: "List" in the Theme row of Settings lists each theme with its
+name and a color sample (the text color on the background, and the 16 terminal colors); your own themes are
+listed after the built-in ones. Tap a row and the colors
+change at once (the list stays open so you can compare them) and the `name` line under `[theme]` in the config file is rewritten (other lines, comments
 and their order stay as they are; the file is created if missing). If the config file has a mistake and
 cannot be read, it is left alone and the reason is shown.
 

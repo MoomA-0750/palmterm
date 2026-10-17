@@ -3,16 +3,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { setLang } from "./i18n";
 import { type SettingsOptions, setupSettings } from "./settings";
 
-const noTheme = { names: ["default", "light"], current: () => "default", choose: async (_: string) => true };
-
 function makeSettings(over: Partial<SettingsOptions> = {}) {
   const s = setupSettings({
     fontSize: { get: () => 14, change: () => {} },
     keybar: { shown: () => true, set: () => {} },
-    theme: noTheme,
     language: { current: () => "ja", choose: () => {} },
     openDevices: () => {},
     openFonts: () => {},
+    openThemes: () => {},
     ...over,
   });
   return { ...s, labels: () => [...s.el.querySelectorAll(".settings-label")].map((l) => l.textContent) };
@@ -52,15 +50,20 @@ describe("設定画面の並び", () => {
     expect(s.el.hidden).toBe(true);
   });
 
-  it("小さい画面では、フォントと端末の一覧を開いても、設定画面は閉じない（一覧を閉じると戻る）", () => {
+  it("小さい画面では、フォント・テーマ・端末の一覧を開いても、設定画面は閉じない（一覧を閉じると戻る）", () => {
     setLang("en");
     setViewport(400, 760);
     const opened: string[] = [];
-    const s = makeSettings({ openFonts: () => opened.push("fonts"), openDevices: () => opened.push("devices") });
+    const s = makeSettings({
+      openFonts: () => opened.push("fonts"),
+      openThemes: () => opened.push("themes"),
+      openDevices: () => opened.push("devices"),
+    });
     s.open();
     s.el.querySelector<HTMLButtonElement>(".settings-fonts")!.click();
+    s.el.querySelector<HTMLButtonElement>(".settings-themes")!.click();
     s.el.querySelector<HTMLButtonElement>(".settings-devices")!.click();
-    expect(opened).toEqual(["fonts", "devices"]);
+    expect(opened).toEqual(["fonts", "themes", "devices"]);
     expect(s.el.hidden).toBe(false);
     expect(s.el.classList.contains("two-columns")).toBe(false);
   });
@@ -70,28 +73,37 @@ describe("設定画面の並び", () => {
     setViewport(1024, 768);
     const devices = list("devices");
     const fonts = list("fonts");
-    const s = makeSettings({ openDevices: () => (devices.hidden = false), openFonts: () => (fonts.hidden = false) });
+    const themes = list("themes");
+    const s = makeSettings({
+      openDevices: () => (devices.hidden = false),
+      openFonts: () => (fonts.hidden = false),
+      openThemes: () => (themes.hidden = false),
+    });
     const side = s.el.querySelector("#settings-side")!;
-    const on = () => [...s.el.querySelectorAll("#settings-body button.on")].map((b) => b.className);
+    const on = () => [...s.el.querySelectorAll("#settings-body button.on:not(.settings-language)")].map((b) => b.className);
+    const shown = () => [devices.hidden, fonts.hidden, themes.hidden];
     s.open();
     expect(s.el.classList.contains("two-columns")).toBe(true);
-    expect([devices.parentElement, fonts.parentElement]).toEqual([side, side]);
-    expect([devices.hidden, fonts.hidden]).toEqual([false, true]);
+    expect([devices.parentElement, fonts.parentElement, themes.parentElement]).toEqual([side, side, side]);
+    expect(shown()).toEqual([false, true, true]);
     s.el.querySelector<HTMLButtonElement>(".settings-fonts")!.click();
-    expect([devices.hidden, fonts.hidden]).toEqual([true, false]);
-    expect(on()).toContain("settings-fonts on");
+    expect(shown()).toEqual([true, false, true]);
+    expect(on()).toEqual(["settings-fonts on"]);
+    s.el.querySelector<HTMLButtonElement>(".settings-themes")!.click();
+    expect(shown()).toEqual([true, true, false]);
+    expect(on()).toEqual(["settings-themes on"]);
     s.close();
-    expect([devices.hidden, fonts.hidden]).toEqual([true, true]);
+    expect(shown()).toEqual([true, true, true]);
     // 開き直すと右はまた端末の一覧
     s.open();
-    expect([devices.hidden, fonts.hidden]).toEqual([false, true]);
+    expect(shown()).toEqual([false, true, true]);
     // 小さい画面で開くと1列に戻り、一覧は body に戻って隠れる
     s.close();
     setViewport(400, 760);
     s.open();
     expect(s.el.classList.contains("two-columns")).toBe(false);
-    expect([devices.parentElement, fonts.parentElement]).toEqual([document.body, document.body]);
-    expect([devices.hidden, fonts.hidden]).toEqual([true, true]);
+    expect([devices.parentElement, fonts.parentElement, themes.parentElement]).toEqual([document.body, document.body, document.body]);
+    expect(shown()).toEqual([true, true, true]);
   });
 });
 
@@ -158,44 +170,15 @@ describe("設定画面のキーバーの行", () => {
 });
 
 describe("設定画面のテーマの行", () => {
-  it("組み込みのテーマと自分のテーマを並べ、今のものに印を付ける。押すと選び、書き戻せたら印が移る。断られたら移らない", async () => {
+  it("横並びのボタンの代わりに「一覧」があり、押すとテーマの一覧を開く", () => {
     setLang("ja");
-    let current = "default";
-    let accept = true;
-    const chosen: string[] = [];
-    const s = makeSettings({
-      theme: {
-        names: ["default", "light", "solarized-dark", "solarized-light", "my-dark"],
-        current: () => current,
-        choose: async (name) => {
-          chosen.push(name);
-          if (accept) current = name;
-          return accept;
-        },
-      },
-    });
-    const btns = [...s.el.querySelectorAll<HTMLButtonElement>(".settings-theme")];
-    expect(rowOf(btns[0])?.querySelector(".settings-label")?.textContent).toBe("テーマ");
-    // 自分のテーマは書いた名前のまま
-    expect(btns.map((b) => b.textContent)).toEqual(["既定", "明るい", "Solarized 暗", "Solarized 明", "my-dark"]);
-    const on = () => btns.filter((b) => b.classList.contains("on")).map((b) => b.dataset.theme);
-    expect(on()).toEqual(["default"]);
-
-    btns[1].click();
-    await new Promise((r) => setTimeout(r));
-    expect(chosen).toEqual(["light"]);
-    expect(on()).toEqual(["light"]);
-
-    accept = false;
-    btns[2].click();
-    await new Promise((r) => setTimeout(r));
-    expect(chosen).toEqual(["light", "solarized-dark"]);
-    expect(on()).toEqual(["light"]);
-
-    accept = true;
-    btns[4].click();
-    await new Promise((r) => setTimeout(r));
-    expect(on()).toEqual(["my-dark"]);
+    let opened = 0;
+    const s = makeSettings({ openThemes: () => opened++ });
+    const btn = s.el.querySelector<HTMLButtonElement>(".settings-themes")!;
+    expect(rowOf(btn)?.querySelector(".settings-label")?.textContent).toBe("テーマ");
+    expect([...rowOf(btn)!.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["一覧"]);
+    btn.click();
+    expect(opened).toBe(1);
   });
 });
 

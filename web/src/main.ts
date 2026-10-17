@@ -20,6 +20,7 @@ import { applyTheme, type CustomThemes, resolveTheme, type ThemeConfig, themeNam
 import { chooseAppearance, type AppearanceChange } from "./appearance";
 import { setupSettings } from "./settings";
 import { setupSheets } from "./sheets";
+import { setupThemes } from "./themelist";
 import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
 
@@ -463,21 +464,25 @@ function setKeybarShown(shown: boolean, save = true) {
 }
 setKeybarShown(loadSetting("keybar", "shown") !== "hidden", false);
 
-// 設定画面（tmux パネルの「設定」で開く）。フォントと端末の一覧はこの上に開く。
+// テーマの一覧（設定画面の「テーマ」の「一覧」で開く）。色見本は今の設定ファイルの [themes.名前] から作る。
+const themes = setupThemes({
+  names: () => themeNames(serverConfig.themes),
+  current: () => {
+    const name = serverConfig.theme?.name;
+    return name && themeNames(serverConfig.themes).includes(name) ? name : "default";
+  },
+  resolve: (name) => resolveTheme(name, serverConfig.themes).theme,
+  choose: (name) => changeAppearance({ theme: name }),
+});
+
+// 設定画面（tmux パネルの「設定」で開く）。フォント・テーマ・端末の一覧はこの上に開く。
 const settings = setupSettings({
   fontSize: { get: () => fontSize, change: (delta) => setFontSize(fontSize + delta) },
   keybar: { shown: () => keybarShown, set: (shown) => setKeybarShown(shown) },
-  theme: {
-    names: themeNames(serverConfig.themes),
-    current: () => {
-      const name = serverConfig.theme?.name;
-      return name && themeNames(serverConfig.themes).includes(name) ? name : "default";
-    },
-    choose: (name) => changeAppearance({ theme: name }),
-  },
   language: { current: () => serverConfig.language, choose: (lang) => changeLanguage(lang) },
   openDevices: () => openDevices(),
   openFonts: () => fonts.open(),
+  openThemes: () => themes.open(),
   version: serverConfig.version,
 });
 
@@ -820,6 +825,7 @@ setupSheets(
     ["settings", "settings-close"],
     ["devices", "devices-close"],
     ["fonts", "fonts-close"],
+    ["themes", "themes-close"],
   ].map(([el, close]) => ({ el: $(el), close: $(close) })),
 );
 
