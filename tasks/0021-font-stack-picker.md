@@ -49,4 +49,8 @@ created: 2026-10-16
 - 実機（iPad・スマホ）ではまだ見ていない。`make install` して palmterm を再起動してから確かめる
 
 ## レビュー
-（task-loop が Codex の指摘を書き足す）
+Codex（2026-10-17、5b1cdcf..6eca00d）:
+
+- **高** `web/src/fontfiles.ts:43` — `/api/config` の失敗を握りつぶして `stack: []` と扱っています。`/api/fonts` だけ成功した場合、既存の「使う順」が空として表示され、そのまま「足す」を押すと既存の stack 全体を新しい1項目で上書きします。取得失敗として操作を止める必要があります。
+
+- **低** `configwrite_test.go:403` — `SPEC.md:213` は「16個まで」を確定仕様とし `TestAppearanceSetsTheWholeStack` で確かめるとしていますが、17個以上を拒否するテストがありません。実装には上限判定があるものの、確定仕様の自動テスト要件を満たしていません。
