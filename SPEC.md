@@ -24,9 +24,19 @@
 ## ログインと安全
 
 - （仮）既定では 127.0.0.1 でだけ待ち受ける。スマホからは Tailscale の中継（`tailscale serve`）か、LAN 向けの HTTPS（`-lan`）でつなぐ
-- （仮）ログイン用のトークンは1つだけ。最初の起動でランダムに作り、権限 0600 のファイルに保存し、再起動しても変わらない。ファイルの権限が緩ければ直す
-- （仮）ログイン用の URL（`/auth?token=…`）を一度開くと、そのブラウザは1年間ログインしたままになる
-- （確定）Cookie の中身はトークンそのものではない。Cookie は同じホストの別のサービスにも送られるので、そこから漏れても新しい端末でログインできないようにするため。トークンそのものを Cookie に入れても通さない
+- （確定）ログイン用のトークンは使い捨て。起動時と `palmterm url` のたびに新しく出す（1回で出した URL は、待ち受けているどのアドレスのものも同じトークン）。1回ログインに使うか、出してから5分たつと使えない。サーバーのメモリにだけ持ち、再起動すると、まだ使っていないトークンはすべて無効になる
+  - 確かめ方: 自動テスト `TestLoginWithNameUsesTheTokenOnce`、`TestLoginTokenExpiresAfterFiveMinutes`、`TestRestartInvalidatesUnusedLoginTokens`（auth_config_test.go）、`TestRunURLIssuesANewTokenEachTime`（loginurl_test.go）、通しのテスト「一覧で端末に名前を付けられ、…」（web/e2e/app.test.ts。使った URL をもう一度開くと 401）
+- （確定）ログイン用の URL（`GET /auth?token=…`）を開くと、端末の名前の欄と「ログイン」ボタンのページを設定の言語で出す。欄には User-Agent から作った自動の名前（例「iPhone · Safari」）を薄く出す。開いただけではトークンを使わない（リンクのプレビューで使い切られない）ので、何度開いても同じページが出る。使えないトークンなら、ページの代わりに 401 と「palmterm url で新しい URL を出す」案内を出す。ページは `Cache-Control: no-store`、`Referrer-Policy: no-referrer`、ほかのページに埋め込ませない CSP を付けて返す
+  - 確かめ方: 自動テスト `TestLoginPageDoesNotUseTheToken`（auth_config_test.go）、通しのテスト「一覧で端末に名前を付けられ、…」（web/e2e/app.test.ts）
+- （確定）ページのボタンを押すと（`POST /auth`、フォームの `token` と `name`）、トークンを使い切ってログインし、端末の画面（`/`）に移る。入れた名前は「ログイン中の端末」の一覧の付けた名前になる（40 文字まで。前後の空白と制御文字は除く）。空なら名前を付けず、自動の名前で出る。ログインしたブラウザは1年間ログインしたままになる
+  - 確かめ方: 自動テスト `TestLoginWithNameUsesTheTokenOnce`（auth_config_test.go）、通しのテストの `login`（web/e2e/app.test.ts。palmterm url の URL を開いてボタンを押す）
+- （確定）固定のトークン（`~/.config/palmterm/token` の中身）ではログインできない。`-token` と `PALMTERM_TOKEN` はない（`-token` を付けると起動しない）
+  - 確かめ方: 自動テスト `TestFixedTokenCannotLogIn`（auth_config_test.go）、`TestHelpLanguage`（help_test.go。-help に -token が無い）
+- （確定）`~/.config/palmterm/token` はログインした端末の記録の鍵にする。最初の起動でランダムに作り、権限 0600 で保存し、再起動しても変わらない。権限が緩ければ直す。使い捨てのトークンにする前からログインしていた端末は、ログインし直さずにそのまま使える
+  - 確かめ方: 自動テスト `TestDevicesFromBeforeTheUpdateStillWork`、`TestLoadTokenFixesLoosePermissions`（auth_config_test.go）
+- （確定）起動時の案内（ログ）に、使い捨てのログイン用の URL を出す（`-lan` なら LAN の URL も、同じトークンで）
+  - 確かめ方: 自動テスト `TestStartupLogShowsOneTimeLoginURL`（loginurl_test.go）
+- （確定）Cookie の中身はトークンそのものではない。Cookie は同じホストの別のサービスにも送られるので、そこから漏れても新しい端末でログインできないようにするため。トークン（token ファイルの中身）を Cookie に入れても通さない
   - 確かめ方: 自動テスト `TestAuthSetsCookieOnlyForTheRightToken`、`TestRequireAuth`（auth_config_test.go）
 - （確定）Cookie の中身は、ログインした端末ごとのランダムな値。サーバーは値のハッシュと、User-Agent から作った名前（例「iPhone · Safari」）、ログインした時刻、最後に使った時刻を `~/.config/palmterm/devices.json`（権限 0600）に記録する。再起動しても残る
   - 確かめ方: 自動テスト `TestDevicesSurviveRestartButNotTokenChange`（auth_config_test.go）
@@ -34,17 +44,19 @@
   - 確かめ方: 自動テスト `TestDevicesListLogoutAndRevoke`、`TestRevokeClosesThatDevicesTerminal`（auth_config_test.go）、通しのテスト「一覧で端末に名前を付けられ、ほかの端末を取り消すとその端末はつながらなくなり、自分はログアウトできる」（web/e2e/app.test.ts）
 - （確定）一覧の端末の名前を押すと、見分けやすい名前を付けられる（40 文字まで。前後の空白と制御文字は除く）。付けた名前を大きく出し、自動の名前は下の行に添える。空にすると自動の名前に戻る。名前はサーバーの記録に残るので、どの端末から付けても、再起動しても同じ
   - 確かめ方: 自動テスト `TestRenameDevice`（auth_config_test.go）、通しのテスト「一覧で端末に名前を付けられ、ほかの端末を取り消すとその端末はつながらなくなり、自分はログアウトできる」（web/e2e/app.test.ts）
-- （確定）トークンを変えて再起動しても、全端末を締め出せる。前のトークンで記録した端末は全部無効になる（漏れたのがトークンそのものなら、こちらを使う）
+- （確定）token ファイル（記録の鍵）を変えて再起動しても、全端末を締め出せる。前の鍵で記録した端末は全部無効になる
   - 確かめ方: 自動テスト `TestDevicesSurviveRestartButNotTokenChange`（auth_config_test.go）
-- （確定）`palmterm logout-all` で、動いている palmterm に記録された全端末のログインを取り消す。開いている接続もすぐ切れ、切られた画面には「取り消す」と同じく、読み込み直してログインし直す方法の案内が出る。取り消した台数（`Logged out N devices.`）を出して終了コード 0 で終わる。palmterm が動いていなければ、そう知らせて終了コード 1 で終わる。トークンは変わらないので、ログイン用の URL を開けばまたログインできる
+- （確定）`palmterm logout-all` で、動いている palmterm に記録された全端末のログインを取り消す。開いている接続もすぐ切れ、切られた画面には「取り消す」と同じく、読み込み直してログインし直す方法の案内が出る。取り消した台数（`Logged out N devices.`）を出して終了コード 0 で終わる。palmterm が動いていなければ、そう知らせて終了コード 1 で終わる。`palmterm url` で新しいログイン用の URL を出せば、またログインできる
   - サーバーとのやり取りは、実行時のフォルダ（`$XDG_RUNTIME_DIR/palmterm`、無ければ `/tmp/palmterm-<uid>`）の `control.sock`（0600）で行う。フォルダは起動時に 0700 にそろえ、ほかの人のフォルダなら使わない。`-relay-browser=false` でも使える
   - 確かめ方: 自動テスト `TestLogoutAllRevokesEveryDeviceAndClosesConnections`、`TestLogoutAllWithoutServer`（logoutall_test.go）
   - 実物での確かめ方: palmterm を動かしてスマホでつないだまま `palmterm logout-all` → 台数が出て終了コード 0。スマホの画面はすぐ切れ、ログインし直す案内が出る。palmterm を止めて打つと「palmterm is not running」と出て終了コード 1
 - （確定）この仕組みより前の Cookie（トークンから計算した値）は通さない。前から使っていた端末は、一度ログインし直す
   - 確かめ方: 自動テスト `TestRequireAuth`（auth_config_test.go）
 - （仮）他のアプリから開いたリンクでもログインしたまま開ける。一方、別のサイトのページからは tmux を操作できない
-- （仮）`palmterm url` で、動いている palmterm のログイン用 URL（`tailscale serve` が中継していればその URL も）と、スマホで読める QR コードを出す
-- （仮）ログイン用のトークンは tmux の中のシェルの環境に渡さない
+- （確定）`palmterm url` で、動いている palmterm に新しい使い捨てのトークンを出させ、待ち受けている各アドレスのログイン用 URL（`tailscale serve` が中継していればその URL を先頭に）と、先頭の URL の QR コードを出す（`-no-qr` なら QR は出さない）。palmterm が動いていなければ、そう知らせて終了コード 1 で終わる
+  - サーバーとのやり取りは、実行時のフォルダの `login.sock`（0600）で行う。前の版が書いていた URL の控え（`login-urls`）は起動時に消し、もう書かない
+  - 確かめ方: 自動テスト `TestRunURLIssuesANewTokenEachTime`、`TestRunURLWithoutServer`（loginurl_test.go）
+- （仮）ログイン用の認証の値は tmux の中のシェルの環境に渡さない（前の `PALMTERM_TOKEN` も tmux の環境から消す）
 - （仮）長く居座る不完全な接続は時間切れで切るが、端末の接続そのものは時間で切らない
 
 ## LAN からの接続（`-lan`）

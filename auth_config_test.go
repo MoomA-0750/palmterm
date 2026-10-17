@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,17 +20,40 @@ import (
 	"github.com/coder/websocket"
 )
 
-// 正しいトークンで /auth を開いた端末に Cookie を入れて、ログインさせる。
+// 使い捨てのトークンを出し、ログインのページのボタンを押した（POST /auth）ことにして、ログインさせる。
 func login(t *testing.T, s *server, userAgent string) *http.Cookie {
 	t.Helper()
-	r := httptest.NewRequest("GET", "/auth?token="+testToken, nil)
-	r.Header.Set("User-Agent", userAgent)
-	w := do(s.handleAuth, r)
+	return loginNamed(t, s, userAgent, "")
+}
+
+func loginNamed(t *testing.T, s *server, userAgent, name string) *http.Cookie {
+	t.Helper()
+	w := postLogin(s, s.logins.issue(), userAgent, name)
 	c := w.Result().Cookies()
 	if w.Code != http.StatusSeeOther || len(c) != 1 {
 		t.Fatalf("ログインできません: code=%d cookies=%v", w.Code, c)
 	}
 	return c[0]
+}
+
+// ログインのページの「ログイン」ボタン（フォームの POST /auth）。
+func postLogin(s *server, token, userAgent, name string) *httptest.ResponseRecorder {
+	form := url.Values{"token": {token}, "name": {name}}
+	r := httptest.NewRequest("POST", "/auth", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("User-Agent", userAgent)
+	w := httptest.NewRecorder()
+	s.routes().ServeHTTP(w, r)
+	return w
+}
+
+// ログイン用の URL（GET /auth?token=…）を開く。
+func getLoginPage(s *server, token, userAgent string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("GET", "/auth?token="+url.QueryEscape(token), nil)
+	r.Header.Set("User-Agent", userAgent)
+	w := httptest.NewRecorder()
+	s.routes().ServeHTTP(w, r)
+	return w
 }
 
 // Cookie を付けて、ログインが要る所を開く。
@@ -51,12 +75,11 @@ func authed(s *server, method, target string, body string, c *http.Cookie) *http
 func TestAuthSetsCookieOnlyForTheRightToken(t *testing.T) {
 	s := newTestServer(t)
 
-	w := do(s.handleAuth, httptest.NewRequest("GET", "/auth?token=wrong", nil))
-	if w.Code != http.StatusUnauthorized || len(w.Result().Cookies()) != 0 {
+	if w := postLogin(s, "wrong", "", ""); w.Code != http.StatusUnauthorized || len(w.Result().Cookies()) != 0 {
 		t.Fatalf("違うトークン: code=%d cookies=%v", w.Code, w.Result().Cookies())
 	}
 
-	w = do(s.handleAuth, httptest.NewRequest("GET", "/auth?token="+testToken, nil))
+	w := postLogin(s, s.logins.issue(), "", "")
 	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/" {
 		t.Fatalf("正しいトークン: code=%d location=%q", w.Code, w.Header().Get("Location"))
 	}
@@ -70,6 +93,150 @@ func TestAuthSetsCookieOnlyForTheRightToken(t *testing.T) {
 	}
 	if other := login(t, s, ""); other.Value == c[0].Value {
 		t.Fatal("端末ごとに違う値になっていません")
+	}
+}
+
+// 固定のトークン（token ファイルの中身。端末の記録の鍵）では、ページも開けず、ログインもできない。
+func TestFixedTokenCannotLogIn(t *testing.T) {
+	s := newTestServer(t)
+	if w := getLoginPage(s, testToken, ""); w.Code != http.StatusUnauthorized || strings.Contains(w.Body.String(), "<form") {
+		t.Fatalf("ページ: code=%d %s", w.Code, w.Body)
+	}
+	if w := postLogin(s, testToken, "", ""); w.Code != http.StatusUnauthorized || len(w.Result().Cookies()) != 0 {
+		t.Fatalf("ログイン: code=%d", w.Code)
+	}
+	if w := getLoginPage(s, "", ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("空のトークン: code=%d", w.Code)
+	}
+}
+
+// ログイン用の URL を開くと、名前の欄（自動の名前を薄く出す）と「ログイン」ボタンのページが設定の言語で出る。
+// 開いただけではトークンを使わないので、何度開いても同じページが出て、そのあとボタンでログインできる。
+func TestLoginPageDoesNotUseTheToken(t *testing.T) {
+	s := newTestServer(t)
+	const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+	tok := s.logins.issue()
+	for range 2 {
+		w := getLoginPage(s, tok, iphone)
+		body := w.Body.String()
+		if w.Code != http.StatusOK || !strings.Contains(body, `<html lang="en">`) || !strings.Contains(body, `placeholder="iPhone · Safari"`) ||
+			!strings.Contains(body, `<button type="submit">Log in</button>`) || !strings.Contains(body, `method="post" action="/auth"`) || !strings.Contains(body, `value="`+tok+`"`) {
+			t.Fatalf("ページ: code=%d\n%s", w.Code, body)
+		}
+		if w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("Referrer-Policy") != "no-referrer" || len(w.Result().Cookies()) != 0 {
+			t.Fatalf("見出し: %v", w.Header())
+		}
+	}
+
+	writeConfig(t, "language = \"ja\"\n")
+	body := getLoginPage(s, tok, iphone).Body.String()
+	if !strings.Contains(body, `<html lang="ja">`) || !strings.Contains(body, `<button type="submit">ログイン</button>`) || !strings.Contains(body, "この端末の名前") {
+		t.Fatalf("日本語のページ:\n%s", body)
+	}
+
+	if w := postLogin(s, tok, iphone, ""); w.Code != http.StatusSeeOther {
+		t.Fatalf("開いたあとのログイン: code=%d %s", w.Code, w.Body)
+	}
+}
+
+// 名前を入れてログインすると、その名前で一覧に出る（前後の空白と制御文字は除き、40 文字まで）。空なら自動の名前。
+// 一度ログインした URL は、開いても押しても使えない。
+func TestLoginWithNameUsesTheTokenOnce(t *testing.T) {
+	s := newTestServer(t)
+	tok := s.logins.issue()
+	w := postLogin(s, tok, "iPhone", "  仕事用\u001b[31m の iPhone ")
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/" {
+		t.Fatalf("ログイン: code=%d", w.Code)
+	}
+	phone := w.Result().Cookies()[0]
+	if d := listDevices(t, s, phone); len(d) != 1 || d[0].Label != "仕事用[31m の iPhone" || d[0].Name != "iPhone" {
+		t.Fatalf("一覧: %+v", d)
+	}
+
+	if w := getLoginPage(s, tok, "Linux"); w.Code != http.StatusUnauthorized || strings.Contains(w.Body.String(), "<form") {
+		t.Fatalf("使ったあとのページ: code=%d", w.Code)
+	}
+	if w := postLogin(s, tok, "Linux", ""); w.Code != http.StatusUnauthorized || len(w.Result().Cookies()) != 0 {
+		t.Fatalf("使ったあとのログイン: code=%d", w.Code)
+	}
+
+	pc := loginNamed(t, s, "Linux", "")
+	loginNamed(t, s, "Android", strings.Repeat("あ", maxDeviceLabel+5))
+	if len(listDevices(t, s, pc)) != 3 {
+		t.Fatal("一覧の台数")
+	}
+	for _, d := range listDevices(t, s, pc) {
+		switch d.Name {
+		case "Linux":
+			if d.Label != "" {
+				t.Errorf("空の名前: %+v", d)
+			}
+		case "Android":
+			if d.Label != strings.Repeat("あ", maxDeviceLabel) {
+				t.Errorf("長い名前: %q", d.Label)
+			}
+		}
+	}
+}
+
+// 出してから5分たったトークンでは、ページも開けず、ログインもできない。
+func TestLoginTokenExpiresAfterFiveMinutes(t *testing.T) {
+	s := newTestServer(t)
+	now := time.Now()
+	s.logins.now = func() time.Time { return now }
+	old, fresh := s.logins.issue(), ""
+	now = now.Add(loginTokenLifetime - time.Second)
+	fresh = s.logins.issue()
+	if w := getLoginPage(s, old, ""); w.Code != http.StatusOK {
+		t.Fatalf("5分前まで: code=%d", w.Code)
+	}
+	now = now.Add(2 * time.Second)
+	if w := getLoginPage(s, old, ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("5分たったページ: code=%d", w.Code)
+	}
+	if w := postLogin(s, old, "", ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("5分たったログイン: code=%d", w.Code)
+	}
+	if w := postLogin(s, fresh, "", ""); w.Code != http.StatusSeeOther {
+		t.Fatalf("あとで出したトークン: code=%d", w.Code)
+	}
+}
+
+// 再起動すると（トークンはメモリにだけある）、まだ使っていないトークンはすべて無効になる。
+func TestRestartInvalidatesUnusedLoginTokens(t *testing.T) {
+	before := newTestServer(t)
+	tok := before.logins.issue()
+	after := newTestServer(t)
+	after.devices = before.devices
+	if w := getLoginPage(after, tok, ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("ページ: code=%d", w.Code)
+	}
+	if w := postLogin(after, tok, "", ""); w.Code != http.StatusUnauthorized {
+		t.Fatalf("ログイン: code=%d", w.Code)
+	}
+}
+
+// 更新前からログインしていた端末（token ファイルの中身を鍵にした記録）は、ログインし直さずにそのまま通る。
+func TestDevicesFromBeforeTheUpdateStillWork(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	os.MkdirAll(filepath.Join(dir, "palmterm"), 0o700)
+	os.WriteFile(filepath.Join(dir, "palmterm", "token"), []byte("oldtoken\n"), 0o600)
+	path := filepath.Join(dir, "palmterm", "devices.json")
+	// 更新前の palmterm が、token ファイルのトークンでログインさせたときの記録
+	secret, err := newDeviceStore(path, "oldtoken").login("iPhone", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s := newTestServer(t)
+	key, err := loadOrCreateToken()
+	if err != nil || key != "oldtoken" {
+		t.Fatalf("key=%q err=%v", key, err)
+	}
+	s.devices = newDeviceStore(path, key)
+	if w := authed(s, "GET", "/api/devices", "", &http.Cookie{Name: cookieName, Value: secret}); w.Code != http.StatusOK {
+		t.Fatalf("前からの端末: code=%d", w.Code)
 	}
 }
 
@@ -99,9 +266,6 @@ func TestRequireAuth(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusOK || w.Body.String() != "ok" {
 		t.Fatalf("正しい Cookie: code=%d body=%q", w.Code, w.Body)
-	}
-	if s.validToken("") {
-		t.Fatal("空のトークンを通しました")
 	}
 }
 
@@ -180,7 +344,7 @@ func TestDevicesListLogoutAndRevoke(t *testing.T) {
 func TestDevicesSurviveRestartButNotTokenChange(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "devices.json")
 	d := newDeviceStore(path, "tok1")
-	secret, err := d.login("")
+	secret, err := d.login("", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,15 +629,6 @@ func TestLoadTokenFixesLoosePermissions(t *testing.T) {
 	}
 	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
 		t.Fatalf("権限: %v", info.Mode().Perm())
-	}
-}
-
-func TestValidTokenAcceptsOnlyTheToken(t *testing.T) {
-	s := newTestServer(t)
-	for tok, want := range map[string]bool{testToken: true, "": false, "testtoke": false, testToken + "x": false, strings.ToUpper(testToken): false} {
-		if s.validToken(tok) != want {
-			t.Errorf("%q", tok)
-		}
 	}
 }
 

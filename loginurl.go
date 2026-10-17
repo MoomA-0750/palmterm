@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"cmp"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/url"
 	"os"
@@ -14,36 +16,168 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"rsc.io/qr"
 )
 
 // palmterm url：ログイン用の URL と、スマホのカメラで読める QR コードを出す。
-// サービスとして動かしているとログの URL を探しにくいので、サーバーは起動したときに、実際に待ち受けている
-// ログイン用の URL を実行時のフォルダ（本人だけが読める）に書いておき、このコマンドがそれを読む。
+// ログイン用の URL のトークンは使い捨て（1回ログインしたら使えない。出してから5分で切れる）。
+// palmterm url を打つたびに、動いている palmterm に操作用のソケットで新しいトークンを出させ、
+// 実際に待ち受けているアドレスのログイン用の URL を受け取る。トークンはサーバーのメモリにだけあるので、
+// 再起動すると、まだ使っていないトークンはすべて無効になる。
 // tailscale serve が palmterm に中継していれば、その URL も先頭に足す（スマホからはこれが使いやすい）。
 
 const (
-	loginURLsFile = "login-urls"
-	qrQuietZone   = 2 // QR の周りの余白（マス）
+	loginSocketName    = "login.sock"
+	loginURLCommand    = "login-url"
+	loginTokenLifetime = 5 * time.Minute
+	staleLoginURLsFile = "login-urls" // 前の版が書いていた、固定のトークン入りの URL の控え
+	qrQuietZone        = 2            // QR の周りの余白（マス）
 )
 
-// サーバーが待ち受けているログイン用の URL を書いておく（1行に1つ。トークンを含むので本人だけが読める）。
-func writeLoginURLs(urls []string) error {
-	dir := runtimeDir()
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(dir, loginURLsFile), []byte(strings.Join(urls, "\n")+"\n"), 0o600)
+// 使い捨てのログイン用トークン。ハッシュと期限だけを持つ。
+type loginTokens struct {
+	mu     sync.Mutex
+	tokens map[string]time.Time // トークンのハッシュ → 期限
+	now    func() time.Time     // テストで差し替える
 }
 
-func readLoginURLs() ([]string, error) {
-	b, err := os.ReadFile(filepath.Join(runtimeDir(), loginURLsFile))
+func newLoginTokens() *loginTokens {
+	return &loginTokens{tokens: map[string]time.Time{}, now: time.Now}
+}
+
+// 新しいトークンを出す。期限の切れたものはここで捨てる。
+func (l *loginTokens) issue() string {
+	tok := randomHex(24)
+	now := l.now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for h, exp := range l.tokens {
+		if !now.Before(exp) {
+			delete(l.tokens, h)
+		}
+	}
+	l.tokens[hashSecret(tok)] = now.Add(loginTokenLifetime)
+	return tok
+}
+
+// まだ使えるトークンか（使い切らない。ログインのページを出すときに使う）。
+func (l *loginTokens) valid(tok string) bool {
+	if tok == "" {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	exp, ok := l.tokens[hashSecret(tok)]
+	return ok && l.now().Before(exp)
+}
+
+// トークンを使い切る。使えたら true。
+func (l *loginTokens) use(tok string) bool {
+	if tok == "" {
+		return false
+	}
+	h := hashSecret(tok)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	exp, ok := l.tokens[h]
+	delete(l.tokens, h)
+	return ok && l.now().Before(exp)
+}
+
+// 新しいトークンを1つ出し、待ち受けている各アドレスのログイン用の URL にする（どれで使っても使い切る）。
+func (s *server) newLoginURLs() []string {
+	tok := s.logins.issue()
+	urls := make([]string, len(s.loginBases))
+	for i, b := range s.loginBases {
+		urls[i] = b + "/auth?token=" + tok
+	}
+	return urls
+}
+
+// 起動時の案内に、使い捨てのログイン用の URL を出す（先頭はこの PC の HTTP、続きは LAN）。
+func (s *server) logLoginURLs() {
+	for i, u := range s.newLoginURLs() {
+		if i == 0 {
+			log.Printf(tr("palmterm: %s を開いてください（5分以内に1回だけ使えます。palmterm url で新しく出せます）",
+				"palmterm: open %s (works once, within 5 minutes; run palmterm url for a new one)"), u)
+		} else {
+			log.Printf(tr("palmterm（LAN）: %s を開いてください（最初は証明書の警告が出るので、先へ進む）",
+				"palmterm (LAN): open %s (the browser warns about the certificate the first time; proceed)"), u)
+		}
+	}
+}
+
+// palmterm url の受け口を用意する。使えなくても palmterm 自体は動かす。
+// 前の版が書いていた URL の控えは、もう使わないので消す。
+func (s *server) setupLoginSocket() {
+	dir, err := ensureRuntimeDir()
+	if err == nil {
+		os.Remove(filepath.Join(dir, staleLoginURLsFile))
+		err = s.serveLoginSocket(filepath.Join(dir, loginSocketName))
+	}
+	if err != nil {
+		log.Printf(tr("palmterm url の受け口を用意できませんでした: %v", "Could not set up the socket for palmterm url: %v"), err)
+	}
+}
+
+// 1行に1つの命令を受け、login-url なら新しいトークンのログイン用の URL を1行に1つ返して閉じる。
+func (s *server) serveLoginSocket(path string) error {
+	os.Remove(path) // 前に動いていたときの残り
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		return err
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		ln.Close()
+		return err
+	}
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				conn.SetDeadline(time.Now().Add(5 * time.Second))
+				line, err := bufio.NewReader(io.LimitReader(conn, 256)).ReadString('\n')
+				if err != nil && line == "" {
+					return
+				}
+				if strings.TrimSpace(line) != loginURLCommand {
+					fmt.Fprintln(conn, "bad")
+					return
+				}
+				for _, u := range s.newLoginURLs() {
+					fmt.Fprintln(conn, u)
+				}
+			}()
+		}
+	}()
+	return nil
+}
+
+// 動いている palmterm に新しいログイン用の URL を出させる。
+func requestLoginURLs() ([]string, error) {
+	conn, err := net.DialTimeout("unix", filepath.Join(runtimeDir(), loginSocketName), time.Second)
 	if err != nil {
 		return nil, err
 	}
-	return strings.Fields(string(b)), nil
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
+	fmt.Fprintln(conn, loginURLCommand)
+	b, err := io.ReadAll(io.LimitReader(conn, 64<<10))
+	if err != nil {
+		return nil, err
+	}
+	urls := strings.Fields(string(b))
+	if len(urls) == 0 || !strings.Contains(urls[0], "/auth?token=") {
+		return nil, fmt.Errorf("unexpected reply: %q", strings.TrimSpace(string(b)))
+	}
+	return urls, nil
 }
 
 // tailscale serve の設定（JSON）。テストで差し替える。
@@ -121,9 +255,9 @@ func runURL(out io.Writer, args []string) int {
 	if fs.Parse(args) != nil {
 		return 2
 	}
-	urls, err := readLoginURLs()
-	if err != nil || len(urls) == 0 {
-		fmt.Fprintln(out, "palmterm is not running (no login URLs found in "+runtimeDir()+").")
+	urls, err := requestLoginURLs()
+	if err != nil {
+		fmt.Fprintf(out, "palmterm is not running (could not get a login URL from %s: %v).\n", filepath.Join(runtimeDir(), loginSocketName), err)
 		return 1
 	}
 	// 最初の URL は 127.0.0.1 の HTTP の待ち受け。そこから Tailscale の公開先を探す。
@@ -143,6 +277,6 @@ func runURL(out io.Writer, args []string) int {
 		fmt.Fprintln(out, err)
 		return 1
 	}
-	fmt.Fprintf(out, "\nScan with your phone to log in (%s):\n\n%s", strings.SplitN(urls[0], "/auth?", 2)[0], renderQR(code))
+	fmt.Fprintf(out, "\nScan with your phone to log in (%s; works once, within 5 minutes):\n\n%s", strings.SplitN(urls[0], "/auth?", 2)[0], renderQR(code))
 	return 0
 }

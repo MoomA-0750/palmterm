@@ -18,7 +18,7 @@ func newTestServer(t *testing.T) *server {
 	t.Helper()
 	dir := t.TempDir()
 	settings = newConfigStore(filepath.Join(dir, "config.toml"))
-	s := &server{token: testToken, session: "t1", uploadDir: filepath.Join(dir, "uploads")}
+	s := &server{logins: newLoginTokens(), loginBases: []string{"http://127.0.0.1:7681"}, session: "t1", uploadDir: filepath.Join(dir, "uploads")}
 	s.devices = newDeviceStore(filepath.Join(dir, "devices.json"), testToken)
 	t.Cleanup(func() {
 		settings = nil

@@ -14,7 +14,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 const BINARY = resolve(__dirname, "../../palmterm");
 const CHROMIUM = process.env.CHROMIUM ?? "/usr/bin/chromium";
-const TOKEN = "e2etoken";
 const SESSION = "e2e";
 
 const dir = mkdtempSync(join(tmpdir(), "palmterm-e2e-"));
@@ -120,6 +119,21 @@ function key(label: string) {
   return page.locator(`#keybar button:text-is("${label}"), #keybar button[aria-label="${label}"]`).first();
 }
 
+/** palmterm url で、新しい使い捨てのログイン用の URL を出させる（at は URL の頭。base か lanBase）。 */
+function loginURL(at = base): string {
+  const out = execFileSync(BINARY, ["url", "-no-qr"], { env, encoding: "utf8" });
+  const url = out.split("\n").find((l) => l.startsWith(`${at}/auth?token=`));
+  if (!url) throw new Error(`palmterm url に ${at} の URL がありません:\n${out}`);
+  return url;
+}
+
+/** 使い捨てのログイン用の URL を開き、「ログイン」ボタンを押してログインする。 */
+async function login(p: Page, at = base) {
+  await p.goto(loginURL(at));
+  await p.locator('#login button[type="submit"]').click();
+  await p.waitForURL(`${at}/`);
+}
+
 async function openPage() {
   await page.goto(`${base}/`);
   await page.waitForFunction(() => document.querySelector(".term-row") !== null);
@@ -146,10 +160,10 @@ beforeAll(async () => {
   lanBase = `https://127.0.0.1:${lanPort}`;
   server = spawn(
     BINARY,
-    ["-listen", `127.0.0.1:${port}`, "-lan", `127.0.0.1:${lanPort}`, "-token", TOKEN, "-session", SESSION, "-config", configPath, "-upload-dir", uploadDir],
+    ["-listen", `127.0.0.1:${port}`, "-lan", `127.0.0.1:${lanPort}`, "-session", SESSION, "-config", configPath, "-upload-dir", uploadDir],
     { env, stdio: "ignore" },
   );
-  await waitUntil("サーバーが立ち上がる", async () => fetch(`${base}/auth?token=${TOKEN}`, { redirect: "manual" }).then((r) => r.status === 303, () => false));
+  await waitUntil("サーバーが立ち上がる", async () => fetch(`${base}/`, { redirect: "manual" }).then((r) => r.status === 401, () => false));
 
   browser = await chromium.launch({ executablePath: CHROMIUM, headless: true, env: { ...process.env, XDG_DATA_HOME: browserData } });
   const context = await browser.newContext({ viewport: { width: 400, height: 760 } });
@@ -172,7 +186,7 @@ beforeAll(async () => {
     };
   });
   page = await context.newPage();
-  await page.goto(`${base}/auth?token=${TOKEN}`);
+  await login(page);
 }, 30_000);
 
 afterAll(async () => {
@@ -549,7 +563,7 @@ describe("tmux のタブとパネル", () => {
     const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
     try {
       const otherPage = await other.newPage();
-      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await login(otherPage);
       await otherPage.waitForFunction(() => document.querySelector("#keybar button") !== null);
       expect(await otherPage.locator("#keybar").isVisible()).toBe(true);
     } finally {
@@ -877,7 +891,7 @@ text = ":wq"
     const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
     try {
       const otherPage = await other.newPage();
-      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await login(otherPage);
       await otherPage.waitForFunction(() => document.querySelector(".term-row") !== null);
       expect(await otherPage.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--mono-font"))).toMatch(
         /palmterm font 1.*Palmterm Cyril.*Palmterm Local.*JetBrains Mono/,
@@ -1055,7 +1069,7 @@ family = "Palmterm Local"
     const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
     try {
       const otherPage = await other.newPage();
-      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await login(otherPage);
       await otherPage.waitForFunction(() => document.querySelector(".term-row") !== null);
       expect(await termBg(otherPage)).toBe("rgb(0, 43, 54)");
       expect(
@@ -1128,7 +1142,7 @@ family = "Palmterm Local"
     const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
     try {
       const otherPage = await other.newPage();
-      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await login(otherPage);
       await otherPage.waitForFunction(() => document.querySelector(".term-row") !== null);
       expect(await settingsTitle(otherPage)).toEqual(["ja", "設定"]);
     } finally {
@@ -1492,7 +1506,7 @@ describe("LAN（HTTPS）", () => {
     const context = await browser.newContext({ viewport: { width: 400, height: 760 }, ignoreHTTPSErrors: true });
     try {
       const lan = await context.newPage();
-      await lan.goto(`${lanBase}/auth?token=${TOKEN}`);
+      await login(lan, lanBase);
       expect(lan.url()).toBe(`${lanBase}/`);
       const cookie = (await context.cookies()).find((c) => c.name === "palmterm_token");
       expect(cookie?.secure).toBe(true);
@@ -1536,11 +1550,18 @@ describe("ログイン中の端末", () => {
     const phoneContext = await browser.newContext({ viewport: { width: 400, height: 760 }, userAgent: IPHONE });
     const pcContext = await browser.newContext({ viewport: { width: 400, height: 760 } });
     try {
+      // 使い捨ての URL を開くと名前の欄（自動の名前を薄く出す）と「ログイン」ボタンのページが出る。押すとログインし、同じ URL はもう使えない
       const phone = await phoneContext.newPage();
-      await phone.goto(`${base}/auth?token=${TOKEN}`);
+      const url = loginURL();
+      await phone.goto(url);
+      expect(await phone.locator("#name").getAttribute("placeholder")).toBe("iPhone · Safari");
+      await phone.goto(url);
+      await phone.locator('#login button[type="submit"]').click();
+      await phone.waitForURL(`${base}/`);
       await waitUntil("スマホがつながる", async () => (await phone.locator(".term-row").count()) > 0 && (await phone.locator("#status").isHidden()));
       const pc = await pcContext.newPage();
-      await pc.goto(`${base}/auth?token=${TOKEN}`);
+      expect((await pc.goto(url))?.status()).toBe(401);
+      await login(pc);
       await pc.waitForFunction(() => document.querySelector(".term-row") !== null);
 
       // 設定画面から一覧を開く。自分には印が付き、ボタンはログアウト
@@ -1572,12 +1593,12 @@ describe("ログイン中の端末", () => {
       expect(await phoneRow.locator(".device-revoke").textContent()).toBe("Revoke?");
       await phoneRow.locator(".device-revoke").click();
       await waitUntil("一覧から消える", async () => (await phoneRow.count()) === 0);
-      await waitUntil("スマホがログインし直す案内になる", async () => ((await phone.textContent("body").catch(() => "")) ?? "").includes("/auth?token="), 10_000);
+      await waitUntil("スマホがログインし直す案内になる", async () => ((await phone.textContent("body").catch(() => "")) ?? "").includes("palmterm url"), 10_000);
 
       // 自分をログアウトする
       await me.locator(".device-revoke").click();
       await me.locator(".device-revoke").click();
-      await waitUntil("ログインし直す案内になる", async () => ((await pc.textContent("body").catch(() => "")) ?? "").includes("/auth?token="));
+      await waitUntil("ログインし直す案内になる", async () => ((await pc.textContent("body").catch(() => "")) ?? "").includes("palmterm url"));
       expect((await pcContext.cookies()).find((c) => c.name === "palmterm_token")).toBeUndefined();
 
       // ほかの端末（いつもの画面）はそのまま使える

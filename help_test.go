@@ -51,7 +51,6 @@ func TestHelpLanguage(t *testing.T) {
 	enUsages := []string{
 		"address to listen on (HTTP)",
 		"tmux session to attach to",
-		"login token",
 		"extra WebSocket origins",
 		"where uploaded files are saved",
 		"configuration file",
@@ -64,6 +63,10 @@ func TestHelpLanguage(t *testing.T) {
 		if !strings.Contains(none, u) {
 			t.Errorf("設定が無いときの -help に英語の説明 %q がありません:\n%s", u, none)
 		}
+	}
+	// 固定のトークンを渡す -token はなくなった（ログインは palmterm url の使い捨ての URL で行う）。
+	if strings.Contains(none, "-token") {
+		t.Errorf("-help に -token があります:\n%s", none)
 	}
 	if !strings.HasPrefix(none, "Usage of "+bin+":\n") || !strings.Contains(none, `(default "127.0.0.1:7681")`) {
 		t.Errorf("設定が無いときの -help が flag の既定の形ではありません:\n%s", none)
