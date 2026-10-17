@@ -361,3 +361,84 @@ func TestAppearanceRewritesTheStack(t *testing.T) {
 		t.Fatalf("書き換えてしまいました:\n%s", got)
 	}
 }
+
+// 画面の「使う順」の並びで、[font] の stack をその順に書き換える。並べられるのは fonts/ の直下のフォント・組み込み・PC のフォントと、
+// 今の stack にもう書いてあるものだけ。空にすると stack の行を消して既定に戻す。版 1 の family・file は消して stack にする。
+func TestAppearanceSetsTheWholeStack(t *testing.T) {
+	s := newTestServer(t)
+	data := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
+	t.Setenv("XDG_DATA_DIRS", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	forgetFont()
+	t.Cleanup(forgetFont)
+	writeFile(t, filepath.Join(data, "fonts", "PalmtermTestMono-Regular.ttf"), fakeFont("Palmterm Test Mono", "Regular"))
+	c, other := login(t, s, "phone"), login(t, s, "tablet")
+	putFont(t, "Mine.ttf")
+
+	src := "version = 2\n\n[font]\nstack = [\"~/my/Hand.otf\", \"Phone Only Sans\"]  # 並び\n\n[theme]\nname = \"light\"\n"
+	writeConfig(t, src)
+	code, body := chooseAppearance(t, s, c, `{"stack":["fonts/Mine.ttf","palmterm test mono","Phone Only Sans","jetbrains mono","~/my/Hand.otf"]}`)
+	if code != http.StatusOK {
+		t.Fatalf("code=%d %s", code, body)
+	}
+	want := "version = 2\n\n[font]\nstack = [\"fonts/Mine.ttf\", \"Palmterm Test Mono\", \"Phone Only Sans\", \"JetBrains Mono\", \"~/my/Hand.otf\"]  # 並び\n\n[theme]\nname = \"light\"\n"
+	if got := readConfigFile(t); got != want {
+		t.Fatalf("書き戻した中身:\n%s", got)
+	}
+	// 別の端末で読み込み直しても同じ並び
+	r := getFontConfig(t, s, other)
+	if r.Error != "" || len(r.FontFaces) < 4 || r.FontFaces[0].URL == "" || r.FontFaces[2].Family != "Phone Only Sans" || r.FontFaces[3].Family != "JetBrains Mono" {
+		t.Fatalf("%+v", r)
+	}
+
+	// 入れ替えると、その順に書く
+	if code, body := chooseAppearance(t, s, c, `{"stack":["JetBrains Mono","fonts/Mine.ttf"]}`); code != http.StatusOK {
+		t.Fatalf("code=%d %s", code, body)
+	}
+	if got := readConfigFile(t); !strings.Contains(got, "stack = [\"JetBrains Mono\", \"fonts/Mine.ttf\"]  # 並び\n") {
+		t.Fatalf("書き戻した中身:\n%s", got)
+	}
+
+	// 無い・並べられないもの、同じものを2回、font と一緒、ログインしていない、は断って書き換えない
+	before := readConfigFile(t)
+	for _, req := range []string{
+		`{"stack":["No Such Font Palmterm"]}`,
+		`{"stack":["fonts/../config.toml"]}`,
+		`{"stack":["fonts/Gone.ttf"]}`,
+		`{"stack":["~/other/secret.ttf"]}`,
+		`{"stack":["fonts/Mine.ttf","JetBrains Mono","jetbrains mono"]}`,
+		`{"stack":["JetBrains Mono"],"font":"Mine.ttf"}`,
+		`{"stack":["JetBrains Mono"],"systemFont":"JetBrains Mono"}`,
+	} {
+		if code, body := chooseAppearance(t, s, c, req); code == http.StatusOK {
+			t.Fatalf("%s: 受け付けました %s", req, body)
+		}
+	}
+	if code, _ := chooseAppearance(t, s, nil, `{"stack":[]}`); code == http.StatusOK {
+		t.Fatalf("ログインしていないのに書き戻しました")
+	}
+	if got := readConfigFile(t); got != before {
+		t.Fatalf("書き換えました:\n%s", got)
+	}
+
+	// 空にすると stack の行を消し、既定で描く
+	if code, body := chooseAppearance(t, s, c, `{"stack":[]}`); code != http.StatusOK {
+		t.Fatalf("code=%d %s", code, body)
+	}
+	if got, want := readConfigFile(t), "version = 2\n\n[font]\n\n[theme]\nname = \"light\"\n"; got != want {
+		t.Fatalf("空にした中身:\n%s", got)
+	}
+	if r := getFontConfig(t, s, other); len(r.FontFaces) != 0 || r.Error != "" {
+		t.Fatalf("%+v", r)
+	}
+
+	// 版 1 の書き方なら family・file を消して stack にする
+	writeConfig(t, "version = 1\n[font]\nfamily = \"Old\"\nfile = \"fonts/Mine.ttf\"\n")
+	if code, body := chooseAppearance(t, s, c, `{"stack":["fonts/Mine.ttf","JetBrains Mono"]}`); code != http.StatusOK {
+		t.Fatalf("code=%d %s", code, body)
+	}
+	if got, want := readConfigFile(t), "version = 1\n[font]\nstack = [\"fonts/Mine.ttf\", \"JetBrains Mono\"]\n"; got != want {
+		t.Fatalf("版 1 からの中身:\n%s", got)
+	}
+}

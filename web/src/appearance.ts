@@ -10,6 +10,8 @@ export interface AppearanceChange {
   font?: string;
   /** PC に入っているフォントか組み込みのフォント（JetBrains Mono）の名前。[font] の stack をその1つにする。 */
   systemFont?: string;
+  /** 「使う順」の並び。[font] の stack をこの順にする（空なら stack の行を消して既定に戻す）。 */
+  stack?: string[];
 }
 
 /** 書き戻して、書き戻したあとの設定（/api/config と同じ形）を返す。断られたら理由を投げる。 */

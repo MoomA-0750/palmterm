@@ -775,6 +775,96 @@ text = ":wq"
     await cdp.detach();
   }, 30_000);
 
+  it("フォントの一覧の上の「使う順」の欄に各行の「足す」で入れ、上下で順を変え、「外す」で抜ける。欄の項目にも出どころの印が付く。変えるたびに読み込み直さずに当て、stack を欄の順に書き換え、別の端末でも同じ順になる。空にすると stack の行を消して JetBrains Mono で描く", async () => {
+    rmSync(join(dir, "fonts"), { recursive: true, force: true });
+    mkdirSync(join(dir, "fonts"), { recursive: true });
+    writeFileSync(join(dir, "fonts", "Picked.ttf"), testFont("Palmterm Picks"));
+    // 手で書いた、スマホにだけあるフォントの名前（一覧には無い）
+    writeFileSync(configPath, `version = 2\n[font]\nstack = ["Palmterm Local"] # mine\n`);
+    await openPage();
+    const { usedFont, cdp } = await fontProbe();
+    expect(await usedFont("text")).toBe("Palmterm Local");
+    await page.evaluate(() => ((window as unknown as { notReloaded: boolean }).notReloaded = true));
+
+    await openSettings();
+    await page.locator("#settings .settings-fonts").click();
+    const items = page.locator("#font-stack-list .font-stack-item");
+    const stackNames = (p: Page = page) => p.locator("#font-stack-list .font-stack-item .font-name").allTextContents();
+    await waitUntil("使う順が出る", async () => (await items.count()) === 1);
+    expect(await items.locator(".font-source").allTextContents()).toEqual(["Config"]);
+    // 欄は一覧の上にある
+    const [stackBox, listBox] = await Promise.all([page.locator("#font-stack").boundingBox(), page.locator("#font-list").boundingBox()]);
+    expect(stackBox!.y).toBeLessThan(listBox!.y);
+
+    // 「足す」で欄の最後に入る。欄にあるものには「足す」を出さない
+    const cyril = page.locator(".font-system", { hasText: "Palmterm Cyril" });
+    await cyril.locator(".font-add").click();
+    await waitUntil("足す", async () => (await items.count()) === 2);
+    expect(await cyril.locator(".font-add").count()).toBe(0);
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 2\n[font]\nstack = ["Palmterm Local", "Palmterm Cyril"] # mine\n`);
+    expect(await usedFont("cyrillic")).toBe("Palmterm Cyril");
+    const picked = page.locator(".font-file", { hasText: "Picked.ttf" });
+    await picked.locator(".font-add").click();
+    await waitUntil("足す", async () => (await items.count()) === 3);
+    expect(await stackNames()).toEqual(["Palmterm Local", "Palmterm Cyril", "Picked.ttf"]);
+    expect(await items.locator(".font-source").allTextContents()).toEqual(["Config", "PC", "Added"]);
+    await page.locator(".font-builtin .font-add").click();
+    await waitUntil("足す", async () => (await items.count()) === 4);
+    expect(await items.nth(3).locator(".font-source").textContent()).toBe("Built-in");
+
+    // 上下で順を変える。先頭の「↑」と最後の「↓」は押せない
+    expect(await items.nth(0).locator(".font-up").isDisabled()).toBe(true);
+    expect(await items.nth(3).locator(".font-down").isDisabled()).toBe(true);
+    await items.nth(2).locator(".font-up").click();
+    await waitUntil("上へ", async () => (await stackNames())[1] === "Picked.ttf");
+    await items.nth(1).locator(".font-up").click();
+    await waitUntil("上へ", async () => (await stackNames())[0] === "Picked.ttf");
+    await items.nth(1).locator(".font-down").click();
+    await waitUntil("下へ", async () => (await stackNames())[2] === "Palmterm Local");
+    expect(await stackNames()).toEqual(["Picked.ttf", "Palmterm Cyril", "Palmterm Local", "JetBrains Mono"]);
+    const ordered = `version = 2\n[font]\nstack = ["fonts/Picked.ttf", "Palmterm Cyril", "Palmterm Local", "JetBrains Mono"] # mine\n`;
+    expect(readFileSync(configPath, "utf8")).toBe(ordered);
+    // 読み込み直さずに当てる。英字は先頭の Picked、キリル文字は Picked に無いので次の Cyril
+    expect(await usedFont("text")).toBe("Palmterm Picks");
+    expect(await usedFont("cyrillic")).toBe("Palmterm Cyril");
+    expect(await page.evaluate(() => (window as unknown as { notReloaded?: boolean }).notReloaded)).toBe(true);
+
+    // 別の端末で読み込み直しても同じ順
+    const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
+    try {
+      const otherPage = await other.newPage();
+      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await otherPage.waitForFunction(() => document.querySelector(".term-row") !== null);
+      expect(await otherPage.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--mono-font"))).toMatch(
+        /palmterm font 1.*Palmterm Cyril.*Palmterm Local.*JetBrains Mono/,
+      );
+      await openSettings(otherPage);
+      await otherPage.locator("#settings .settings-fonts").click();
+      await waitUntil("使う順が出る", async () => (await otherPage.locator("#font-stack-list .font-stack-item").count()) === 4);
+      expect(await stackNames(otherPage)).toEqual(["Picked.ttf", "Palmterm Cyril", "Palmterm Local", "JetBrains Mono"]);
+    } finally {
+      await other.close();
+    }
+
+    // 「外す」で抜ける。空にすると stack の行を消し、既定の JetBrains Mono で描く
+    await items.nth(0).locator(".font-remove").click();
+    await waitUntil("外す", async () => (await items.count()) === 3);
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 2\n[font]\nstack = ["Palmterm Cyril", "Palmterm Local", "JetBrains Mono"] # mine\n`);
+    expect((await usedFont("text")).split(",")[0]).toBe("Palmterm Local"); // 空白はキリル文字のフォントも持つ
+    for (let n = 2; n >= 0; n--) {
+      await items.nth(0).locator(".font-remove").click();
+      await waitUntil("外す", async () => (await items.count()) === n);
+    }
+    expect(await page.locator("#font-stack-list .font-stack-empty").isVisible()).toBe(true);
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 2\n[font]\n`);
+    expect(await usedFont("text")).toBe("JetBrains Mono");
+    expect(await usedFont("cyrillic")).not.toBe("Palmterm Cyril");
+    expect(await page.locator(".font-default .font-name").textContent()).toContain("in use");
+    expect(await page.evaluate(() => (window as unknown as { notReloaded?: boolean }).notReloaded)).toBe(true);
+    rmSync(join(dir, "fonts"), { recursive: true, force: true });
+    await cdp.detach();
+  }, 30_000);
+
   it("設定画面の「フォント」から足したフォントは fonts/ に保存され、[font] の file で使え、一覧から2回押しで消せる。フォントでない・大きすぎるものは保存せず知らせる", async () => {
     const fontsDir = join(dir, "fonts");
     rmSync(fontsDir, { recursive: true, force: true });

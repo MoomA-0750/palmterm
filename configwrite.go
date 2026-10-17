@@ -29,11 +29,55 @@ var configWriteMu sync.Mutex
 
 // 画面からの変更。書いた項目だけ変える。Font は fonts/ の直下のファイルの名前で、空なら [font] の file を消す。
 // SystemFont は PC に入っているフォントか組み込みのフォント（JetBrains Mono）の名前で、[font] の stack をその1つにする。
+// Stack は画面の「使う順」の並びで、[font] の stack をその順にする（空なら stack の行を消して既定に戻す）。
 type appearanceChange struct {
-	Language   *string `json:"language"`
-	Theme      *string `json:"theme"`
-	Font       *string `json:"font"`
-	SystemFont *string `json:"systemFont"`
+	Language   *string   `json:"language"`
+	Theme      *string   `json:"theme"`
+	Font       *string   `json:"font"`
+	SystemFont *string   `json:"systemFont"`
+	Stack      *[]string `json:"stack"`
+}
+
+// 「使う順」に並べられるのは16個まで。
+const maxStack = 16
+
+// 「使う順」の1つを確かめ、設定ファイルに書く形にする。fonts/ の直下のフォント、組み込みのフォント、PC のフォントの名前、
+// それと今の stack に書いてあるもの（本人が手で書いたパスや、スマホにだけあるフォントの名前）だけを受け付ける。
+func stackEntry(name string, current []string) (string, error) {
+	if slices.Contains(current, name) {
+		return name, nil
+	}
+	if file, ok := strings.CutPrefix(name, "fonts/"); ok {
+		if err := checkUploadedFont(file); err != nil {
+			return "", err
+		}
+		return name, nil
+	}
+	if strings.EqualFold(name, builtinFont) {
+		return builtinFont, nil
+	}
+	if found, ok := findSystemFont(name); ok {
+		return found, nil
+	}
+	return "", &httpError{http.StatusNotFound, fmt.Sprintf(tr("そのフォントはありません: %q", "No such font: %q"), name)}
+}
+
+type httpError struct {
+	status int
+	msg    string
+}
+
+func (e *httpError) Error() string { return e.msg }
+
+// fonts/ の直下にある、画面から足したフォントか。
+func checkUploadedFont(name string) error {
+	if !uploadNamePattern.MatchString(name) || strings.Contains(name, "..") || !fontUploadExts[strings.ToLower(filepath.Ext(name))] {
+		return &httpError{http.StatusBadRequest, tr("名前が正しくありません", "Invalid name")}
+	}
+	if info, err := os.Lstat(filepath.Join(fontsDir(), name)); err != nil || !info.Mode().IsRegular() {
+		return &httpError{http.StatusNotFound, tr("そのフォントはありません", "No such font")}
+	}
+	return nil
 }
 
 func (s *server) handleAppearance(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +86,7 @@ func (s *server) handleAppearance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if req.Language == nil && req.Theme == nil && req.Font == nil && req.SystemFont == nil {
+	if req.Language == nil && req.Theme == nil && req.Font == nil && req.SystemFont == nil && req.Stack == nil {
 		http.Error(w, tr("変える項目がありません", "Nothing to change"), http.StatusBadRequest)
 		return
 	}
@@ -55,15 +99,39 @@ func (s *server) handleAppearance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Font != nil && *req.Font != "" {
-		name := *req.Font
-		if !uploadNamePattern.MatchString(name) || strings.Contains(name, "..") || !fontUploadExts[strings.ToLower(filepath.Ext(name))] {
-			http.Error(w, tr("名前が正しくありません", "Invalid name"), http.StatusBadRequest)
+		if err := checkUploadedFont(*req.Font); err != nil {
+			var he *httpError
+			errors.As(err, &he)
+			http.Error(w, he.msg, he.status)
 			return
 		}
-		if info, err := os.Lstat(filepath.Join(fontsDir(), name)); err != nil || !info.Mode().IsRegular() {
-			http.Error(w, tr("そのフォントはありません", "No such font"), http.StatusNotFound)
+	}
+	if (req.Font != nil || req.SystemFont != nil) && req.Stack != nil {
+		http.Error(w, tr("stack は font・systemFont と一緒に選べません", "stack cannot be chosen together with font or systemFont"), http.StatusBadRequest)
+		return
+	}
+	if req.Stack != nil {
+		if len(*req.Stack) > maxStack {
+			http.Error(w, fmt.Sprintf(tr("並べられるのは %d 個までです", "At most %d fonts can be listed"), maxStack), http.StatusBadRequest)
 			return
 		}
+		cfg, _ := settings.get()
+		var stack []string
+		for _, name := range *req.Stack {
+			entry, err := stackEntry(name, cfg.Font.Stack)
+			if err != nil {
+				var he *httpError
+				errors.As(err, &he)
+				http.Error(w, he.msg, he.status)
+				return
+			}
+			if slices.ContainsFunc(stack, func(s string) bool { return strings.EqualFold(s, entry) }) {
+				http.Error(w, fmt.Sprintf(tr("同じフォントが2回あります: %q", "The same font is listed twice: %q"), entry), http.StatusBadRequest)
+				return
+			}
+			stack = append(stack, entry)
+		}
+		req.Stack = &stack
 	}
 	if req.SystemFont != nil {
 		if req.Font != nil {
@@ -105,6 +173,15 @@ func (s *server) handleAppearance(w http.ResponseWriter, r *http.Request) {
 			edits = append(edits, configEdit{table: "font", key: "file", remove: true}, configEdit{table: "font", key: "family", remove: true})
 		}
 		edits = append(edits, configEdit{table: "font", key: "stack", value: []string{*req.SystemFont}})
+	}
+	if req.Stack != nil {
+		// 版 1 の書き方（family・file）は stack と一緒に書けないので消す。並びが空なら stack の行も消し、既定（JetBrains Mono）に戻す
+		edits = append(edits, configEdit{table: "font", key: "file", remove: true}, configEdit{table: "font", key: "family", remove: true})
+		if len(*req.Stack) == 0 {
+			edits = append(edits, configEdit{table: "font", key: "stack", remove: true})
+		} else {
+			edits = append(edits, configEdit{table: "font", key: "stack", value: *req.Stack})
+		}
 	}
 	if err := settings.update(edits); err != nil {
 		var bad *configUnreadableError
