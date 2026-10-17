@@ -284,3 +284,91 @@ stack = ["fonts/MyMono.woff2", "Palmterm Stack CJK", "fonts/Missing.ttf", "Phone
 		t.Fatalf("code=%d", w.Code)
 	}
 }
+
+// フォントの一覧には PC に入っているフォントを名前ごとに1つずつ出し（ファイルのパスは出さない）、
+// 「使う」で [font] の stack をそのフォント1つにすると、そのファイルを配る。一覧も配るのもログインした端末にだけ。
+func TestSystemFontsAreListedAndChosen(t *testing.T) {
+	s := newTestServer(t)
+	data := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
+	t.Setenv("XDG_DATA_DIRS", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	forgetFont()
+	t.Cleanup(forgetFont)
+	regular := fakeFont("Palmterm Test Mono", "Regular")
+	writeFile(t, filepath.Join(data, "fonts", "PalmtermTestMono-Bold.ttf"), fakeFont("Palmterm Test Mono", "Bold"))
+	writeFile(t, filepath.Join(data, "fonts", "PalmtermTestMono-Regular.ttf"), regular)
+	writeFile(t, filepath.Join(data, "fonts", "sub", "Other.otf"), fakeFont("Palmterm Other", "Regular"))
+	writeFile(t, filepath.Join(data, "fonts", "JetBrainsMono.ttf"), fakeFont("JetBrains Mono", "Regular"))
+	c := login(t, s, "phone")
+
+	if w := authed(s, "GET", "/api/fonts", "", nil); w.Code == http.StatusOK || strings.Contains(w.Body.String(), "Palmterm") {
+		t.Fatalf("ログインしていないのに一覧を返しました: code=%d", w.Code)
+	}
+	w := authed(s, "GET", "/api/fonts", "", c)
+	var list struct {
+		System  []string `json:"system"`
+		Builtin string   `json:"builtin"`
+		File    string   `json:"file"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	count := map[string]int{}
+	for _, n := range list.System {
+		count[n]++
+	}
+	if count["Palmterm Test Mono"] != 1 || count["Palmterm Other"] != 1 || count["JetBrains Mono"] != 0 || list.Builtin != "JetBrains Mono" {
+		t.Fatalf("%+v", list)
+	}
+	if strings.Contains(w.Body.String(), data) || strings.Contains(w.Body.String(), ".ttf") || strings.Contains(w.Body.String(), ".otf") {
+		t.Fatalf("ファイルのパスを出しました: %s", w.Body.String())
+	}
+
+	// 版 1 の書き方なら family・file の行を消して stack にする（一緒には書けないため）
+	writeConfig(t, "version = 1\n[font]\nfamily = \"Old\"\nfile = \"old.ttf\"\n# keep\n\n[theme]\nname = \"light\"\n")
+	if code, body := chooseAppearance(t, s, c, `{"systemFont":"palmterm test mono"}`); code != http.StatusOK {
+		t.Fatalf("code=%d %s", code, body)
+	}
+	if got, want := readConfigFile(t), "version = 1\n[font]\nstack = [\"Palmterm Test Mono\"]\n# keep\n\n[theme]\nname = \"light\"\n"; got != want {
+		t.Fatalf("書き戻した中身:\n%s", got)
+	}
+	r := getFontConfig(t, s, c)
+	if r.FontURL() == "" || r.FontError != "" || r.Error != "" {
+		t.Fatalf("%+v", r)
+	}
+	if w := authed(s, "GET", r.FontURL(), "", c); w.Code != http.StatusOK || !bytes.Equal(w.Body.Bytes(), regular) {
+		t.Fatalf("code=%d len=%d", w.Code, w.Body.Len())
+	}
+	if w := authed(s, "GET", r.FontURL(), "", nil); w.Code == http.StatusOK {
+		t.Fatalf("ログインしていないのに配りました")
+	}
+	if w := authed(s, "GET", "/api/fonts", "", c); !strings.Contains(w.Body.String(), `"file":"Palmterm Test Mono"`) {
+		t.Fatalf("一覧の使用中: %s", w.Body.String())
+	}
+
+	// 組み込みの JetBrains Mono は配らず、画面の組み込みのものを使う
+	if code, body := chooseAppearance(t, s, c, `{"systemFont":"jetbrains mono"}`); code != http.StatusOK {
+		t.Fatalf("code=%d %s", code, body)
+	}
+	if got := readConfigFile(t); !strings.Contains(got, "stack = [\"JetBrains Mono\"]\n") {
+		t.Fatalf("書き戻した中身:\n%s", got)
+	}
+	if r := getFontConfig(t, s, c); r.FontURL() != "" || len(r.FontFaces) != 1 || r.FontFaces[0].Family != "JetBrains Mono" {
+		t.Fatalf("%+v", r)
+	}
+
+	// PC に無い名前やパスは断り、書き換えない
+	before := readConfigFile(t)
+	for _, name := range []string{"No Such Font Palmterm", "../config.toml", filepath.Join(data, "fonts", "PalmtermTestMono-Regular.ttf"), ""} {
+		if code, body := chooseAppearance(t, s, c, `{"systemFont":`+jsonString(name)+`}`); code != http.StatusNotFound {
+			t.Fatalf("%q: code=%d %s", name, code, body)
+		}
+	}
+	if code, _ := chooseAppearance(t, s, nil, `{"systemFont":"Palmterm Other"}`); code == http.StatusOK {
+		t.Fatalf("ログインしていないのに書き戻しました")
+	}
+	if got := readConfigFile(t); got != before {
+		t.Fatalf("書き換えました:\n%s", got)
+	}
+}

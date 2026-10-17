@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -215,28 +216,45 @@ func fontDirs() []string {
 // family の名前のフォントのファイルを探す（見つからなければ空）。普通の太さで斜体でないものを選ぶ。
 // dirs の中を先に探し、無ければ fontconfig（fc-list）に訊く。
 func findFont(family string, dirs []string) string {
+	if best := bestFont(family, fontFilesIn(dirs)); best != "" {
+		return best
+	}
+	return bestFont(family, fcList(":family="+fcEscape(family)))
+}
+
+// dirs の中の、名前を読めるフォントのファイル（.ttf・.otf・.ttc）。
+func fontFilesIn(dirs []string) []string {
 	var files []string
 	for _, dir := range dirs {
 		filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-			if err == nil && !d.IsDir() {
-				switch strings.ToLower(filepath.Ext(path)) {
-				case ".ttf", ".otf", ".ttc":
-					files = append(files, path)
-				}
+			if err == nil && !d.IsDir() && isSfntFile(path) {
+				files = append(files, path)
 			}
 			return nil
 		})
 	}
-	if best := bestFont(family, files); best != "" {
-		return best
-	}
-	return bestFont(family, fcList(family))
+	return files
 }
 
-// fontconfig が知っている、その名前のフォントのファイル。
-func fcList(family string) []string {
-	r := strings.NewReplacer(`\`, `\\`, `-`, `\-`, `:`, `\:`, `,`, `\,`, `=`, `\=`)
-	out, err := exec.Command("fc-list", "--format", "%{file}\n", ":family="+r.Replace(family)).Output()
+func isSfntFile(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".ttf", ".otf", ".ttc":
+		return true
+	}
+	return false
+}
+
+func fcEscape(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `-`, `\-`, `:`, `\:`, `,`, `\,`, `=`, `\=`).Replace(s)
+}
+
+// fontconfig が知っている、pattern（例 ":family=名前"。空なら全部）に合うフォントのファイル。
+func fcList(pattern string) []string {
+	args := []string{"--format", "%{file}\n"}
+	if pattern != "" {
+		args = append(args, pattern)
+	}
+	out, err := exec.Command("fc-list", args...).Output()
 	if err != nil {
 		return nil
 	}
@@ -247,6 +265,59 @@ func fcList(family string) []string {
 		}
 	}
 	return files
+}
+
+var systemFontCache struct {
+	mu    sync.Mutex
+	key   string
+	names []string
+	at    time.Time
+}
+
+// PC に入っているフォントの名前（フォントごとに1つ。太さ違いはまとめる）。フォントの一覧の「PC」の行に出し、
+// stack に書けば findFont で探して配る。ファイルのパスは返さない。組み込みの JetBrains Mono は除く。
+func systemFonts() []string {
+	dirs := fontDirs()
+	key := strings.Join(dirs, "\x00")
+	systemFontCache.mu.Lock()
+	defer systemFontCache.mu.Unlock()
+	if systemFontCache.key == key && time.Since(systemFontCache.at) < fontCacheTTL {
+		return systemFontCache.names
+	}
+	byName := map[string]string{}
+	seen := map[string]bool{}
+	for _, path := range append(fontFilesIn(dirs), fcList("")...) {
+		if seen[path] || !isSfntFile(path) {
+			continue
+		}
+		seen[path] = true
+		for _, family := range sfntFamilies(path) {
+			k := strings.ToLower(family)
+			if _, ok := byName[k]; !ok && family != "" && k != strings.ToLower(builtinFont) {
+				byName[k] = family
+			}
+		}
+	}
+	names := make([]string, 0, len(byName))
+	for _, n := range byName {
+		names = append(names, n)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		a, b := strings.ToLower(names[i]), strings.ToLower(names[j])
+		return a < b || a == b && names[i] < names[j]
+	})
+	systemFontCache.key, systemFontCache.names, systemFontCache.at = key, names, time.Now()
+	return names
+}
+
+// 名前が PC のフォントにあれば、その書き方（大文字小文字）の名前。
+func findSystemFont(name string) (string, bool) {
+	for _, n := range systemFonts() {
+		if strings.EqualFold(n, name) {
+			return n, true
+		}
+	}
+	return "", false
 }
 
 func bestFont(family string, files []string) string {
@@ -280,6 +351,15 @@ type sfntName struct{ family, style string }
 // TrueType・OpenType（とその集まり）のファイルから、フォントの名前と太さ・斜体の名前を読む。
 // 名前は家族名（name ID 1・16）ごとに1つずつ返す。読めないファイルは空。
 func sfntNames(path string) []sfntName {
+	var names []sfntName
+	for _, face := range sfntFaces(path) {
+		names = append(names, face...)
+	}
+	return names
+}
+
+// ファイルの中のフォントごとの名前（.ttc なら複数）。
+func sfntFaces(path string) [][]sfntName {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil
@@ -304,11 +384,22 @@ func sfntNames(path string) []sfntName {
 			offsets = append(offsets, int64(binary.BigEndian.Uint32(buf[4*i:])))
 		}
 	}
-	var names []sfntName
+	var faces [][]sfntName
 	for _, off := range offsets {
-		names = append(names, sfntFontNames(f, off)...)
+		if names := sfntFontNames(f, off); len(names) > 0 {
+			faces = append(faces, names)
+		}
 	}
-	return names
+	return faces
+}
+
+// ファイルの中のフォントごとの代表の名前（太さ違いをまとめた名前を、英語のものから選ぶ）。
+func sfntFamilies(path string) []string {
+	var families []string
+	for _, face := range sfntFaces(path) {
+		families = append(families, face[0].family)
+	}
+	return families
 }
 
 func sfntFontNames(f io.ReaderAt, off int64) []sfntName {
@@ -346,14 +437,15 @@ func sfntFontNames(f io.ReaderAt, off int64) []sfntName {
 	}
 	count := int(binary.BigEndian.Uint16(table[2:]))
 	strOff := int(binary.BigEndian.Uint16(table[4:]))
-	byID := map[uint16][]string{}
+	// 英語の名前を先に並べる（フォントの一覧には先頭の名前を出す）
+	byID, other := map[uint16][]string{}, map[uint16][]string{}
 	for i := range count {
 		p := 6 + 12*i
 		if p+12 > len(table) {
 			break
 		}
 		rec := table[p:]
-		platform, id := binary.BigEndian.Uint16(rec), binary.BigEndian.Uint16(rec[6:])
+		platform, lang, id := binary.BigEndian.Uint16(rec), binary.BigEndian.Uint16(rec[4:]), binary.BigEndian.Uint16(rec[6:])
 		length, at := int(binary.BigEndian.Uint16(rec[8:])), strOff+int(binary.BigEndian.Uint16(rec[10:]))
 		if id != 1 && id != 2 && id != 16 && id != 17 || at+length > len(table) {
 			continue
@@ -372,7 +464,14 @@ func sfntFontNames(f io.ReaderAt, off int64) []sfntName {
 		default:
 			continue
 		}
-		byID[id] = append(byID[id], text)
+		if platform == 0 || platform == 1 && lang == 0 || platform == 3 && lang == 0x409 {
+			byID[id] = append(byID[id], text)
+		} else {
+			other[id] = append(other[id], text)
+		}
+	}
+	for id, texts := range other {
+		byID[id] = append(byID[id], texts...)
 	}
 	// 新しいフォントは、太さ違いをまとめた名前（16・17）と、太さごとの名前（1・2）の両方を持つ。
 	var names []sfntName

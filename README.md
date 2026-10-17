@@ -272,6 +272,10 @@ stack = ["fonts/MyMono.woff2", "Noto Sans Mono CJK JP", "JetBrains Mono"]
   (`stack = ["fonts/NAME"]`); with the version 1 way, the `file` line (`file = "fonts/NAME"`) is rewritten.
   Other lines are left alone as with the theme. Use on "Default font" at the top removes the `stack` (or
   `file`) line. The same screen deletes saved fonts (tap twice).
+- Besides added fonts (marked "Added"), the list shows the fonts installed on the PC (marked "PC", one row per
+  font name) and the built-in JetBrains Mono (marked "Built-in"); type in the box above it to filter by name.
+  Use on a PC or built-in font sets `[font]` to `stack = ["NAME"]` (the version 1 `family` and `file` lines are
+  removed). The PC font list is shown only to logged-in devices, with names only and no file paths.
 - Fonts are served only to logged-in devices, and only the font files in the list.
 - Only the regular weight of each font is served, so the browser draws bold by thickening it. Nerd Font icons are always
   drawn with the icon font palmterm serves, whichever font you pick.

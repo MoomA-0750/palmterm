@@ -19,7 +19,7 @@ import (
 )
 
 // 画面で選んだ言語・テーマ・フォントを設定ファイルに書き戻す。ファイルを丸ごと書き直すのではなく、
-// language と [theme] の name と [font] の file（stack の書き方なら stack）の行だけを書き換えるので、本人が書いたコメント・ほかの項目・並び順は残る。
+// language と [theme] の name と [font] の file・family・stack の行だけを書き換えるので、本人が書いたコメント・ほかの項目・並び順は残る。
 // 書き換えたあとに読み直して、変わったのがその1か所だけであることを確かめてから保存する。
 
 // 組み込みのテーマの名前（web/src/theme.ts の THEMES と同じ。TestThemeNamesMatchTheScreen で確かめる）。
@@ -28,10 +28,12 @@ var themeNames = []string{"default", "light", "solarized-dark", "solarized-light
 var configWriteMu sync.Mutex
 
 // 画面からの変更。書いた項目だけ変える。Font は fonts/ の直下のファイルの名前で、空なら [font] の file を消す。
+// SystemFont は PC に入っているフォントか組み込みのフォント（JetBrains Mono）の名前で、[font] の stack をその1つにする。
 type appearanceChange struct {
-	Language *string `json:"language"`
-	Theme    *string `json:"theme"`
-	Font     *string `json:"font"`
+	Language   *string `json:"language"`
+	Theme      *string `json:"theme"`
+	Font       *string `json:"font"`
+	SystemFont *string `json:"systemFont"`
 }
 
 func (s *server) handleAppearance(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +42,7 @@ func (s *server) handleAppearance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if req.Language == nil && req.Theme == nil && req.Font == nil {
+	if req.Language == nil && req.Theme == nil && req.Font == nil && req.SystemFont == nil {
 		http.Error(w, tr("変える項目がありません", "Nothing to change"), http.StatusBadRequest)
 		return
 	}
@@ -63,6 +65,21 @@ func (s *server) handleAppearance(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.SystemFont != nil {
+		if req.Font != nil {
+			http.Error(w, tr("font と systemFont は一緒に選べません", "font and systemFont cannot be chosen together"), http.StatusBadRequest)
+			return
+		}
+		name, ok := builtinFont, strings.EqualFold(*req.SystemFont, builtinFont)
+		if !ok {
+			name, ok = findSystemFont(*req.SystemFont)
+		}
+		if !ok {
+			http.Error(w, fmt.Sprintf(tr("そのフォントは PC にありません: %q", "No such font on the PC: %q"), *req.SystemFont), http.StatusNotFound)
+			return
+		}
+		req.SystemFont = &name
+	}
 
 	var edits []configEdit
 	if req.Language != nil {
@@ -81,6 +98,13 @@ func (s *server) handleAppearance(w http.ResponseWriter, r *http.Request) {
 			e = configEdit{key: e.key, table: "font", remove: true}
 		}
 		edits = append(edits, e)
+	}
+	if req.SystemFont != nil {
+		// 版 1 の書き方（family・file）は stack と一緒に書けないので、その行を消して stack にする
+		if cfg, _ := settings.get(); cfg.Font.Stack == nil {
+			edits = append(edits, configEdit{table: "font", key: "file", remove: true}, configEdit{table: "font", key: "family", remove: true})
+		}
+		edits = append(edits, configEdit{table: "font", key: "stack", value: []string{*req.SystemFont}})
 	}
 	if err := settings.update(edits); err != nil {
 		var bad *configUnreadableError

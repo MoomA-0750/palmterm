@@ -714,6 +714,67 @@ text = ":wq"
     await cdp.detach();
   });
 
+  it("フォントの一覧に組み込み・足したフォント・PC のフォントが出どころの印付きで並び、PC のフォントは名前ごとに1行で名前で絞り込める。「使う」で読み込み直さずに変わり、stack がそのフォント1つになる。一覧と配るのはログインした端末だけで、パスは出さない", async () => {
+    rmSync(join(dir, "fonts"), { recursive: true, force: true });
+    mkdirSync(join(dir, "fonts"), { recursive: true });
+    writeFileSync(join(dir, "fonts", "Mine.ttf"), testFont("Palmterm Mines"));
+    // PC に同じ名前のファイルが2つあっても1行（太さ違いのつもり）
+    writeFileSync(join(dir, "data", "fonts", "PalmtermProbe-Copy.ttf"), testFont("Palmterm Probe"));
+    writeFileSync(configPath, `[font]\nfamily = "Palmterm Local"\n`);
+    await openPage();
+    const { usedFont, cdp } = await fontProbe();
+    expect(await usedFont("text")).toBe("Palmterm Local");
+    await page.evaluate(() => ((window as unknown as { notReloaded: boolean }).notReloaded = true));
+
+    await openSettings();
+    await page.locator("#settings .settings-fonts").click();
+    const probe = page.locator(".font-system", { hasText: "Palmterm Probe" });
+    await waitUntil("PC のフォントが出る", async () => (await probe.count()) > 0);
+    expect(await probe.count()).toBe(1);
+    expect(await probe.locator(".font-source").textContent()).toBe("PC");
+    expect(await page.locator(".font-builtin .font-name").textContent()).toBe("JetBrains Mono");
+    expect(await page.locator(".font-builtin .font-source").textContent()).toBe("Built-in");
+    expect(await page.locator(".font-file", { hasText: "Mine.ttf" }).locator(".font-source").textContent()).toBe("Added");
+    // 名前だけを出し、PC のファイルのパスは出さない
+    const listText = (await page.locator("#font-list").textContent()) ?? "";
+    expect(listText).not.toContain(join(dir, "data"));
+    expect(listText).not.toContain("PalmtermProbe-Regular");
+    const listed = await page.evaluate(() => fetch("/api/fonts").then((r) => r.text()));
+    expect(listed).toContain('"Palmterm Probe"');
+    expect(listed).not.toContain(join(dir, "data"));
+    expect(listed).not.toContain("PalmtermProbe-Regular");
+    expect((await fetch(`${base}/api/fonts`, { redirect: "manual" })).status).not.toBe(200);
+
+    // 名前で絞り込む（大文字小文字は問わない）
+    await page.locator("#fonts-filter").fill("PALMTERM");
+    const visibleNames = () => page.locator("#font-list li:visible .font-name").allTextContents();
+    expect((await visibleNames()).slice(1).every((n) => n.includes("Palmterm"))).toBe(true);
+    expect(await visibleNames()).toContain("Palmterm Cyril");
+    await page.locator("#fonts-filter").fill("probe");
+    expect(await visibleNames()).toEqual(["Default font（in use）", "Palmterm Probe"]);
+
+    // 「使う」で読み込み直さずに端末の文字が変わり、版 1 の family の行は stack になる
+    await probe.locator(".font-use").click();
+    await waitUntil("使用中になる", async () => ((await probe.locator(".font-name").textContent()) ?? "").includes("in use"));
+    expect(readFileSync(configPath, "utf8")).toBe(`[font]\nstack = ["Palmterm Probe"]\n`);
+    expect(await usedFont("text")).toBe("Palmterm Probe");
+    expect(await page.evaluate(() => (window as unknown as { notReloaded?: boolean }).notReloaded)).toBe(true);
+    // 配ったのは PC のそのファイルで、ログインしていなければ配らない
+    expect(await page.evaluate(() => fetch("/api/font?i=0").then((r) => r.status))).toBe(200);
+    expect((await fetch(`${base}/api/font?i=0`, { redirect: "manual" })).status).not.toBe(200);
+
+    // 組み込みの JetBrains Mono も選べる（絞り込みは開き直しても残る）
+    await page.locator("#fonts-filter").fill("jetbrains");
+    await page.locator(".font-builtin .font-use").click();
+    await waitUntil("使用中になる", async () => ((await page.locator(".font-builtin .font-name").textContent()) ?? "").includes("in use"));
+    expect(readFileSync(configPath, "utf8")).toBe(`[font]\nstack = ["JetBrains Mono"]\n`);
+    expect(await usedFont("text")).toBe("JetBrains Mono");
+    await page.locator("#fonts-filter").fill("");
+    rmSync(join(dir, "data", "fonts", "PalmtermProbe-Copy.ttf"));
+    rmSync(join(dir, "fonts"), { recursive: true, force: true });
+    await cdp.detach();
+  }, 30_000);
+
   it("設定画面の「フォント」から足したフォントは fonts/ に保存され、[font] の file で使え、一覧から2回押しで消せる。フォントでない・大きすぎるものは保存せず知らせる", async () => {
     const fontsDir = join(dir, "fonts");
     rmSync(fontsDir, { recursive: true, force: true });

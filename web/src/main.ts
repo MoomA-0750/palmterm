@@ -805,7 +805,7 @@ $("devices-close").addEventListener("click", () => (devicesEl.hidden = true));
 
 // ---- 画面から足したフォント：追加と削除 ----
 
-const fonts = setupFonts((message) => toast(message, 5000), (name) => changeAppearance({ font: name }));
+const fonts = setupFonts((message) => toast(message, 5000), (change) => changeAppearance(change));
 
 // 大きい画面では板を中央に浮かせ、周りの暗い所か Esc で閉じる（下から上の順に並べる）。
 setupSheets(

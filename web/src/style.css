@@ -766,7 +766,20 @@ button:active {
   list-style: none;
 }
 
+#fonts-filter {
+  margin: 8px 8px 0;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--btn-bg);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+}
+
 .font-file,
+.font-system,
+.font-builtin,
 .font-default {
   display: flex;
   align-items: center;
@@ -775,9 +788,30 @@ button:active {
   border-bottom: 1px solid var(--btn-bg);
 }
 
+#font-list li[hidden] {
+  display: none;
+}
+
 .font-info {
   flex: 1;
   min-width: 0;
+}
+
+/* 名前の前の出どころの印（追加・PC・組み込み）。 */
+.font-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.font-source {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 11px;
+  opacity: 0.7;
 }
 
 .font-name {
@@ -787,6 +821,8 @@ button:active {
 }
 
 .font-file.in-use .font-name,
+.font-system.in-use .font-name,
+.font-builtin.in-use .font-name,
 .font-default.in-use .font-name {
   color: var(--accent);
 }
