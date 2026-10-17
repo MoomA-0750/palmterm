@@ -1,11 +1,13 @@
 ---
 id: 0024
-status: blocked      # todo / doing / blocked / done
+status: todo      # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - "configwrite*.go"
   - "*_test.go"
   - "web/src/**"
   - "README*.md"
+  - "web/e2e/**"
+  - "config.example.toml"
 spec: SPEC.md「〇〇」
 created: 2026-10-17
 ---
@@ -26,6 +28,7 @@ rose-pine と catppuccin を同梱のテーマに加える
 - 決めてほしいこと: scope に次の glob を足してよいか
   - `web/e2e/**`
 - ついでに（任意）: config.example.toml の15行目にも組み込みのテーマの名前が並んでいる。足すなら `config.example.toml` も scope に入れてほしい（入れなければ触らない）
+- 本人の答え（2026-10-17 21:11）: web/e2e/** と config.example.toml を足してよい。example のテーマ名の並びも7つ足して（scope に web/e2e/**, config.example.toml を足した）
 
 ## メモ
 （実行役が書く。試してだめだったこと）
