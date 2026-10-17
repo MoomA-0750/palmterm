@@ -104,7 +104,8 @@ func (c *configStore) get() (config, error) {
 }
 
 // この palmterm が知っている設定ファイルの書き方の版。書き方を変えるときは古い書き方も読めるようにして、版を上げる。
-const configVersion = 1
+// 版 2 で [font] の stack（フォントを優先順位付きで並べる）が増えた。版 1 の family・file も読める。
+const configVersion = 2
 
 func loadConfig(path string) (config, error) {
 	var head struct {
@@ -136,6 +137,9 @@ func loadConfig(path string) (config, error) {
 			names[i] = k.String()
 		}
 		return config{}, fmt.Errorf("知らない項目があります / unknown keys: %s", strings.Join(names, ", "))
+	}
+	if md.IsDefined("font", "stack") && (md.IsDefined("font", "family") || md.IsDefined("font", "file")) {
+		return config{}, fmt.Errorf("[font] の stack と family・file は一緒に書けません（stack に並べてください） / [font] stack cannot be used together with family or file (list them in stack)")
 	}
 	if cfg.Language != "" && cfg.Language != "ja" && cfg.Language != "en" {
 		return config{}, fmt.Errorf("language は \"ja\" か \"en\" / language must be \"ja\" or \"en\": %q", cfg.Language)
@@ -212,13 +216,13 @@ func writeConfigResponse(w http.ResponseWriter) {
 		Error   string `json:"error,omitempty"`
 		// 設定ファイルの版がこの palmterm より新しいとき、その版（画面で知らせる）
 		NewerConfig int `json:"newerConfig,omitempty"`
-		// [font] のフォントを配るときの URL（PC に無ければ空。画面は family の名前でスマホのフォントを探す）
-		FontURL string `json:"fontURL,omitempty"`
-		// [font] の file を使えなかった理由（画面で知らせる）
+		// [font] から決めたフォントの並び（先頭から順に使う）。配るものは url、PC に無ければ family の名前でスマホのフォントを探す
+		FontFaces []fontFace `json:"fontFaces,omitempty"`
+		// [font] のファイルを使えなかった理由（画面で知らせる）
 		FontError string `json:"fontError,omitempty"`
 	}{config: cfg, Path: settings.path, Version: version}
 	font := chooseFont(cfg.Font, settings.path)
-	resp.FontURL = fontURL(font)
+	resp.FontFaces = fontFaces(font)
 	if font.err != nil {
 		resp.FontError = font.err.Error()
 	}

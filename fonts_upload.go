@@ -32,7 +32,7 @@ func fontsDir() string {
 	return filepath.Join(filepath.Dir(settings.path), "fonts")
 }
 
-// 保存したフォントの一覧と、[font] の file にいま書いてあるもの。
+// 保存したフォントの一覧と、[font] の file にいま書いてあるもの（stack の書き方なら並びの先頭）。
 func (s *server) handleFonts(w http.ResponseWriter, r *http.Request) {
 	fonts, err := listFonts(fontsDir())
 	if err != nil {
@@ -41,7 +41,14 @@ func (s *server) handleFonts(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg, _ := settings.get()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"fonts": fonts, "dir": fontsDir(), "file": cfg.Font.File})
+	file := cfg.Font.File
+	if cfg.Font.Stack != nil {
+		file = "" // stack の書き方では、並びの先頭を「使用中」にする
+		if len(cfg.Font.Stack) > 0 {
+			file = cfg.Font.Stack[0]
+		}
+	}
+	json.NewEncoder(w).Encode(map[string]any{"fonts": fonts, "dir": fontsDir(), "file": file})
 }
 
 func listFonts(dir string) ([]savedFont, error) {

@@ -30,11 +30,11 @@ const browserData = join(dir, "browser-data");
 
 /**
  * テスト用のフォント：JetBrains Mono の WOFF を TrueType に戻し、名前を family（14文字）に付け替えたもの。
- * 名前の長さが同じなので、名前の所を書き換えるだけで済む。
+ * 名前の長さが同じなので、名前の所を書き換えるだけで済む。subset は持つ文字（latin は英字だけ、cyrillic はキリル文字だけ）。
  */
-function testFont(family: string): Buffer {
+function testFont(family: string, subset: "latin" | "cyrillic" = "latin"): Buffer {
   if (family.length !== 14) throw new Error("名前は JetBrains Mono と同じ14文字にする");
-  const woff = readFileSync(resolve(__dirname, "../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff"));
+  const woff = readFileSync(resolve(__dirname, `../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-${subset}-400-normal.woff`));
   const n = woff.readUInt16BE(12);
   const tables = Array.from({ length: n }, (_, i) => {
     const e = 44 + 20 * i;
@@ -68,6 +68,7 @@ function testFont(family: string): Buffer {
 }
 mkdirSync(join(dir, "data", "fonts"), { recursive: true });
 writeFileSync(join(dir, "data", "fonts", "PalmtermProbe-Regular.ttf"), testFont("Palmterm Probe"));
+writeFileSync(join(dir, "data", "fonts", "PalmtermCyril-Regular.ttf"), testFont("Palmterm Cyril", "cyrillic"));
 mkdirSync(join(dir, "myfonts"));
 writeFileSync(join(dir, "myfonts", "files.ttf"), testFont("Palmterm Files"));
 mkdirSync(join(browserData, "fonts"), { recursive: true });
@@ -204,20 +205,20 @@ beforeEach(async () => {
 });
 
 /**
- * 文字とアイコン（U+F418）を出し、それぞれ実際にどのフォントで描いたかをブラウザに訊く。
+ * 文字とアイコン（U+F418）、次の行にキリル文字（Ж。1文字ずつ別の span になる）を出し、それぞれ実際にどのフォントで描いたかをブラウザに訊く。
  * ページを読み込み直したあとも使える（printf の出力は tmux に残る）。終わったら cdp.detach() する。
  */
 async function fontProbe() {
-  tmux("send-keys", "-t", SESSION, "printf 'WWW \\357\\220\\230 X\\n'", "Enter");
+  tmux("send-keys", "-t", SESSION, "printf 'WWW \\357\\220\\230 X\\n\\320\\226\\320\\226\\320\\226\\n'", "Enter");
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("DOM.enable");
   await cdp.send("CSS.enable");
-  const usedFont = async (what: "text" | "icon"): Promise<string> => {
+  const usedFont = async (what: "text" | "icon" | "cyrillic"): Promise<string> => {
     let found = "";
     await waitUntil(`${what} のフォントがわかる`, async () => {
       const marked = await page.evaluate((what) => {
         document.querySelectorAll("[data-probe]").forEach((e) => e.removeAttribute("data-probe"));
-        const want = what === "text" ? "WWW" : "\uf418";
+        const want = { text: "WWW", icon: "\uf418", cyrillic: "\u0416" }[what];
         const walker = document.createTreeWalker(document.getElementById("term")!, NodeFilter.SHOW_TEXT);
         for (let n = walker.nextNode(); n; n = walker.nextNode()) {
           const text = n.textContent ?? "";
@@ -656,6 +657,63 @@ text = ":wq"
     expect(await usedFont("text")).toBe("JetBrains Mono");
     await cdp.detach();
   });
+  it("[font] の stack（版 2）は並びの先頭から順に、その文字を持つフォントで描く。ファイル・PC のフォント・スマホのフォント・JetBrains Mono を並べられ、無いファイルは知らせて飛ばす。配るのは並びのファイルだけ。一覧の「使う」は並びをそのフォント1つにする", async () => {
+    const { usedFont, cdp } = await fontProbe();
+    const icon = await usedFont("icon");
+
+    // 英字はファイルのフォント（キリル文字を持たない）、キリル文字は PC のフォント（英字を持たない）で描く。アイコンは今までどおり
+    writeFileSync(configPath, `version = 2\n[font]\nstack = ["myfonts/files.ttf", "Palmterm Cyril", "JetBrains Mono"]\n`);
+    await openPage();
+    expect(await usedFont("text")).toBe("Palmterm Files");
+    expect(await usedFont("cyrillic")).toBe("Palmterm Cyril");
+    expect(await usedFont("icon")).toBe(icon);
+    // 配るのは並びにある2つのファイルだけ。ログインしていなければ配らない
+    expect(await page.evaluate(() => Promise.all(["/api/font?i=0", "/api/font?i=1", "/api/font?i=2", "/api/font?i=../config.toml"].map(async (u) => (await fetch(u)).status)))).toEqual([200, 200, 404, 404]);
+    for (const u of ["/api/font?i=0", "/api/font?i=1"]) expect((await fetch(`${base}${u}`, { redirect: "manual" })).status).not.toBe(200);
+
+    // 並びを入れ替えると、先にあるものが勝つ。PC に無い名前はスマホのもの。無いファイルは知らせて飛ばす
+    writeFileSync(configPath, `version = 2\n[font]\nstack = ["myfonts/missing.woff2", "Palmterm Local", "Palmterm Cyril", "myfonts/files.ttf"]\n`);
+    await openPage();
+    await waitUntil("無いファイルを知らせる", async () => ((await page.locator("#toast").textContent()) ?? "").includes("missing.woff2"));
+    expect(await page.locator("#toast").textContent()).toContain("[font] stack");
+    expect(await usedFont("text")).toBe("Palmterm Local");
+    expect(await usedFont("cyrillic")).toBe("Palmterm Cyril");
+
+    // stack と family を一緒に書くと書き間違いとして知らせ、既定の JetBrains Mono で描く
+    writeFileSync(configPath, `version = 2\n[font]\nstack = ["Palmterm Cyril"]\nfamily = "Palmterm Probe"\n`);
+    await openPage();
+    await waitUntil("書き間違いを知らせる", async () => ((await page.locator("#toast").textContent()) ?? "").includes("stack cannot be used together"));
+    expect(await usedFont("text")).toBe("JetBrains Mono");
+
+    // 版 1 の書き方も今までどおり
+    writeFileSync(configPath, `version = 1\n[font]\nfile = "myfonts/files.ttf"\n`);
+    await openPage();
+    expect(await usedFont("text")).toBe("Palmterm Files");
+
+    // 一覧の「使う」は、stack をそのフォント1つに書き換える。「既定のフォント」は stack の行を消す
+    mkdirSync(join(dir, "fonts"), { recursive: true });
+    writeFileSync(join(dir, "fonts", "Picked.ttf"), testFont("Palmterm Picks"));
+    const mine = `version = 2\n\n[font]\n# order\nstack = ["Palmterm Cyril", "JetBrains Mono"] # mine\n`;
+    writeFileSync(configPath, mine);
+    await openPage();
+    await openSettings();
+    await page.locator("#settings .settings-fonts").click();
+    const row = page.locator(".font-file", { hasText: "Picked.ttf" });
+    await waitUntil("一覧に出る", async () => (await row.count()) === 1);
+    expect(await page.locator(".font-default .font-name").textContent()).not.toContain("in use");
+    await row.locator(".font-use").click();
+    await waitUntil("使用中になる", async () => ((await row.locator(".font-name").textContent()) ?? "").includes("in use"));
+    expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`["Palmterm Cyril", "JetBrains Mono"]`, `["fonts/Picked.ttf"]`));
+    expect(await usedFont("text")).toBe("Palmterm Picks");
+    expect(await usedFont("cyrillic")).not.toBe("Palmterm Cyril");
+    await page.locator(".font-default .font-use").click();
+    await waitUntil("既定に戻る", async () => ((await page.locator(".font-default .font-name").textContent()) ?? "").includes("in use"));
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 2\n\n[font]\n# order\n`);
+    expect(await usedFont("text")).toBe("JetBrains Mono");
+    rmSync(join(dir, "fonts", "Picked.ttf"));
+    await cdp.detach();
+  });
+
   it("設定画面の「フォント」から足したフォントは fonts/ に保存され、[font] の file で使え、一覧から2回押しで消せる。フォントでない・大きすぎるものは保存せず知らせる", async () => {
     const fontsDir = join(dir, "fonts");
     rmSync(fontsDir, { recursive: true, force: true });
@@ -766,7 +824,7 @@ family = "Palmterm Local"
       expect(
         await otherPage.evaluate(async () => {
           await document.fonts.ready;
-          const served = [...document.fonts].find((f) => f.family.replace(/"/g, "") === "palmterm font");
+          const served = [...document.fonts].find((f) => f.family.replace(/"/g, "") === "palmterm font 1");
           return [served?.status, getComputedStyle(document.documentElement).getPropertyValue("--mono-font").includes("palmterm font")];
         }),
       ).toEqual(["loaded", true]);
@@ -787,7 +845,7 @@ family = "Palmterm Local"
     rmSync(configPath, { force: true });
     await chooseTheme("light");
     await waitUntil("色が変わる", async () => (await termBg(page)) === "rgb(255, 255, 255)");
-    expect(readFileSync(configPath, "utf8")).toBe(`version = 1\n\n[theme]\nname = "light"\n`);
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 2\n\n[theme]\nname = "light"\n`);
 
     // 書き間違いがあって読めない設定ファイルには書かず、知らせる。色も変えない
     const bad = `[theme]\nname = "light"\nbackgroud = "#000000"\n`;
@@ -855,7 +913,7 @@ family = "Palmterm Local"
     await chooseLanguage("ja");
     await page.waitForFunction(() => document.querySelector(".term-row") !== null);
     expect(await settingsTitle(page)).toEqual(["ja", "設定"]);
-    expect(readFileSync(configPath, "utf8")).toBe(`version = 1\nlanguage = "ja"\n`);
+    expect(readFileSync(configPath, "utf8")).toBe(`version = 2\nlanguage = "ja"\n`);
 
     // 書き間違いがあって読めない設定ファイルには書かず、知らせる。読み込み直さない
     const bad = `language = "ja"\n[theme]\nbackgroud = "#000000"\n`;

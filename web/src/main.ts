@@ -15,7 +15,7 @@ import { applyToChar, isSingleChar, keySequenceWithMods, Modifiers, type ModName
 import { setupNerdIcons } from "./nerd";
 import { pasteSequence } from "./paste";
 import { SoftKeyboard } from "./softkeyboard";
-import { applyFont, type FontConfig } from "./font";
+import { applyFont, type FontConfig, type FontEntry, fontErrorKey } from "./font";
 import { applyTheme, resolveTheme, THEMES, type ThemeConfig } from "./theme";
 import { chooseAppearance, type AppearanceChange } from "./appearance";
 import { setupSettings } from "./settings";
@@ -39,9 +39,9 @@ interface ServerConfig {
   keys?: KeyConfig[];
   theme?: ThemeConfig;
   font?: FontConfig;
-  /** [font] のフォントを PC から配るときの URL（PC に無ければ無い）。 */
-  fontURL?: string;
-  /** [font] の file を使えなかった理由。 */
+  /** [font] から決めたフォントの並び（先頭から順に使う）。 */
+  fontFaces?: FontEntry[];
+  /** [font] のファイルを使えなかった理由。 */
   fontError?: string;
   path: string;
   /** palmterm の版（`palmterm -version` と同じ）。 */
@@ -58,8 +58,9 @@ applyStaticTexts();
 // 色は [theme] で選んだテーマに、書いた色だけ上書きする。書き間違えた色は既定に戻して知らせる（起動の所）。
 const { theme, errors: themeErrors } = resolveTheme(serverConfig.theme);
 applyTheme(theme, document.documentElement, termEl);
-// フォントは [font] で PC から配られたもの、無ければスマホの同じ名前のもの、それも無ければ JetBrains Mono。
-applyFont(serverConfig.font, serverConfig.fontURL, document.documentElement);
+// フォントは [font] の並びの先頭から順に、その文字を持つもの（PC から配られたもの、無ければスマホの同じ名前のもの）。
+// 並びのどれも持たない文字は JetBrains Mono。
+applyFont(serverConfig.fontFaces, document.documentElement);
 
 /** index.html に書いてある文言を、設定の言語に置き換える。 */
 function applyStaticTexts() {
@@ -828,8 +829,8 @@ async function changeAppearance(change: AppearanceChange): Promise<boolean> {
   }
   const { theme, errors } = resolveTheme(serverConfig.theme);
   applyTheme(theme, document.documentElement, termEl);
-  applyFont(serverConfig.font, serverConfig.fontURL, document.documentElement);
-  const problems = [...errors, ...(serverConfig.fontError ? [t("fontFileError", { error: serverConfig.fontError })] : [])];
+  applyFont(serverConfig.fontFaces, document.documentElement);
+  const problems = [...errors, ...(serverConfig.fontError ? [t(fontErrorKey(serverConfig.font), { error: serverConfig.fontError })] : [])];
   if (problems.length) toast(problems.join("\n"), 10000);
   return true;
 }
@@ -860,7 +861,7 @@ const configProblems = [
     : []),
   ...keyErrors,
   ...themeErrors,
-  ...(serverConfig.fontError ? [t("fontFileError", { error: serverConfig.fontError })] : []),
+  ...(serverConfig.fontError ? [t(fontErrorKey(serverConfig.font), { error: serverConfig.fontError })] : []),
 ];
 if (configProblems.length) toast(configProblems.join("\n"), 10000);
 

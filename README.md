@@ -199,7 +199,7 @@ changes; no restart is needed. [config.example.toml](config.example.toml) contai
 so it is a good starting point.
 
 ```toml
-version = 1            # config format version (defaults to 1)
+version = 2            # config format version (defaults to 1; version 1 files still work)
 language = "en"        # "en" (default) or "ja"
 
 [[keys]]
@@ -247,26 +247,33 @@ cannot be read, it is left alone and the reason is shown.
 
 ### Font
 
-`[font]` sets the terminal font. For a font installed on the PC, palmterm finds its file and serves it to the phone.
+`[font]` sets the terminal font. List fonts in order of preference in `stack`; each character is drawn with
+the first font in the list that has it (for example, Latin letters from your own font and kanji it lacks from
+a Japanese font).
 
 ```toml
 [font]
-family = "Liberation Mono"   # name of a font installed on the PC (as fc-list shows it)
-# file = "fonts/MyFont.ttf"  # a font file; relative paths start at ~/.config/palmterm/
+stack = ["fonts/MyMono.woff2", "Noto Sans Mono CJK JP", "JetBrains Mono"]
 ```
 
-- If the PC has no font with that `family` name, a font of the same name on the phone is used, and
-  otherwise JetBrains Mono.
-- `file` serves that file instead of looking up `family` (.ttf, .otf, .woff or .woff2). Put the font in
-  `~/.config/palmterm/` and use a relative path, and copying the folder carries it to another PC. A file that
-  cannot be used is reported when the page opens.
+- An entry ending in .ttf, .otf, .ttc, .woff or .woff2 is a font file; palmterm serves it. Relative paths start
+  at `~/.config/palmterm/`, so copying the folder carries it to another PC. A file that cannot be used is
+  skipped, and the reason is shown when the page opens.
+- `"JetBrains Mono"` is the font built into palmterm.
+- Anything else is the name of a font installed on the PC (as fc-list shows it); palmterm finds its file and
+  serves it. If the PC has no such font, a font of the same name on the phone is used.
+- Characters no font in the list has are drawn with JetBrains Mono.
+- The version 1 way still works: `family = "Liberation Mono"` (a font on the PC, or else on the phone) and
+  `file = "fonts/MyFont.ttf"` (a file served instead of looking up `family`). `stack` cannot be written
+  together with `family` or `file`; that is reported as a mistake.
 - You can also add font files from the phone: in Settings, tap List in the Fonts row → Add and pick a .ttf,
   .otf, .woff or .woff2 (up to 32 MB). It is saved in `~/.config/palmterm/fonts/`. Tap Use in the list to
-  switch the terminal to it at once; the `file` line under `[font]` (`file = "fonts/NAME"`) in the config
-  file is rewritten, leaving the other lines alone as with the theme. Use on "Default font" at the top
-  removes the `file` line. The same screen deletes saved fonts (tap twice).
-- The font is served only to logged-in devices, and only that one font file.
-- Only the regular weight is served, so the browser draws bold by thickening it. Nerd Font icons are always
+  switch the terminal to it at once. With `stack`, the list becomes just that font
+  (`stack = ["fonts/NAME"]`); with the version 1 way, the `file` line (`file = "fonts/NAME"`) is rewritten.
+  Other lines are left alone as with the theme. Use on "Default font" at the top removes the `stack` (or
+  `file`) line. The same screen deletes saved fonts (tap twice).
+- Fonts are served only to logged-in devices, and only the font files in the list.
+- Only the regular weight of each font is served, so the browser draws bold by thickening it. Nerd Font icons are always
   drawn with the icon font palmterm serves, whichever font you pick.
 
 ### Key bar

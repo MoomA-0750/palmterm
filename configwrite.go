@@ -19,7 +19,7 @@ import (
 )
 
 // 画面で選んだ言語・テーマ・フォントを設定ファイルに書き戻す。ファイルを丸ごと書き直すのではなく、
-// language と [theme] の name と [font] の file の行だけを書き換えるので、本人が書いたコメント・ほかの項目・並び順は残る。
+// language と [theme] の name と [font] の file（stack の書き方なら stack）の行だけを書き換えるので、本人が書いたコメント・ほかの項目・並び順は残る。
 // 書き換えたあとに読み直して、変わったのがその1か所だけであることを確かめてから保存する。
 
 // 組み込みのテーマの名前（web/src/theme.ts の THEMES と同じ。TestThemeNamesMatchTheScreen で確かめる）。
@@ -73,8 +73,12 @@ func (s *server) handleAppearance(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Font != nil {
 		e := configEdit{table: "font", key: "file", value: "fonts/" + *req.Font}
+		// stack の書き方なら、並びをそのフォント1つにする（既定に戻すなら stack の行を消す）
+		if cfg, _ := settings.get(); cfg.Font.Stack != nil {
+			e = configEdit{table: "font", key: "stack", value: []string{"fonts/" + *req.Font}}
+		}
 		if *req.Font == "" {
-			e = configEdit{table: "font", key: "file", remove: true}
+			e = configEdit{key: e.key, table: "font", remove: true}
 		}
 		edits = append(edits, e)
 	}
@@ -99,11 +103,24 @@ func (e *configUnreadableError) Error() string {
 		"The config file (%s) has a mistake, so it was not changed. Fix it and choose again: %v"), settings.path, e.err)
 }
 
-// 設定ファイルの1か所の書き換え。[table] の key を value（文字列）にする。remove なら key の行を消す。
+// 設定ファイルの1か所の書き換え。[table] の key を value（文字列か、文字列の並び）にする。remove なら key の行を消す。
 // table が空なら、最初のテーブルより前に書く項目（language など）。
 type configEdit struct {
-	table, key, value string
-	remove            bool
+	table, key string
+	value      any // string か []string
+	remove     bool
+}
+
+// 読み直した TOML と比べるための形（並びは []any になる）。
+func (e configEdit) decoded() any {
+	if list, ok := e.value.([]string); ok {
+		out := make([]any, len(list))
+		for i, v := range list {
+			out[i] = v
+		}
+		return out
+	}
+	return e.value
 }
 
 // 設定ファイルを書き換える。無ければ作る。読めないファイルは書き換えない。
@@ -192,7 +209,7 @@ func editConfig(src string, edits []configEdit) (string, error) {
 			if e.remove {
 				delete(before, e.key)
 			} else {
-				before[e.key] = e.value
+				before[e.key] = e.decoded()
 			}
 			continue
 		}
@@ -207,7 +224,7 @@ func editConfig(src string, edits []configEdit) (string, error) {
 		if e.remove {
 			delete(t, e.key)
 		} else {
-			t[e.key] = e.value
+			t[e.key] = e.decoded()
 		}
 	}
 	if !reflect.DeepEqual(before, after) {
@@ -245,7 +262,7 @@ func editLine(src string, e configEdit) (string, error) {
 	}
 	header := regexp.MustCompile(`^\s*\[\s*` + regexp.QuoteMeta(e.table) + `\s*\]\s*(#.*)?\r?\n?$`)
 	keyStart := regexp.MustCompile(`^\s*` + regexp.QuoteMeta(e.key) + `\s*=`)
-	newLine := e.key + " = " + tomlString(e.value) + nl
+	newLine := e.key + " = " + tomlValue(e.value) + nl
 
 	start := slices.IndexFunc(lines, func(l string) bool { return header.MatchString(l) })
 	if start < 0 {
@@ -295,19 +312,25 @@ func editLine(src string, e configEdit) (string, error) {
 	return strings.Join(lines, ""), nil
 }
 
-// 1行の文字列の値だけを書き換える。後ろのコメントと改行はそのまま。
+// 1行の文字列の値（並びなら、1行に書いた文字列の並び）だけを書き換える。後ろのコメントと改行はそのまま。
 func replaceValue(lines []string, i int, e configEdit) (string, error) {
-	keyLine := regexp.MustCompile(`^(\s*` + regexp.QuoteMeta(e.key) + `\s*=\s*)("(?:[^"\\\r\n]|\\.)*"|'[^'\r\n]*')(\s*(?:#.*)?\r?\n?)$`)
+	str := `"(?:[^"\\\r\n]|\\.)*"|'[^'\r\n]*'`
+	value, ja, en := str, "%s が1行の文字列ではないので", "%s is not a one-line string"
+	if _, ok := e.value.([]string); ok {
+		value = `\[\s*(?:(?:` + str + `)\s*,\s*)*(?:(?:` + str + `)\s*)?\]`
+		ja, en = "%s が1行に書いた文字列の並びではないので", "%s is not a one-line list of strings"
+	}
+	keyLine := regexp.MustCompile(`^(\s*` + regexp.QuoteMeta(e.key) + `\s*=\s*)(` + value + `)(\s*(?:#.*)?\r?\n?)$`)
 	m := keyLine.FindStringSubmatch(lines[i])
 	if m == nil {
-		ja, en := "["+e.table+"] の "+e.key, "["+e.table+"] "+e.key
+		name, nameEn := "["+e.table+"] の "+e.key, "["+e.table+"] "+e.key
 		if e.table == "" {
-			ja, en = e.key, e.key
+			name, nameEn = e.key, e.key
 		}
-		return "", fmt.Errorf(tr("%s が1行の文字列ではないので、書き換えませんでした（手で直してください）",
-			"%s is not a one-line string, so it was not changed (edit it by hand)"), tr(ja, en))
+		return "", fmt.Errorf(tr(ja+"、書き換えませんでした（手で直してください）",
+			en+", so it was not changed (edit it by hand)"), tr(name, nameEn))
 	}
-	lines[i] = m[1] + tomlString(e.value) + m[3]
+	lines[i] = m[1] + tomlValue(e.value) + m[3]
 	return strings.Join(lines, ""), nil
 }
 
@@ -351,7 +374,7 @@ func editTopLine(lines []string, nl string, e configEdit) (string, error) {
 			at = 0 // 空行が無く、コメントがテーブルにつながっている
 		}
 	}
-	newLine := e.key + " = " + tomlString(e.value) + nl
+	newLine := e.key + " = " + tomlValue(e.value) + nl
 	if at == 0 && len(lines) > 0 && tableHeader.MatchString(lines[0]) {
 		newLine += nl // テーブルしか無ければ、見出しとのあいだを1行空ける
 	}
@@ -360,6 +383,19 @@ func editTopLine(lines []string, nl string, e configEdit) (string, error) {
 	}
 	lines = slices.Insert(lines, at, newLine)
 	return strings.Join(lines, ""), nil
+}
+
+// TOML の値。文字列か、文字列の並び（1行に書く）。
+func tomlValue(v any) string {
+	if list, ok := v.([]string); ok {
+		out := make([]string, len(list))
+		for i, s := range list {
+			out[i] = tomlString(s)
+		}
+		return "[" + strings.Join(out, ", ") + "]"
+	}
+	s, _ := v.(string) // 消すときは値が無い
+	return tomlString(s)
 }
 
 // TOML の基本の文字列。値は言語・テーマの名前とフォントのファイル名だけなので、\ と " だけ気にすればよい。

@@ -82,7 +82,7 @@ key = "esc"
 		t.Fatalf("書き戻した中身:\n%s", got)
 	}
 	// 応答は /api/config と同じ形で、今の設定（すぐ画面に当てる）
-	if !strings.Contains(body, `"name":"solarized-light"`) || !strings.Contains(body, `"file":"fonts/Mine.ttf"`) || !strings.Contains(body, `"fontURL":"/api/font?v=`) {
+	if !strings.Contains(body, `"name":"solarized-light"`) || !strings.Contains(body, `"file":"fonts/Mine.ttf"`) || !strings.Contains(body, `"url":"/api/font?i=0\u0026v=`) {
 		t.Fatalf("応答: %s", body)
 	}
 	// 別の端末で読み込み直しても同じ
@@ -112,7 +112,7 @@ func TestAppearanceCreatesTheFileAndTables(t *testing.T) {
 	if code, body := chooseAppearance(t, s, c, `{"theme":"light","font":"A.woff2"}`); code != http.StatusOK {
 		t.Fatalf("code=%d %s", code, body)
 	}
-	if got, want := readConfigFile(t), "version = 1\n\n[theme]\nname = \"light\"\n\n[font]\nfile = \"fonts/A.woff2\"\n"; got != want {
+	if got, want := readConfigFile(t), "version = 2\n\n[theme]\nname = \"light\"\n\n[font]\nfile = \"fonts/A.woff2\"\n"; got != want {
 		t.Fatalf("作った中身:\n%q", got)
 	}
 	if info, _ := os.Stat(settings.path); info.Mode().Perm() != 0o600 {
@@ -281,7 +281,7 @@ func TestLanguageIsWrittenBackKeepingTheRest(t *testing.T) {
 	// ファイルが無ければ作る
 	os.Remove(settings.path)
 	choose("en")
-	if got, want := readConfigFile(t), "version = 1\nlanguage = \"en\"\n"; got != want {
+	if got, want := readConfigFile(t), "version = 2\nlanguage = \"en\"\n"; got != want {
 		t.Fatalf("作った中身:\n%q", got)
 	}
 	if info, _ := os.Stat(settings.path); info.Mode().Perm() != 0o600 {
@@ -318,5 +318,46 @@ func TestLanguageIsNotWrittenToAnUnreadableConfig(t *testing.T) {
 	}
 	if got := readConfigFile(t); got != "# mine\n" {
 		t.Fatalf("書き換えました: %q", got)
+	}
+}
+
+// stack の書き方なら、一覧の「使う」は stack をそのフォント1つに書き換え、「既定のフォント」は stack の行を消す。
+// 版 1 の書き方なら今までどおり file を書き換える（TestAppearanceIsWrittenBackKeepingTheRest）。
+func TestAppearanceRewritesTheStack(t *testing.T) {
+	s := newTestServer(t)
+	c := login(t, s, "phone")
+	putFont(t, "Mine.ttf")
+	src := "version = 2\n\n[font]\n# 好きな順\nstack = [\"fonts/Old.woff2\", 'Noto Sans Mono CJK JP', \"JetBrains Mono\"]   # 並び\n\n[theme]\nname = \"light\"\n"
+	writeConfig(t, src)
+	code, body := chooseAppearance(t, s, c, `{"font":"Mine.ttf"}`)
+	if code != http.StatusOK {
+		t.Fatalf("code=%d %s", code, body)
+	}
+	want := "version = 2\n\n[font]\n# 好きな順\nstack = [\"fonts/Mine.ttf\"]   # 並び\n\n[theme]\nname = \"light\"\n"
+	if got := readConfigFile(t); got != want {
+		t.Fatalf("書き戻した中身:\n%s", got)
+	}
+	if cfg, err := settings.get(); err != nil || !slices.Equal(cfg.Font.Stack, []string{"fonts/Mine.ttf"}) || cfg.Font.File != "" {
+		t.Fatalf("%+v %v", cfg.Font, err)
+	}
+	if w := authed(s, "GET", "/api/fonts", "", c); !strings.Contains(w.Body.String(), `"file":"fonts/Mine.ttf"`) {
+		t.Fatalf("一覧の使用中: %s", w.Body.String())
+	}
+
+	if code, body := chooseAppearance(t, s, c, `{"font":""}`); code != http.StatusOK {
+		t.Fatalf("code=%d %s", code, body)
+	}
+	if got, want := readConfigFile(t), "version = 2\n\n[font]\n# 好きな順\n\n[theme]\nname = \"light\"\n"; got != want {
+		t.Fatalf("既定に戻した中身:\n%s", got)
+	}
+
+	// 何行にも分けて書いた stack は書き換えず、手で直すよう知らせる
+	multi := "version = 2\n[font]\nstack = [\n  \"fonts/Old.woff2\",\n  \"JetBrains Mono\",\n]\n"
+	writeConfig(t, multi)
+	if code, body := chooseAppearance(t, s, c, `{"font":"Mine.ttf"}`); code != http.StatusConflict || !strings.Contains(body, "one-line list") {
+		t.Fatalf("code=%d %s", code, body)
+	}
+	if got := readConfigFile(t); got != multi {
+		t.Fatalf("書き換えてしまいました:\n%s", got)
 	}
 }
