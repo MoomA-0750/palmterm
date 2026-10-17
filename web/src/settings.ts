@@ -12,7 +12,7 @@ export interface SettingsOptions {
   fontSize: { get: () => number; change: (delta: number) => void };
   /** キーバーを出しているか・出し分ける（このブラウザに覚える）。 */
   keybar: { shown: () => boolean; set: (shown: boolean) => void };
-  /** 組み込みのテーマ。choose は設定ファイルに書き戻せたら true。 */
+  /** 組み込みのテーマと [themes.名前] の自分のテーマ。choose は設定ファイルに書き戻せたら true。 */
   theme: { names: string[]; current: () => string; choose: (name: string) => Promise<boolean> };
   /** 画面の言語。choose は設定ファイルに書き戻す（書き戻せたらページを読み込み直す）。 */
   language: { current: () => Lang; choose: (lang: Lang) => void };
@@ -24,7 +24,7 @@ export interface SettingsOptions {
   version?: string;
 }
 
-/** テーマの名前の表示（知らない名前はそのまま）。 */
+/** テーマの名前の表示（自分のテーマなど、訳の無い名前はそのまま）。 */
 function themeLabel(name: string): string {
   const key = `theme.${name}` as MessageKey;
   return hasMessage(key) ? t(key) : name;

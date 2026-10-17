@@ -48,6 +48,9 @@ language = "ja" # 日本語で
 [theme]
 # 色の名前
 name = "default"   # あとで変える
+
+[themes.mine]
+base = "light"
 accent = "#0969da"
 
 # フォント
@@ -68,6 +71,9 @@ language = "ja" # 日本語で
 [theme]
 # 色の名前
 name = "solarized-light"   # あとで変える
+
+[themes.mine]
+base = "light"
 accent = "#0969da"
 
 # フォント
@@ -102,6 +108,15 @@ key = "esc"
 	if got := readConfigFile(t); got != want {
 		t.Fatalf("書き戻した中身:\n%s", got)
 	}
+
+	// [themes.名前] の自分のテーマも選べる（[theme] の name だけが変わる）
+	code, body = chooseAppearance(t, s, phone, `{"theme":"mine"}`)
+	if code != http.StatusOK || !strings.Contains(body, `"theme":{"name":"mine"}`) || !strings.Contains(body, `"accent":"#0969da"`) {
+		t.Fatalf("code=%d %s", code, body)
+	}
+	if got := readConfigFile(t); got != strings.Replace(want, `name = "light"`, `name = "mine"`, 1) {
+		t.Fatalf("書き戻した中身:\n%s", got)
+	}
 }
 
 // 設定ファイルが無ければ作り、[theme] や [font] が無ければ足す。
@@ -123,11 +138,11 @@ func TestAppearanceCreatesTheFileAndTables(t *testing.T) {
 	}
 
 	// [theme] はあるが name が無い。最後の行に改行が無い。CRLF で書いてある
-	writeConfig(t, "language = \"en\"\r\n[theme]\r\nred = \"#ff0000\"\r\n\r\n# keys\r\n[[keys]]\r\nkey = \"esc\"")
+	writeConfig(t, "language = \"en\"\r\n[theme]\r\n\r\n# keys\r\n[[keys]]\r\nkey = \"esc\"")
 	if code, body := chooseAppearance(t, s, c, `{"theme":"solarized-dark"}`); code != http.StatusOK {
 		t.Fatalf("code=%d %s", code, body)
 	}
-	if got, want := readConfigFile(t), "language = \"en\"\r\n[theme]\r\nred = \"#ff0000\"\r\nname = \"solarized-dark\"\r\n\r\n# keys\r\n[[keys]]\r\nkey = \"esc\""; got != want {
+	if got, want := readConfigFile(t), "language = \"en\"\r\n[theme]\r\nname = \"solarized-dark\"\r\n\r\n# keys\r\n[[keys]]\r\nkey = \"esc\""; got != want {
 		t.Fatalf("足した中身:\n%q", got)
 	}
 
@@ -160,6 +175,7 @@ func TestAppearanceIsNotWrittenToAnUnreadableConfig(t *testing.T) {
 	c := login(t, s, "")
 	for _, tc := range []struct{ body, says string }{
 		{"[theme]\nname = \"light\"\nbackgroud = \"#000\"\n", "theme.backgroud"}, // 知らない項目
+		{"[theme]\nname = \"light\"\naccent = \"#000\"\n", "theme.accent"},       // [theme] には色を書けない
 		{"[theme\nname = \"light\"\n", "has a mistake"},                          // TOML として読めない
 		{"language = \"fr\"\n", "has a mistake"},                                 // 値の間違い
 		{"theme = { name = \"light\" }\n", "edit [theme] by hand"},               // インラインのテーブル
@@ -186,6 +202,7 @@ func TestAppearanceRejectsUnknownNames(t *testing.T) {
 		code int
 	}{
 		{`{"theme":"dracula"}`, http.StatusBadRequest},
+		{`{"theme":"mine"}`, http.StatusBadRequest}, // [themes.mine] が無い
 		{`{"font":"../config.toml"}`, http.StatusBadRequest},
 		{`{"font":"notes.txt"}`, http.StatusBadRequest},
 		{`{"font":"Missing.ttf"}`, http.StatusNotFound},

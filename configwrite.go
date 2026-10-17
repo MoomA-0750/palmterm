@@ -25,6 +25,17 @@ import (
 // 組み込みのテーマの名前（web/src/theme.ts の THEMES と同じ。TestThemeNamesMatchTheScreen で確かめる）。
 var themeNames = []string{"default", "light", "solarized-dark", "solarized-light"}
 
+// 今の設定ファイルに [themes.名前] の自分のテーマがあるか。設定ファイルが読めないときは true にして、
+// 名前ではなく「書き間違いがあるので書き戻さない」の方で断る。
+func hasCustomTheme(name string) bool {
+	cfg, err := settings.get()
+	if err != nil {
+		return true
+	}
+	_, ok := cfg.Themes[name]
+	return ok
+}
+
 var configWriteMu sync.Mutex
 
 // 画面からの変更。書いた項目だけ変える。Font は fonts/ の直下のファイルの名前で、空なら [font] の file を消す。
@@ -94,7 +105,7 @@ func (s *server) handleAppearance(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf(tr("知らない言語です: %q", "Unknown language: %q"), *req.Language), http.StatusBadRequest)
 		return
 	}
-	if req.Theme != nil && !slices.Contains(themeNames, *req.Theme) {
+	if req.Theme != nil && !slices.Contains(themeNames, *req.Theme) && !hasCustomTheme(*req.Theme) {
 		http.Error(w, fmt.Sprintf(tr("知らないテーマです: %q", "Unknown theme: %q"), *req.Theme), http.StatusBadRequest)
 		return
 	}

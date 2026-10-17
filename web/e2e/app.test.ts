@@ -579,7 +579,7 @@ text = ":wq"
     expect(await sent()).toEqual(["\x1b[Z"]);
   });
 
-  it("[theme] でテーマを選ぶと端末とボタンの色が変わり、書いた色だけ上書きする。書き間違えた色は知らせて既定に戻す", async () => {
+  it("[theme] の name でテーマを選ぶと端末とボタンの色が変わる。[themes.名前] の自分のテーマは base に書いた色だけ重ね、書き間違いは知らせてその所だけ base に戻す。[theme] に色を書くと書き間違い", async () => {
     const colors = () =>
       page.evaluate(() => {
         const term = getComputedStyle(document.getElementById("term")!);
@@ -593,6 +593,7 @@ text = ":wq"
           tmuxBtn: getComputedStyle(document.getElementById("tmux-btn")!).color,
         };
       });
+    const toastText = async () => (await page.locator("#toast").textContent()) ?? "";
     const before = await colors();
     expect(before.termBg).toBe("rgb(30, 30, 30)");
 
@@ -603,7 +604,27 @@ text = ":wq"
     expect(light.keyBg).not.toBe(before.keyBg);
     expect(light.red).toBe("#cf222e");
 
-    writeFileSync(configPath, `[theme]\nname = "light"\nbackground = "#fafafa"\naccent = "#0969da"\nblue = "#0000ff"\nred = "#12345"\n`);
+    // 自分のテーマ：Solarized 暗の色のまま、強調の色だけが #ff5f87
+    writeFileSync(configPath, `[theme]\nname = "solarized-dark"\n`);
+    await openPage();
+    const solarized = await colors();
+    writeFileSync(configPath, `[theme]\nname = "my-dark"\n\n[themes.my-dark]\nbase = "solarized-dark"\naccent = "#ff5f87"\n`);
+    await openPage();
+    expect(await colors()).toEqual({ ...solarized, tmuxBtn: "rgb(255, 95, 135)" });
+    expect(solarized.tmuxBtn).not.toBe("rgb(255, 95, 135)");
+    expect(await page.locator("#toast").isVisible()).toBe(false);
+
+    // base を書かなければ既定のテーマをもとにする
+    writeFileSync(configPath, `[theme]\nname = "my-dark"\n\n[themes.my-dark]\naccent = "#ff5f87"\n`);
+    await openPage();
+    expect(await colors()).toEqual({ ...before, tmuxBtn: "rgb(255, 95, 135)" });
+
+    // 書き間違えた色はその色だけ base の色に戻し、知らない項目・知らない base・組み込みと同じ名前は知らせる（選んでいないテーマのものも）
+    writeFileSync(
+      configPath,
+      `[theme]\nname = "mine"\n\n[themes.mine]\nbase = "light"\nbackground = "#fafafa"\naccent = "#0969da"\nblue = "#0000ff"\nred = "#12345"\nglow = true\n\n` +
+        `[themes.other]\nbase = "dracula"\n\n[themes.light]\naccent = "#ff0000"\n`,
+    );
     await openPage();
     const custom = await colors();
     expect(custom.termBg).toBe("rgb(250, 250, 250)");
@@ -612,7 +633,20 @@ text = ":wq"
     expect(custom.red).toBe("#cf222e"); // 書き間違えた色は light の色のまま
     expect(custom.termFg).toBe(light.termFg); // 書いていない色もそのまま
     expect(custom.keyBg).toBe(light.keyBg);
-    expect(await page.locator("#toast").textContent()).toContain("[theme] red");
+    const problems = await toastText();
+    expect(problems).toContain("[themes.mine] red");
+    expect(problems).toContain("[themes.mine]: unknown key: glow");
+    expect(problems).toContain("[themes.other] base: unknown theme: dracula");
+    expect(problems).toContain("[themes.light]: a built-in theme has this name");
+    expect(problems).not.toContain("has a mistake");
+
+    // [theme] に name 以外を書くと設定ファイルの書き間違いとして知らせ、既定の設定を使う
+    writeFileSync(configPath, `language = "ja"\n[theme]\nname = "light"\naccent = "#ff5f87"\n`);
+    await openPage();
+    expect(await colors()).toEqual(before);
+    expect(await toastText()).toContain("theme.accent");
+    expect(await toastText()).toContain("[themes.NAME]");
+    expect(await page.getAttribute("#line", "placeholder")).toBe("Send with Ctrl+Enter or the send button"); // 言語も既定（英語）
 
     rmSync(configPath, { force: true });
     await openPage();
@@ -934,7 +968,10 @@ language = "en" # English
 [theme]
 # colors
 name = "light"  # change later
-accent = "#0969da"
+
+[themes.my-dark]
+base = "solarized-dark"
+accent = "#ff5f87"
 
 [font]
 family = "Palmterm Local"
@@ -944,10 +981,23 @@ family = "Palmterm Local"
     await openPage();
     expect(await termBg(page)).toBe("rgb(255, 255, 255)");
 
-    // テーマ：押すとすぐ色が変わり、設定画面は開いたまま、押したものに印が付く。書いた色（accent）はそのまま上書きする
-    await chooseTheme("solarized-dark");
+    // 自分のテーマ（[themes.my-dark]）も組み込みのものの後ろに並び、押すと読み込み直さずにその色になる
+    await openSettings();
+    expect(await page.locator("#settings .settings-theme").evaluateAll((bs) => bs.map((b) => b.getAttribute("data-theme")))).toEqual([
+      "default", "light", "solarized-dark", "solarized-light", "my-dark",
+    ]);
+    await page.evaluate(() => ((window as unknown as { notReloaded: boolean }).notReloaded = true));
+    await chooseTheme("my-dark");
     await waitUntil("色が変わる", async () => (await termBg(page)) === "rgb(0, 43, 54)");
-    expect(await accent(page)).toBe("#0969da");
+    expect(await accent(page)).toBe("#ff5f87");
+    expect(await page.locator("#settings .settings-theme.on").getAttribute("data-theme")).toBe("my-dark");
+    expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`name = "light"`, `name = "my-dark"`));
+    expect(await page.evaluate(() => (window as unknown as { notReloaded?: boolean }).notReloaded)).toBe(true);
+
+    // テーマ：押すとすぐ色が変わり、設定画面は開いたまま、押したものに印が付く
+    await chooseTheme("solarized-dark");
+    await waitUntil("強調の色が戻る", async () => (await accent(page)) === "#859900");
+    expect(await termBg(page)).toBe("rgb(0, 43, 54)");
     expect(await page.locator("#settings").isVisible()).toBe(true);
     expect(await page.locator("#settings .settings-theme.on").getAttribute("data-theme")).toBe("solarized-dark");
     expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`name = "light"`, `name = "solarized-dark"`));

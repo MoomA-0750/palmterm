@@ -1,32 +1,15 @@
-// 画面の色（設定ファイルの [theme]）。name で組み込みのテーマを選び、書いた色だけ上書きする。
-// 書き間違えた色や知らないテーマの名前は、その所だけ既定に戻して知らせる。
+// 画面の色。設定ファイルの [theme] の name で、組み込みのテーマか [themes.名前] に書いた自分のテーマを選ぶ。
+// 自分のテーマは base の組み込みのテーマに、書いた色だけ重ねる。書き間違いは、その所だけ base に戻して知らせる。
 
 import { t } from "./i18n";
 
 /** 設定ファイルの [theme]（サーバーはそのまま渡す）。 */
 export interface ThemeConfig {
   name?: string;
-  background?: string;
-  foreground?: string;
-  cursor?: string;
-  accent?: string;
-  black?: string;
-  red?: string;
-  green?: string;
-  yellow?: string;
-  blue?: string;
-  magenta?: string;
-  cyan?: string;
-  white?: string;
-  bright_black?: string;
-  bright_red?: string;
-  bright_green?: string;
-  bright_yellow?: string;
-  bright_blue?: string;
-  bright_magenta?: string;
-  bright_cyan?: string;
-  bright_white?: string;
 }
+
+/** 設定ファイルの [themes.名前]（サーバーは中身を確かめずにそのまま渡す）。 */
+export type CustomThemes = Record<string, Record<string, unknown>>;
 
 /** 端末の16色の名前（ANSI の 0〜15 の順）。 */
 export const ANSI_NAMES = [
@@ -134,21 +117,36 @@ function mix(a: string, b: string, ratio: number): string {
   return "#" + [0, 1, 2].map((i) => Math.round(ch(a, i) * ratio + ch(b, i) * (1 - ratio)).toString(16).padStart(2, "0")).join("");
 }
 
-/** 設定の [theme] から使う色を決める。書き間違いは、その所だけ既定に戻して理由を返す。 */
-export function resolveTheme(cfg: ThemeConfig = {}): { theme: Theme; errors: string[] } {
-  const errors: string[] = [];
-  let base = THEMES.default;
-  if (cfg.name !== undefined && cfg.name !== "") {
-    if (Object.hasOwn(THEMES, cfg.name)) base = THEMES[cfg.name];
-    else errors.push(t("themeUnknown", { name: cfg.name, names: Object.keys(THEMES).join(", ") }));
-  }
-  const theme: Theme = { scheme: base.scheme, term: { ...base.term, colors: [...base.term.colors] }, ui: { ...base.ui } };
+/** 自分のテーマに書ける色の名前。 */
+const COLOR_KEYS = ["background", "foreground", "cursor", "accent", ...ANSI_NAMES];
 
-  const color = (key: keyof ThemeConfig): string | undefined => {
-    const v = cfg[key];
+function copyTheme(base: Theme): Theme {
+  return { scheme: base.scheme, term: { ...base.term, colors: [...base.term.colors] }, ui: { ...base.ui } };
+}
+
+/** 選べるテーマの名前（組み込みのものの後ろに、自分のテーマを書いた順に。組み込みと同じ名前のものは除く）。 */
+export function themeNames(customs: CustomThemes = {}): string[] {
+  return [...Object.keys(THEMES), ...Object.keys(customs).filter((name) => !Object.hasOwn(THEMES, name))];
+}
+
+/** [themes.名前] から色を決める。書き間違いは、その所だけ base の色に戻して理由を返す。 */
+function customTheme(name: string, def: Record<string, unknown>): { theme: Theme; errors: string[] } {
+  const errors: string[] = [];
+  for (const key of Object.keys(def)) {
+    if (key !== "base" && !COLOR_KEYS.includes(key)) errors.push(t("themeUnknownKey", { name, key }));
+  }
+  let base = THEMES.default;
+  if (def.base !== undefined) {
+    if (typeof def.base === "string" && Object.hasOwn(THEMES, def.base)) base = THEMES[def.base];
+    else errors.push(t("themeUnknownBase", { name, base: String(def.base), names: Object.keys(THEMES).join(", ") }));
+  }
+  const theme = copyTheme(base);
+
+  const color = (key: string): string | undefined => {
+    const v = def[key];
     if (v === undefined || v === "") return undefined;
-    if (COLOR.test(v)) return normalize(v);
-    errors.push(t("themeBadColor", { key, value: v }));
+    if (typeof v === "string" && COLOR.test(v)) return normalize(v);
+    errors.push(t("themeBadColor", { name, key, value: String(v) }));
     return undefined;
   };
   const bg = color("background");
@@ -162,11 +160,33 @@ export function resolveTheme(cfg: ThemeConfig = {}): { theme: Theme; errors: str
     theme.ui.accent = accent;
     theme.ui["accent-dim"] = mix(accent, theme.ui["bar-bg"], 0.25);
   }
-  ANSI_NAMES.forEach((name, i) => {
-    const c = color(name);
+  ANSI_NAMES.forEach((key, i) => {
+    const c = color(key);
     if (c) theme.term.colors[i] = c;
   });
   return { theme, errors };
+}
+
+/**
+ * [theme] の name で使う色を決める。組み込みのテーマが先で、無ければ [themes.名前]。
+ * どちらにも無い名前は知らせて default にする。errors には選んだ自分のテーマの書き間違いも入る。
+ */
+export function resolveTheme(name: string | undefined, customs: CustomThemes = {}): { theme: Theme; errors: string[] } {
+  if (name === undefined || name === "") return { theme: copyTheme(THEMES.default), errors: [] };
+  if (Object.hasOwn(THEMES, name)) return { theme: copyTheme(THEMES[name]), errors: [] };
+  const def = Object.hasOwn(customs, name) ? customs[name] : undefined;
+  if (def && typeof def === "object") return customTheme(name, def);
+  return { theme: copyTheme(THEMES.default), errors: [t("themeUnknown", { name, names: themeNames(customs).join(", ") })] };
+}
+
+/** [themes] の書き間違い（画面を開いたときに知らせる）。skip の名前のもの（resolveTheme で知らせたもの）は除く。 */
+export function themeProblems(customs: CustomThemes = {}, skip?: string): string[] {
+  const errors: string[] = [];
+  for (const [name, def] of Object.entries(customs)) {
+    if (Object.hasOwn(THEMES, name)) errors.push(t("themeSameAsBuiltin", { name }));
+    else if (name !== skip) errors.push(...customTheme(name, def ?? {}).errors);
+  }
+  return errors;
 }
 
 /** 色を画面に当てる。ボタンの色は root（:root）に、端末の色は端末の要素に（wterm の .wterm の既定より強く）。 */

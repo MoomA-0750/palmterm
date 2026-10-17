@@ -223,24 +223,31 @@ palmterm understands it, and the page tells you so when it opens. Your settings 
 
 ### Colors (theme)
 
-`name` in `[theme]` picks a built-in theme; any color you write overrides just that color.
+`name` in `[theme]` picks a theme: a built-in one, or one of your own written under `[themes.NAME]`.
+`[theme]` takes only `name`; writing colors there is reported as a mistake in the config file.
 
 ```toml
 [theme]
-name = "light"         # "default" (default), "light", "solarized-dark" or "solarized-light"
-background = "#fafafa" # terminal and page background
-foreground = "#1f2328" # terminal text
-cursor = "#1f2328"
-accent = "#0969da"     # button accent (green by default)
-red = "#d1242f"        # one of the 16 terminal colors
+name = "my-dark"       # "default" (default), "light", "solarized-dark", "solarized-light" or your own
+
+[themes.my-dark]
+base = "solarized-dark" # the built-in theme to start from ("default" if omitted)
+accent = "#ff5f87"      # button accent
+# background = "#002b36" # terminal and page background
+# foreground = "#839496" # terminal text
+# cursor = "#93a1a1"
+# red = "#dc322f"        # one of the 16 terminal colors
 ```
 
-The 16 colors are `black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` and their
-`bright_` versions (`bright_black` … `bright_white`). Write colors as `#rrggbb` or `#rgb`. A mistyped
-color (such as `#12345`) or an unknown theme name is reported when the page opens, and only that part
-falls back to the default.
+Your theme uses the colors of `base`, with only the colors you write replaced. The 16 colors are
+`black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` and their `bright_` versions
+(`bright_black` … `bright_white`). Write colors as `#rrggbb` or `#rgb`. Mistakes in `[themes.NAME]`
+are reported when the page opens: a mistyped color (such as `#12345`) falls back to the `base` color,
+and unknown keys, an unknown `base` and a name that a built-in theme already uses are reported too
+(the built-in theme wins). An unknown name in `[theme]` is reported and `default` is used.
 
-You can also pick the theme on the page: tap one in the Theme row of Settings. The colors
+You can also pick the theme on the page: tap one in the Theme row of Settings (your own themes are
+listed after the built-in ones). The colors
 change at once and the `name` line under `[theme]` in the config file is rewritten (other lines, comments
 and their order stay as they are; the file is created if missing). If the config file has a mistake and
 cannot be read, it is left alone and the reason is shown.

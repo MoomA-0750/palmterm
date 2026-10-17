@@ -158,14 +158,14 @@ describe("設定画面のキーバーの行", () => {
 });
 
 describe("設定画面のテーマの行", () => {
-  it("組み込みのテーマを並べ、今のものに印を付ける。押すと選び、書き戻せたら印が移る。断られたら移らない", async () => {
+  it("組み込みのテーマと自分のテーマを並べ、今のものに印を付ける。押すと選び、書き戻せたら印が移る。断られたら移らない", async () => {
     setLang("ja");
     let current = "default";
     let accept = true;
     const chosen: string[] = [];
     const s = makeSettings({
       theme: {
-        names: ["default", "light", "solarized-dark", "solarized-light"],
+        names: ["default", "light", "solarized-dark", "solarized-light", "my-dark"],
         current: () => current,
         choose: async (name) => {
           chosen.push(name);
@@ -176,7 +176,8 @@ describe("設定画面のテーマの行", () => {
     });
     const btns = [...s.el.querySelectorAll<HTMLButtonElement>(".settings-theme")];
     expect(rowOf(btns[0])?.querySelector(".settings-label")?.textContent).toBe("テーマ");
-    expect(btns.map((b) => b.textContent)).toEqual(["既定", "明るい", "Solarized 暗", "Solarized 明"]);
+    // 自分のテーマは書いた名前のまま
+    expect(btns.map((b) => b.textContent)).toEqual(["既定", "明るい", "Solarized 暗", "Solarized 明", "my-dark"]);
     const on = () => btns.filter((b) => b.classList.contains("on")).map((b) => b.dataset.theme);
     expect(on()).toEqual(["default"]);
 
@@ -190,6 +191,11 @@ describe("設定画面のテーマの行", () => {
     await new Promise((r) => setTimeout(r));
     expect(chosen).toEqual(["light", "solarized-dark"]);
     expect(on()).toEqual(["light"]);
+
+    accept = true;
+    btns[4].click();
+    await new Promise((r) => setTimeout(r));
+    expect(on()).toEqual(["my-dark"]);
   });
 });
 

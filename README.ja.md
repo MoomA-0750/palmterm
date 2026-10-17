@@ -217,23 +217,29 @@ label = ":wq"
 
 ### 色（テーマ）
 
-`[theme]` の `name` で組み込みのテーマを選び、書いた色だけ上書きする。
+`[theme]` の `name` でテーマを選ぶ。組み込みのテーマか、`[themes.名前]` に書いた自分のテーマを選べる。
+`[theme]` に書けるのは `name` だけで、色を書くと設定ファイルの書き間違いとして知らせる。
 
 ```toml
 [theme]
-name = "light"         # "default"（既定）・"light"・"solarized-dark"・"solarized-light"
-background = "#fafafa" # 端末と画面の背景
-foreground = "#1f2328" # 端末の文字
-cursor = "#1f2328"
-accent = "#0969da"     # ボタンの強調の色（既定は緑）
-red = "#d1242f"        # 端末の16色の1つ
+name = "my-dark"       # "default"（既定）・"light"・"solarized-dark"・"solarized-light" か自分のテーマ
+
+[themes.my-dark]
+base = "solarized-dark" # もとにする組み込みのテーマ（書かなければ "default"）
+accent = "#ff5f87"      # ボタンの強調の色
+# background = "#002b36" # 端末と画面の背景
+# foreground = "#839496" # 端末の文字
+# cursor = "#93a1a1"
+# red = "#dc322f"        # 端末の16色の1つ
 ```
 
-16色は `black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` と、`bright_` を付けた
-`bright_black`〜`bright_white`。色は `#rrggbb` か `#rgb` で書く。書き間違えた色（`#12345` など）や
-知らないテーマの名前は画面を開いたときに知らせ、その所だけ既定の色に戻す。
+自分のテーマは `base` の色に、書いた色だけを重ねる。16色は `black` `red` `green` `yellow` `blue`
+`magenta` `cyan` `white` と、`bright_` を付けた `bright_black`〜`bright_white`。色は `#rrggbb` か
+`#rgb` で書く。`[themes.名前]` の書き間違いは画面を開いたときに知らせる。書き間違えた色（`#12345` など）は
+その色だけ `base` の色に戻し、知らない項目・知らない `base`・組み込みと同じ名前も知らせる（同じ名前なら
+組み込みのテーマを使う）。`[theme]` の知らないテーマの名前は知らせて `default` を使う。
 
-テーマは画面からも選べる。設定画面の「テーマ」の行で押すと、すぐ色が変わり、設定ファイルの
+テーマは画面からも選べる。設定画面の「テーマ」の行（自分のテーマは組み込みのものの後ろに並ぶ）で押すと、すぐ色が変わり、設定ファイルの
 `[theme]` の `name` の行を書き換える（ほかの行・コメント・並び順はそのまま。ファイルが無ければ作る）。
 設定ファイルに書き間違いがあって読めないときは書き換えず、理由を知らせる。
 

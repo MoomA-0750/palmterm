@@ -166,15 +166,18 @@
 - （仮）方針：好みの設定は `~/.config/palmterm/` の中に置き、このフォルダを写せば別の PC でも同じになる。設定ファイルの書き方を変えるときは、古い書き方も読めるようにしたうえで版を上げる
 - （確定）設定ファイルに `version = 2` と書ける（今の書き方の版は 2。版 2 で `[font]` の `stack` が増えた）。書いていなければ 1 とみなし、版 1 の設定ファイルもそのまま読める。`config.example.toml` には `version = 2` が入っていて、そのまま読める。0 以下や整数でない版は書き間違いとして知らせる
   - 確かめ方: 自動テスト `TestConfigVersion`、`TestConfigExampleReadsAsIs`（auth_config_test.go）
-- （確定）`version` がこの palmterm の知らない新しい値なら、読める項目（`language`、`[[keys]]`、`[theme]`、`[font]`）だけ使い、知らない項目や書き方が変わって読めない項目は飛ばす。画面を開いたときに、書き間違いの知らせと同じ出し方で「新しい版の設定ファイルです」と知らせる（`/api/config` の応答の `newerConfig` に版が入る）。TOML として読めないときは今までどおり書き間違いとして知らせ、既定の設定を使う
+- （確定）`version` がこの palmterm の知らない新しい値なら、読める項目（`language`、`[[keys]]`、`[theme]` の `name`、`[themes]`、`[font]`）だけ使い、知らない項目や書き方が変わって読めない項目は飛ばす。画面を開いたときに、書き間違いの知らせと同じ出し方で「新しい版の設定ファイルです」と知らせる（`/api/config` の応答の `newerConfig` に版が入る）。TOML として読めないときは今までどおり書き間違いとして知らせ、既定の設定を使う
   - 確かめ方: 自動テスト `TestConfigNewerVersionUsesWhatItCanRead`（auth_config_test.go）
   - 実物での確かめ方: 設定ファイルに `version = 3` と知らない項目を書き、ページを読み込み直す → 下に「新しい版の設定ファイルです（…、版 3）。この palmterm が読める項目だけ使います」と出て、言語とキーバーは書いたとおりになる
-- （確定）`[theme]` の `name` で組み込みのテーマを選ぶ。`default`（今までの暗い色。書かなければこれ）、`light`（明るい色）、`solarized-dark`、`solarized-light`。端末の文字・背景・16色と、ボタン・帯・パネル・入力欄の色がまとめて変わる。ページを読み込み直すと反映する。知らない名前は画面を開いたときに知らせ、default を使う。設定画面からも選べる（「画面でテーマとフォントを選ぶ」の節）
-  - 確かめ方: 単体テスト「設定ファイルの [theme]」（web/src/theme.test.ts）、通しのテスト「[theme] でテーマを選ぶと端末とボタンの色が変わり、書いた色だけ上書きする。書き間違えた色は知らせて既定に戻す」（web/e2e/app.test.ts）、`TestConfigTheme`（auth_config_test.go）
+- （確定）`[theme]` の `name` でテーマを選ぶ。組み込みのテーマは `default`（今までの暗い色。書かなければこれ）、`light`（明るい色）、`solarized-dark`、`solarized-light`。`[themes.名前]` に書いた自分のテーマの名前も書ける（組み込みと同じ名前なら組み込みのもの）。端末の文字・背景・16色と、ボタン・帯・パネル・入力欄の色がまとめて変わる。ページを読み込み直すと反映する。どちらにも無い名前は画面を開いたときに知らせ、default を使う。設定画面からも選べる（「画面でテーマとフォントを選ぶ」の節）
+  - 確かめ方: 単体テスト「設定ファイルの [theme]」（web/src/theme.test.ts）、通しのテスト「[theme] の name でテーマを選ぶと端末とボタンの色が変わる。[themes.名前] の自分のテーマは base に書いた色だけ重ね、…」（web/e2e/app.test.ts）、`TestConfigTheme`（auth_config_test.go）
   - 実物での確かめ方: 設定ファイルに `[theme]` と `name = "light"` を書き、ページを読み込み直す → 端末が白地に黒い文字になり、キーバーなどのボタンも明るい色になる。消して読み込み直すと元の色に戻る
-- （確定）`[theme]` に `background`（端末と画面の背景）・`foreground`（端末の文字）・`cursor`・`accent`（ボタンの強調の色）・16色（`black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` と `bright_` を付けた8つ）を書くと、その色だけテーマの色を上書きする。色は `#rrggbb` か `#rgb`
+- （確定）`[theme]` に書けるのは `name` だけ。ほかの項目（`accent` などの色の行も）を書くと、設定ファイルの書き間違いとして「[theme] に書けるのは name だけです。色は [themes.名前] に書き…」と項目の名前を知らせ、既定の設定を使う
   - 確かめ方: 上と同じテスト
-- （確定）色の書き間違い（`#12345`、`white` など）は、画面を開いたときに項目の名前と書いた値を知らせ、その色だけテーマの色に戻す。ほかの色は書いたとおりに使う。`[theme]` の中の知らない項目名は、ほかの項目と同じく設定ファイルの書き間違いとして知らせ、既定の設定を使う
+- （確定）自分のテーマは `[themes.名前]` に書く。`base` で組み込みのテーマを選び（書かなければ `default`）、`background`（端末と画面の背景）・`foreground`（端末の文字）・`cursor`・`accent`（ボタンの強調の色）・16色（`black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` と `bright_` を付けた8つ）を書くと、その色だけ base の色を上書きする。色は `#rrggbb` か `#rgb`。例: `base = "solarized-dark"` と `accent = "#ff5f87"` なら、Solarized 暗の色のまま強調の色だけが #ff5f87 になる
+  - 確かめ方: 単体テスト「設定ファイルの [themes.名前]（自分のテーマ）」（web/src/theme.test.ts）、上と同じ通しのテスト・`TestConfigTheme`
+  - 実物での確かめ方: 設定ファイルに `[themes.my-dark]` と `base = "solarized-dark"`・`accent = "#ff5f87"` を書き、`[theme]` を `name = "my-dark"` にして読み込み直す → Solarized 暗の色で、tmux ボタンなどの強調の色だけ桃色になる
+- （確定）`[themes.名前]` の書き間違いは、画面を開いたときに知らせる（選んでいないテーマのものも）。色の書き間違い（`#12345`、`white` など）は項目の名前と書いた値を知らせ、その色だけ base の色に戻す。ほかの色は書いたとおりに使う。知らない項目は知らせて使わない。知らない `base` は知らせて default をもとにする。組み込みと同じ名前は知らせ、組み込みのテーマを使う。どれも設定全体の書き間違いにはしない（ほかの設定はそのまま使う）
   - 確かめ方: 上と同じテスト
 - （確定）`[font]` の `stack`（版 2 の書き方）に、使うフォントを優先する順に並べる（例: `stack = ["fonts/MyMono.woff2", "Noto Sans Mono CJK JP", "JetBrains Mono"]`）。端末の文字は、文字ごとに並びの先頭から順に、その文字を持つフォントで描く（英字は MyMono、MyMono に無い漢字は Noto）。並びのどれも持たない文字は JetBrains Mono などの既定の並びで描く
   - 確かめ方: `TestFontStack`（fonts_test.go）、単体テスト「stack の並びは書いた順に置く」（web/src/font.test.ts）、通しのテスト「[font] の stack（版 2）は並びの先頭から順に、その文字を持つフォントで描く。…」（web/e2e/app.test.ts。英字だけ持つフォントとキリル文字だけ持つフォントを並べ、ブラウザが文字ごとに実際に描いたフォントの名前を確かめる。並びを入れ替えると先にあるものが勝つことも確かめる）
@@ -221,8 +224,8 @@
 
 ## 画面でテーマとフォントを選ぶ
 
-- （確定）設定画面の「テーマ」の行に組み込みのテーマ（既定・明るい・Solarized 暗・Solarized 明）を並べ、今のものに印を付ける。押すと読み込み直さずにすぐ色が変わり、設定ファイルの `[theme]` の `name` を書き換える。`[theme]` に書いた色（`accent` など）は今までどおりその上に重ねる。続けて見比べられるよう、設定画面は閉じない
-  - 確かめ方: `TestAppearanceIsWrittenBackKeepingTheRest`（configwrite_test.go）、単体テスト「設定画面のテーマの行」（web/src/settings.test.ts）、通しのテスト「設定画面でテーマと fonts/ のフォントを選ぶとすぐ画面に反映され、…」（web/e2e/app.test.ts）
+- （確定）設定画面の「テーマ」の行に組み込みのテーマ（既定・明るい・Solarized 暗・Solarized 明）と、その後ろに `[themes.名前]` の自分のテーマ（書いた名前のまま、名前の順）を並べ、今のものに印を付ける。押すと読み込み直さずにすぐ色が変わり、設定ファイルの `[theme]` の `name` を書き換える。続けて見比べられるよう、設定画面は閉じない
+  - 確かめ方: `TestAppearanceIsWrittenBackKeepingTheRest`（configwrite_test.go）、単体テスト「設定画面のテーマの行」（web/src/settings.test.ts）、通しのテスト「設定画面でテーマと fonts/ のフォントを選ぶとすぐ画面に反映され、…」（web/e2e/app.test.ts。自分のテーマが並び、押すと読み込み直さずにその色になり `name` が書き換わることも確かめる）
   - 実機での確かめ方: `make install` して palmterm を再起動し、スマホで tmux パネル →「設定」→「テーマ」の「明るい」→ すぐ白地になり、PC の `~/.config/palmterm/config.toml` の `[theme]` に `name = "light"` が入る
 - （確定）フォントの一覧の各行の「使う」を押すと、読み込み直さずにすぐ端末の文字がそのフォントになり（一覧に「使用中」が付く）、設定ファイルの `[font]` を書き換える。`stack` の書き方なら並びをそのフォント1つ（`stack = ["fonts/名前"]`）にし、版 1 の書き方なら `file` を `"fonts/名前"` に書き換える（`family` の行は残す）。一覧の先頭の「既定のフォント」の「使う」は `stack`（版 1 なら `file`）の行を消す（版 1 なら `family` か JetBrains Mono で描く）。`stack` の書き方では、並びの先頭が一覧のファイルならその行に「使用中」が付く
   - 確かめ方（stack）: `TestAppearanceRewritesTheStack`（configwrite_test.go）と上の通しのテスト「[font] の stack（版 2）…」
@@ -234,7 +237,7 @@
   - 確かめ方: `TestAppearanceIsWrittenBackKeepingTheRest` と上の通しのテスト（別のブラウザで開き直す）
 - （確定）設定ファイルに書き間違いがあって読めないとき（TOML として読めない・知らない項目・値の間違い）は書き戻さず、画面に「書き間違いがあるので、書き戻しませんでした」と理由を知らせ、色もフォントも変えない。書き換える行を見つけられない書き方（`theme = { … }` のインラインのテーブル、`theme.name = …` のドットの付いた書き方、複数行の文字列）も書き戻さず、手で直すよう知らせる
   - 確かめ方: `TestAppearanceIsNotWrittenToAnUnreadableConfig`（configwrite_test.go）と上の通しのテスト
-- （確定）選べるのは組み込みのテーマと、`fonts/` の直下にあるフォント・PC に入っているフォント・JetBrains Mono の名前だけで、ほかの値は断る。書き戻せるのはログインした端末だけ
+- （確定）選べるのは組み込みのテーマと今の設定ファイルの `[themes.名前]` のテーマ、`fonts/` の直下にあるフォント・PC に入っているフォント・JetBrains Mono の名前だけで、ほかの値は断る。書き戻せるのはログインした端末だけ
   - 確かめ方: `TestAppearanceRejectsUnknownNames`、`TestThemeNamesMatchTheScreen`（configwrite_test.go。サーバーの知っているテーマの名前が画面の組み込みのテーマと同じ）
 
 ## 画面で言語を選ぶ

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -204,13 +205,14 @@ func TestDevicesSurviveRestartButNotTokenChange(t *testing.T) {
 }
 
 type configResponse struct {
-	Language string      `json:"language"`
-	Keys     []keyConfig `json:"keys"`
-	Theme    themeConfig `json:"theme"`
-	Path     string      `json:"path"`
-	Version  string      `json:"version"`
-	Error    string      `json:"error"`
-	Newer    int         `json:"newerConfig"`
+	Language string       `json:"language"`
+	Keys     []keyConfig  `json:"keys"`
+	Theme    themeConfig  `json:"theme"`
+	Themes   customThemes `json:"themes"`
+	Path     string       `json:"path"`
+	Version  string       `json:"version"`
+	Error    string       `json:"error"`
+	Newer    int          `json:"newerConfig"`
 }
 
 func getConfig(t *testing.T, s *server) configResponse {
@@ -394,41 +396,57 @@ func TestConfigExampleReadsAsIs(t *testing.T) {
 	}
 }
 
-// [theme] の name と色は、書いたとおり画面に渡す（色の確かめと既定への戻しは画面側）。
-// [theme] の中の知らない項目は、ほかの項目と同じく書き間違いとして知らせる。
+// [theme] には name だけを書き、[themes.名前] の自分のテーマは書いたとおり画面に渡す
+// （色・項目・base の確かめと base への戻しは画面側）。[theme] に name 以外を書くと書き間違いとして知らせる。
 func TestConfigTheme(t *testing.T) {
 	s := newTestServer(t)
 	writeConfig(t, `
 [theme]
-name = "light"
-background = "#fafafa"
-foreground = "#123"
-cursor = "#ff0000"
-accent = "#0969da"
+name = "my-dark"
+
+[themes.my-dark]
+base = "solarized-dark"
+accent = "#ff5f87"
+
+[themes.mine]
 red = "#12345"
-bright_white = "#ffffff"
+backgroud = "#000000"
+base = "dracula"
 `)
 	c := getConfig(t, s)
-	want := themeConfig{Name: "light", Background: "#fafafa", Foreground: "#123", Cursor: "#ff0000",
-		Accent: "#0969da", Red: "#12345", BrightWhite: "#ffffff"}
-	if c.Error != "" || c.Theme != want {
+	want := customThemes{
+		"my-dark": {"base": "solarized-dark", "accent": "#ff5f87"},
+		"mine":    {"red": "#12345", "backgroud": "#000000", "base": "dracula"},
+	}
+	if c.Error != "" || c.Theme != (themeConfig{Name: "my-dark"}) || !reflect.DeepEqual(c.Themes, want) {
 		t.Fatalf("%+v", c)
 	}
 
-	writeConfig(t, "[theme]\nname = \"light\"\nbackgroud = \"#000000\"\n")
-	if c := getConfig(t, s); !strings.Contains(c.Error, "theme.backgroud") || c.Theme != (themeConfig{}) {
+	// [theme] に色を書くと書き間違い。既定の設定を使う（色は [themes.名前] に書くよう知らせる）
+	for _, bad := range []string{
+		"[theme]\nname = \"light\"\naccent = \"#ff5f87\"\n",
+		"[theme]\nname = \"light\"\nbackgroud = \"#000000\"\n",
+	} {
+		writeConfig(t, bad)
+		c := getConfig(t, s)
+		if !strings.Contains(c.Error, "[themes.NAME]") || !strings.Contains(c.Error, "theme.") || c.Theme != (themeConfig{}) || c.Themes != nil {
+			t.Fatalf("%q: %+v", bad, c)
+		}
+	}
+	writeConfig(t, "language = \"en\"\n[theme]\nname = \"light\"\nbackgroud = \"#000000\"\n")
+	if c := getConfig(t, s); !strings.Contains(c.Error, "theme.backgroud") || c.Language != "en" {
 		t.Fatalf("%+v", c)
 	}
 
 	// 書いていなければ空（画面側で default になる）。
 	writeConfig(t, "language = \"ja\"\n")
-	if c := getConfig(t, s); c.Error != "" || c.Theme != (themeConfig{}) {
+	if c := getConfig(t, s); c.Error != "" || c.Theme != (themeConfig{}) || c.Themes != nil {
 		t.Fatalf("%+v", c)
 	}
 
-	// 新しい版の設定ファイルでも [theme] は読む。
-	writeConfig(t, "version = 3\n[theme]\nname = \"light\"\naccent = \"#0969da\"\nglow = true\n")
-	if c := getConfig(t, s); c.Newer != 3 || c.Error != "" || c.Theme != (themeConfig{Name: "light", Accent: "#0969da"}) {
+	// 新しい版の設定ファイルでも [theme] の name と [themes] は読む（[theme] の知らない項目は飛ばす）。
+	writeConfig(t, "version = 3\n[theme]\nname = \"mine\"\naccent = \"#0969da\"\n[themes.mine]\nglow = true\n")
+	if c := getConfig(t, s); c.Newer != 3 || c.Error != "" || c.Theme != (themeConfig{Name: "mine"}) || !reflect.DeepEqual(c.Themes, customThemes{"mine": {"glow": true}}) {
 		t.Fatalf("%+v", c)
 	}
 }
