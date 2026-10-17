@@ -1,6 +1,6 @@
 ---
 id: 0009
-status: blocked       # todo / doing / blocked / done
+status: todo       # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - "main.go"
   - "auth.go"
@@ -10,6 +10,7 @@ scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions
   - "help.go"
   - "*_test.go"
   - "README*.md"
+  - "web/e2e/*.ts"
 spec: SPEC.md「〇〇」
 created: 2026-10-16
 ---
@@ -41,6 +42,7 @@ created: 2026-10-16
 - ついでに決めてほしいこと（推奨案で進めてよければ答えは要らない）:
   - 「ログイン中の端末」の記録はトークンのファイルの中身で鍵をかけてあり、それで「更新前からログインしていた端末はそのまま使える」を保つ。推奨案は、token ファイルはログインには使わず「端末の記録の鍵」として残す。`-token` と同じ固定のトークンとして `PALMTERM_TOKEN`（環境変数）もなくす。`-token`・`PALMTERM_TOKEN` で動かしていた人は、更新後に一度ログインし直す
   - `palmterm url` は、サーバーの控えのファイル（login-urls）を読む代わりに、logout-all と同じ操作用のソケットで動いているサーバーに新しいトークンを出させる（控えのファイルはもう書かない）
+- 本人の答え（2026-10-17 21:13）: web/e2e/*.ts を足してよい。e2e は案のとおり palmterm url で使い捨ての URL を取り、開いて「ログイン」ボタンを押す関数でログインする形に直して。ついでの2点（token ファイルは端末の記録の鍵として残し -token と PALMTERM_TOKEN はなくす／palmterm url は操作用のソケットでサーバーに新しいトークンを出させる）も推奨案で進めてよい（scope に web/e2e/*.ts を足した）
 
 ## メモ
 （実行役が書く。試してだめだったこと）
