@@ -42,4 +42,6 @@ created: 2026-10-17
 - 実機での確かめは `make install` と palmterm の再起動のあとで（SPEC.md の「画面でテーマとフォントを選ぶ」の節の手順）
 
 ## レビュー
-（task-loop が Codex の指摘を書き足す）
+Codex（2026-10-17、6c02ba8..0148ea4）:
+
+- 中: `web/src/theme.ts:128` — 自作テーマを `Object.keys(customs)` の列挙順のまま並べており、SPEC.md の「名前の順」を保証していません。特に `[themes.10]` と `[themes.2]` のような数値名は JavaScript の整数キー規則で `2, 10` の順になります。明示的に名前でソートし、複数の自作テーマによるテストを追加する必要があります。
