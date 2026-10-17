@@ -27,12 +27,13 @@ import (
 var webDist embed.FS
 
 type server struct {
-	token     string
-	devices   *deviceStore // ログインした端末
-	session   string       // つなぐ tmux のセッション
-	origins   []string
-	uploadDir string
-	clients   clientSet // つながっている画面（ブラウザで開く URL を届ける先）
+	logins     *loginTokens // 使い捨てのログイン用トークン
+	loginBases []string     // ログイン用の URL の頭（http://127.0.0.1:7681、LAN の https://…）
+	devices    *deviceStore // ログインした端末
+	session    string       // つなぐ tmux のセッション
+	origins    []string
+	uploadDir  string
+	clients    clientSet // つながっている画面（ブラウザで開く URL を届ける先）
 	// tmux の BROWSER に入れる palmterm-open のパス（空なら渡さない）
 	openCommand string
 	// tmux の中のプログラムが OSC 52 でコピーした文字も tmux のバッファに入れる（set-clipboard on）
@@ -53,7 +54,7 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "open" {
 		os.Exit(runOpen(os.Args[2:]))
 	}
-	// palmterm url：動いている palmterm のログイン用の URL と QR コードを出す。
+	// palmterm url：動いている palmterm に新しい使い捨てのログイン用の URL を出させ、QR コードと一緒に出す。
 	if len(os.Args) > 1 && os.Args[1] == "url" {
 		os.Exit(runURL(os.Stdout, os.Args[2:]))
 	}
@@ -65,7 +66,6 @@ func main() {
 	// 説明は英語で書く。-help では設定の言語が日本語なら help.go の flagUsageJa に差し替える。
 	listen := flag.String("listen", "127.0.0.1:7681", "address to listen on (HTTP)")
 	session := flag.String("session", "main", "tmux session to attach to")
-	token := flag.String("token", "", "login token (default: ~/.config/palmterm/token, created on first run)")
 	allowOrigin := flag.String("allow-origin", "", "extra WebSocket origins, comma-separated (e.g. for the Vite dev server)")
 	uploadDir := flag.String("upload-dir", "", "where uploaded files are saved (default: ~/.cache/palmterm/uploads)")
 	configPath := flag.String("config", "", "configuration file (default: ~/.config/palmterm/config.toml)")
@@ -93,24 +93,20 @@ func main() {
 	if !sessionNamePattern.MatchString(*session) {
 		log.Fatalf(tr("セッション名に使えない文字があります: %q", "Invalid session name: %q"), *session)
 	}
-	tok := *token
-	if tok == "" {
-		tok = os.Getenv("PALMTERM_TOKEN")
-	}
-	if tok == "" {
-		var err error
-		if tok, err = loadOrCreateToken(); err != nil {
-			log.Fatal(err)
-		}
+	// token ファイルの中身はログインには使わず、ログインした端末の記録の鍵にする
+	// （更新前からログインしていた端末をそのまま通し、ファイルを変えれば全端末を締め出せる）。
+	key, err := loadOrCreateToken()
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	s := &server{token: tok, session: *session, uploadDir: *uploadDir, captureClipboard: *captureClip}
-	// ログインした端末の記録は、トークンと同じ所に置く。
+	s := &server{logins: newLoginTokens(), session: *session, uploadDir: *uploadDir, captureClipboard: *captureClip}
+	// ログインした端末の記録は、鍵と同じ所に置く。
 	confDir, err := os.UserConfigDir()
 	if err != nil {
 		log.Fatal(err)
 	}
-	s.devices = newDeviceStore(filepath.Join(confDir, "palmterm", "devices.json"), tok)
+	s.devices = newDeviceStore(filepath.Join(confDir, "palmterm", "devices.json"), key)
 	if s.uploadDir == "" {
 		cache, err := os.UserCacheDir()
 		if err != nil {
@@ -127,15 +123,13 @@ func main() {
 		s.setupBrowserRelay()
 	}
 	handler := s.routes()
-	loginURLs := []string{"http://" + localAddr(*listen) + "/auth?token=" + tok}
+	s.loginBases = []string{"http://" + localAddr(*listen)}
 	if *lan != "" {
-		loginURLs = append(loginURLs, serveLAN(*lan, handler, tok)...)
+		s.loginBases = append(s.loginBases, serveLAN(*lan, handler)...)
 	}
-	// palmterm url が読む控え（サービスとして動かしていても、ログイン用の URL をすぐ出せるように）。
-	if err := writeLoginURLs(loginURLs); err != nil {
-		log.Printf(tr("ログイン用の URL の控えを書けませんでした: %v", "Could not save the login URLs: %v"), err)
-	}
-	log.Printf(tr("palmterm: http://%s/auth?token=%s を開いてください（palmterm url でも出せます）", "palmterm: open http://%s/auth?token=%s (or run: palmterm url)"), localAddr(*listen), tok)
+	// palmterm url の受け口（サービスとして動かしていても、ログイン用の URL をすぐ出せるように）。
+	s.setupLoginSocket()
+	s.logLoginURLs()
 	log.Fatal(newHTTPServer(*listen, handler).ListenAndServe())
 }
 
@@ -157,8 +151,8 @@ func localAddr(listen string) string {
 }
 
 // LAN 向けに HTTPS で待ち受ける（証明書は自分で署名したもの）。ポートだけなら LAN のアドレスごとに待ち受ける。
-// 待ち受けられたアドレスのログイン用の URL を返す。
-func serveLAN(addr string, handler http.Handler, token string) []string {
+// 待ち受けられたアドレスの URL の頭（https://アドレス:ポート）を返す。
+func serveLAN(addr string, handler http.Handler) []string {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		log.Fatal(err)
@@ -188,10 +182,7 @@ func serveLAN(addr string, handler http.Handler, token string) []string {
 				log.Printf(tr("palmterm（LAN）: %s の待ち受けが止まりました: %v", "palmterm (LAN): stopped serving %s: %v"), ln.Addr(), err)
 			}
 		}()
-		u := "https://" + ln.Addr().String() + "/auth?token=" + token
-		urls = append(urls, u)
-		log.Printf(tr("palmterm（LAN）: %s を開いてください（最初は証明書の警告が出るので、先へ進む）",
-			"palmterm (LAN): open %s (the browser warns about the certificate the first time; proceed)"), u)
+		urls = append(urls, "https://"+ln.Addr().String())
 	}
 	return urls
 }
@@ -202,7 +193,8 @@ func (s *server) routes() http.Handler {
 		log.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /auth", s.handleAuth)
+	mux.HandleFunc("GET /auth", s.handleAuthPage)
+	mux.HandleFunc("POST /auth", s.handleAuthLogin)
 	mux.Handle("GET /ws", s.requireAuth(http.HandlerFunc(s.handleTerminal)))
 	mux.Handle("GET /api/config", s.requireAuth(http.HandlerFunc(s.handleConfig)))
 	mux.Handle("POST /api/config/appearance", s.requireAuth(http.HandlerFunc(s.handleAppearance)))

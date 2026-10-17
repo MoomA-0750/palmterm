@@ -24,9 +24,19 @@
 ## ログインと安全
 
 - （仮）既定では 127.0.0.1 でだけ待ち受ける。スマホからは Tailscale の中継（`tailscale serve`）か、LAN 向けの HTTPS（`-lan`）でつなぐ
-- （仮）ログイン用のトークンは1つだけ。最初の起動でランダムに作り、権限 0600 のファイルに保存し、再起動しても変わらない。ファイルの権限が緩ければ直す
-- （仮）ログイン用の URL（`/auth?token=…`）を一度開くと、そのブラウザは1年間ログインしたままになる
-- （確定）Cookie の中身はトークンそのものではない。Cookie は同じホストの別のサービスにも送られるので、そこから漏れても新しい端末でログインできないようにするため。トークンそのものを Cookie に入れても通さない
+- （確定）ログイン用のトークンは使い捨て。起動時と `palmterm url` のたびに新しく出す（1回で出した URL は、待ち受けているどのアドレスのものも同じトークン）。1回ログインに使うか、出してから5分たつと使えない。サーバーのメモリにだけ持ち、再起動すると、まだ使っていないトークンはすべて無効になる
+  - 確かめ方: 自動テスト `TestLoginWithNameUsesTheTokenOnce`、`TestLoginTokenExpiresAfterFiveMinutes`、`TestRestartInvalidatesUnusedLoginTokens`（auth_config_test.go）、`TestRunURLIssuesANewTokenEachTime`（loginurl_test.go）、通しのテスト「一覧で端末に名前を付けられ、…」（web/e2e/app.test.ts。使った URL をもう一度開くと 401）
+- （確定）ログイン用の URL（`GET /auth?token=…`）を開くと、端末の名前の欄と「ログイン」ボタンのページを設定の言語で出す。欄には User-Agent から作った自動の名前（例「iPhone · Safari」）を薄く出す。開いただけではトークンを使わない（リンクのプレビューで使い切られない）ので、何度開いても同じページが出る。使えないトークンなら、ページの代わりに 401 と「palmterm url で新しい URL を出す」案内を出す。ページは `Cache-Control: no-store`、`Referrer-Policy: no-referrer`、ほかのページに埋め込ませない CSP を付けて返す
+  - 確かめ方: 自動テスト `TestLoginPageDoesNotUseTheToken`（auth_config_test.go）、通しのテスト「一覧で端末に名前を付けられ、…」（web/e2e/app.test.ts）
+- （確定）ページのボタンを押すと（`POST /auth`、フォームの `token` と `name`）、トークンを使い切ってログインし、端末の画面（`/`）に移る。入れた名前は「ログイン中の端末」の一覧の付けた名前になる（40 文字まで。前後の空白と制御文字は除く）。空なら名前を付けず、自動の名前で出る。ログインしたブラウザは1年間ログインしたままになる
+  - 確かめ方: 自動テスト `TestLoginWithNameUsesTheTokenOnce`（auth_config_test.go）、通しのテストの `login`（web/e2e/app.test.ts。palmterm url の URL を開いてボタンを押す）
+- （確定）固定のトークン（`~/.config/palmterm/token` の中身）ではログインできない。`-token` と `PALMTERM_TOKEN` はない（`-token` を付けると起動しない）
+  - 確かめ方: 自動テスト `TestFixedTokenCannotLogIn`（auth_config_test.go）、`TestHelpLanguage`（help_test.go。-help に -token が無い）
+- （確定）`~/.config/palmterm/token` はログインした端末の記録の鍵にする。最初の起動でランダムに作り、権限 0600 で保存し、再起動しても変わらない。権限が緩ければ直す。使い捨てのトークンにする前からログインしていた端末は、ログインし直さずにそのまま使える
+  - 確かめ方: 自動テスト `TestDevicesFromBeforeTheUpdateStillWork`、`TestLoadTokenFixesLoosePermissions`（auth_config_test.go）
+- （確定）起動時の案内（ログ）に、使い捨てのログイン用の URL を出す（`-lan` なら LAN の URL も、同じトークンで）
+  - 確かめ方: 自動テスト `TestStartupLogShowsOneTimeLoginURL`（loginurl_test.go）
+- （確定）Cookie の中身はトークンそのものではない。Cookie は同じホストの別のサービスにも送られるので、そこから漏れても新しい端末でログインできないようにするため。トークン（token ファイルの中身）を Cookie に入れても通さない
   - 確かめ方: 自動テスト `TestAuthSetsCookieOnlyForTheRightToken`、`TestRequireAuth`（auth_config_test.go）
 - （確定）Cookie の中身は、ログインした端末ごとのランダムな値。サーバーは値のハッシュと、User-Agent から作った名前（例「iPhone · Safari」）、ログインした時刻、最後に使った時刻を `~/.config/palmterm/devices.json`（権限 0600）に記録する。再起動しても残る
   - 確かめ方: 自動テスト `TestDevicesSurviveRestartButNotTokenChange`（auth_config_test.go）
@@ -34,17 +44,19 @@
   - 確かめ方: 自動テスト `TestDevicesListLogoutAndRevoke`、`TestRevokeClosesThatDevicesTerminal`（auth_config_test.go）、通しのテスト「一覧で端末に名前を付けられ、ほかの端末を取り消すとその端末はつながらなくなり、自分はログアウトできる」（web/e2e/app.test.ts）
 - （確定）一覧の端末の名前を押すと、見分けやすい名前を付けられる（40 文字まで。前後の空白と制御文字は除く）。付けた名前を大きく出し、自動の名前は下の行に添える。空にすると自動の名前に戻る。名前はサーバーの記録に残るので、どの端末から付けても、再起動しても同じ
   - 確かめ方: 自動テスト `TestRenameDevice`（auth_config_test.go）、通しのテスト「一覧で端末に名前を付けられ、ほかの端末を取り消すとその端末はつながらなくなり、自分はログアウトできる」（web/e2e/app.test.ts）
-- （確定）トークンを変えて再起動しても、全端末を締め出せる。前のトークンで記録した端末は全部無効になる（漏れたのがトークンそのものなら、こちらを使う）
+- （確定）token ファイル（記録の鍵）を変えて再起動しても、全端末を締め出せる。前の鍵で記録した端末は全部無効になる
   - 確かめ方: 自動テスト `TestDevicesSurviveRestartButNotTokenChange`（auth_config_test.go）
-- （確定）`palmterm logout-all` で、動いている palmterm に記録された全端末のログインを取り消す。開いている接続もすぐ切れ、切られた画面には「取り消す」と同じく、読み込み直してログインし直す方法の案内が出る。取り消した台数（`Logged out N devices.`）を出して終了コード 0 で終わる。palmterm が動いていなければ、そう知らせて終了コード 1 で終わる。トークンは変わらないので、ログイン用の URL を開けばまたログインできる
+- （確定）`palmterm logout-all` で、動いている palmterm に記録された全端末のログインを取り消す。開いている接続もすぐ切れ、切られた画面には「取り消す」と同じく、読み込み直してログインし直す方法の案内が出る。取り消した台数（`Logged out N devices.`）を出して終了コード 0 で終わる。palmterm が動いていなければ、そう知らせて終了コード 1 で終わる。`palmterm url` で新しいログイン用の URL を出せば、またログインできる
   - サーバーとのやり取りは、実行時のフォルダ（`$XDG_RUNTIME_DIR/palmterm`、無ければ `/tmp/palmterm-<uid>`）の `control.sock`（0600）で行う。フォルダは起動時に 0700 にそろえ、ほかの人のフォルダなら使わない。`-relay-browser=false` でも使える
   - 確かめ方: 自動テスト `TestLogoutAllRevokesEveryDeviceAndClosesConnections`、`TestLogoutAllWithoutServer`（logoutall_test.go）
   - 実物での確かめ方: palmterm を動かしてスマホでつないだまま `palmterm logout-all` → 台数が出て終了コード 0。スマホの画面はすぐ切れ、ログインし直す案内が出る。palmterm を止めて打つと「palmterm is not running」と出て終了コード 1
 - （確定）この仕組みより前の Cookie（トークンから計算した値）は通さない。前から使っていた端末は、一度ログインし直す
   - 確かめ方: 自動テスト `TestRequireAuth`（auth_config_test.go）
 - （仮）他のアプリから開いたリンクでもログインしたまま開ける。一方、別のサイトのページからは tmux を操作できない
-- （仮）`palmterm url` で、動いている palmterm のログイン用 URL（`tailscale serve` が中継していればその URL も）と、スマホで読める QR コードを出す
-- （仮）ログイン用のトークンは tmux の中のシェルの環境に渡さない
+- （確定）`palmterm url` で、動いている palmterm に新しい使い捨てのトークンを出させ、待ち受けている各アドレスのログイン用 URL（`tailscale serve` が中継していればその URL を先頭に）と、先頭の URL の QR コードを出す（`-no-qr` なら QR は出さない）。palmterm が動いていなければ、そう知らせて終了コード 1 で終わる
+  - サーバーとのやり取りは、実行時のフォルダの `login.sock`（0600）で行う。前の版が書いていた URL の控え（`login-urls`）は起動時に消し、もう書かない
+  - 確かめ方: 自動テスト `TestRunURLIssuesANewTokenEachTime`、`TestRunURLWithoutServer`（loginurl_test.go）
+- （仮）ログイン用の認証の値は tmux の中のシェルの環境に渡さない（前の `PALMTERM_TOKEN` も tmux の環境から消す）
 - （仮）長く居座る不完全な接続は時間切れで切るが、端末の接続そのものは時間で切らない
 
 ## LAN からの接続（`-lan`）
@@ -97,17 +109,17 @@
 - （確定）「文字」の行の小さく・大きくで端末の文字サイズを変える。押しても設定画面は閉じず、今の大きさ（`13px` など）を出す。開くたびに今の大きさを取り直す（ピンチで変えたものも映る）。文字サイズはこのブラウザに覚える
   - 確かめ方: 単体テスト「設定画面の文字サイズ」（web/src/settings.test.ts）、通しのテスト「パネルで分割し、端末をタップしたペインに移り、設定画面で文字サイズを変える」（web/e2e/app.test.ts。設定画面を閉じると端末の文字の大きさが変わっている）
 - （確定）テーマ・言語・キーバーの行の動きは、それぞれ「画面でテーマとフォントを選ぶ」「画面で言語を選ぶ」「キーバー」の節のとおり（テーマと言語は設定ファイルに書き戻し、キーバーはこのブラウザに覚える）
-- （確定）小さい画面（「板の出し方」の節の、板を浮かせない画面）では、設定画面は1列で、「フォント」「ログイン中の端末」の「一覧」は設定画面に代わって一覧を開く。一覧の「閉じる」で設定画面に戻る
+- （確定）小さい画面（「板の出し方」の節の、板を浮かせない画面）では、設定画面は1列で、「フォント」「テーマ」「ログイン中の端末」の「一覧」は設定画面に代わって一覧を開く。一覧の「閉じる」で設定画面に戻る
   - 確かめ方: 単体テスト「設定画面の並び」（web/src/settings.test.ts）、通しのテスト（上と同じ。真ん中に見えているのが一覧→設定画面→端末と移ることを確かめる）と「それより小さい画面（スマホの縦・横、幅だけ広い画面）では今までどおり全画面で出る。…」（web/e2e/app.test.ts）
-- （確定）板を浮かせる大きい画面（幅 700px 以上かつ高さ 600px 以上）では、設定画面を2列にする。左に設定の行、右に「ログイン中の端末」かフォントの一覧が並ぶ。開いた直後の右は「ログイン中の端末」で、左の「一覧」で押した方が右に出る（押した方の「一覧」に印が付く）。右の一覧には「閉じる」は無く、設定画面と一緒に閉じる。板の幅は 900px（画面の9割まで）
-  - 確かめ方: 単体テスト「大きい画面では2列にし、…」（web/src/settings.test.ts）、通しのテスト「幅 700px 以上かつ高さ 600px 以上では、…設定画面は2列で、右に「ログイン中の端末」かフォントの一覧が出る」（web/e2e/app.test.ts。1024×768 と 800×700 で、板の幅と右の一覧の位置、押した方が右に出ることを確かめる）
+- （確定）板を浮かせる大きい画面（幅 700px 以上かつ高さ 600px 以上）では、設定画面を2列にする。左に設定の行、右に「ログイン中の端末」・フォント・テーマの一覧のどれかが並ぶ。開いた直後の右は「ログイン中の端末」で、左の「一覧」で押した方が右に出る（押した方の「一覧」に印が付く）。右の一覧には「閉じる」は無く、設定画面と一緒に閉じる。板の幅は 900px（画面の9割まで）
+  - 確かめ方: 単体テスト「大きい画面では2列にし、…」（web/src/settings.test.ts）、通しのテスト「幅 700px 以上かつ高さ 600px 以上では、…設定画面は2列で、右に「ログイン中の端末」・フォント・テーマの一覧が出る」（web/e2e/app.test.ts。1024×768 と 800×700 で、板の幅と右の一覧の位置、押した方が右に出て「一覧」に印が付くこと、右のテーマの一覧で選んでも右に出たままなことを確かめる）
   - 実機での確かめ方: iPad で tmux パネル →「設定」→ 中央の板の左に設定の行、右に「ログイン中の端末」の一覧が出る。「フォント」の「一覧」を押すと右がフォントの一覧に変わる
 
 ## 板の出し方
 
-設定画面・「ログイン中の端末」の一覧・フォントの一覧・クリップボード/履歴の画面（まとめて「板」と呼ぶ）の出し方。
+設定画面・「ログイン中の端末」の一覧・フォントの一覧・テーマの一覧・クリップボード/履歴の画面（まとめて「板」と呼ぶ）の出し方。
 
-- （確定）幅 700px 以上かつ高さ 600px 以上の画面（タブレットや PC）では、板を開くと周りが暗くなり、板が画面の中央に浮いて出る。幅は 560px（画面の幅より 32px 狭いところまで。2列の設定画面は 900px で、画面の幅の9割まで）、高さは中身に合わせて画面の8割まで（超えた分は板の中でスクロールする）。「ログイン中の端末」とフォントの一覧は、設定画面の右の列に出る（「設定画面」の節）
+- （確定）幅 700px 以上かつ高さ 600px 以上の画面（タブレットや PC）では、板を開くと周りが暗くなり、板が画面の中央に浮いて出る。幅は 560px（画面の幅より 32px 狭いところまで。2列の設定画面は 900px で、画面の幅の9割まで）、高さは中身に合わせて画面の8割まで（超えた分は板の中でスクロールする）。「ログイン中の端末」・フォント・テーマの一覧は、設定画面の右の列に出る（「設定画面」の節）
   - 確かめ方: 通しのテスト「幅 700px 以上かつ高さ 600px 以上では、板が周りを暗くして中央に浮き、暗い所か Esc で閉じる。…」（web/e2e/app.test.ts。1024×768 で板の位置・大きさ・暗い幕を確かめる）
   - 実機での確かめ方: iPad で palmterm を開き、tmux パネル →「設定」→ 周りが暗くなり、中央に設定の板が出る。クリップボードのボタンでも同じ
 - （確定）それより小さい画面（スマホは縦も横も）では、板は画面いっぱいに出る（暗い幕は出ない）
@@ -166,15 +178,18 @@
 - （仮）方針：好みの設定は `~/.config/palmterm/` の中に置き、このフォルダを写せば別の PC でも同じになる。設定ファイルの書き方を変えるときは、古い書き方も読めるようにしたうえで版を上げる
 - （確定）設定ファイルに `version = 2` と書ける（今の書き方の版は 2。版 2 で `[font]` の `stack` が増えた）。書いていなければ 1 とみなし、版 1 の設定ファイルもそのまま読める。`config.example.toml` には `version = 2` が入っていて、そのまま読める。0 以下や整数でない版は書き間違いとして知らせる
   - 確かめ方: 自動テスト `TestConfigVersion`、`TestConfigExampleReadsAsIs`（auth_config_test.go）
-- （確定）`version` がこの palmterm の知らない新しい値なら、読める項目（`language`、`[[keys]]`、`[theme]`、`[font]`）だけ使い、知らない項目や書き方が変わって読めない項目は飛ばす。画面を開いたときに、書き間違いの知らせと同じ出し方で「新しい版の設定ファイルです」と知らせる（`/api/config` の応答の `newerConfig` に版が入る）。TOML として読めないときは今までどおり書き間違いとして知らせ、既定の設定を使う
+- （確定）`version` がこの palmterm の知らない新しい値なら、読める項目（`language`、`[[keys]]`、`[theme]` の `name`、`[themes]`、`[font]`）だけ使い、知らない項目や書き方が変わって読めない項目は飛ばす。画面を開いたときに、書き間違いの知らせと同じ出し方で「新しい版の設定ファイルです」と知らせる（`/api/config` の応答の `newerConfig` に版が入る）。TOML として読めないときは今までどおり書き間違いとして知らせ、既定の設定を使う
   - 確かめ方: 自動テスト `TestConfigNewerVersionUsesWhatItCanRead`（auth_config_test.go）
   - 実物での確かめ方: 設定ファイルに `version = 3` と知らない項目を書き、ページを読み込み直す → 下に「新しい版の設定ファイルです（…、版 3）。この palmterm が読める項目だけ使います」と出て、言語とキーバーは書いたとおりになる
-- （確定）`[theme]` の `name` で組み込みのテーマを選ぶ。`default`（今までの暗い色。書かなければこれ）、`light`（明るい色）、`solarized-dark`、`solarized-light`。端末の文字・背景・16色と、ボタン・帯・パネル・入力欄の色がまとめて変わる。ページを読み込み直すと反映する。知らない名前は画面を開いたときに知らせ、default を使う。設定画面からも選べる（「画面でテーマとフォントを選ぶ」の節）
-  - 確かめ方: 単体テスト「設定ファイルの [theme]」（web/src/theme.test.ts）、通しのテスト「[theme] でテーマを選ぶと端末とボタンの色が変わり、書いた色だけ上書きする。書き間違えた色は知らせて既定に戻す」（web/e2e/app.test.ts）、`TestConfigTheme`（auth_config_test.go）
+- （確定）`[theme]` の `name` でテーマを選ぶ。組み込みのテーマは `default`（今までの暗い色。書かなければこれ）、`light`（明るい色）、`solarized-dark`、`solarized-light`、`rose-pine`、`rose-pine-moon`、`rose-pine-dawn`（明るい）、`catppuccin-latte`（明るい）、`catppuccin-frappe`、`catppuccin-macchiato`、`catppuccin-mocha`。Rosé Pine と Catppuccin の端末の文字・背景・カーソル・16色は公式の Alacritty のテーマと同じで、ボタンなどの色は公式の配色の色から選ぶ。`[themes.名前]` に書いた自分のテーマの名前も書ける（組み込みと同じ名前なら組み込みのもの）。端末の文字・背景・16色と、ボタン・帯・パネル・入力欄の色がまとめて変わる。ページを読み込み直すと反映する。どちらにも無い名前は画面を開いたときに知らせ、default を使う。設定画面からも選べる（「画面でテーマとフォントを選ぶ」の節）
+  - 確かめ方: 単体テスト「設定ファイルの [theme]」（web/src/theme.test.ts。Rosé Pine と Catppuccin の背景・文字・16色の前の8色と明暗も確かめる）、通しのテスト「[theme] の name でテーマを選ぶと端末とボタンの色が変わる。[themes.名前] の自分のテーマは base に書いた色だけ重ね、…」（web/e2e/app.test.ts）、`TestConfigTheme`（auth_config_test.go）
   - 実物での確かめ方: 設定ファイルに `[theme]` と `name = "light"` を書き、ページを読み込み直す → 端末が白地に黒い文字になり、キーバーなどのボタンも明るい色になる。消して読み込み直すと元の色に戻る
-- （確定）`[theme]` に `background`（端末と画面の背景）・`foreground`（端末の文字）・`cursor`・`accent`（ボタンの強調の色）・16色（`black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` と `bright_` を付けた8つ）を書くと、その色だけテーマの色を上書きする。色は `#rrggbb` か `#rgb`
+- （確定）`[theme]` に書けるのは `name` だけ。ほかの項目（`accent` などの色の行も）を書くと、設定ファイルの書き間違いとして「[theme] に書けるのは name だけです。色は [themes.名前] に書き…」と項目の名前を知らせ、既定の設定を使う
   - 確かめ方: 上と同じテスト
-- （確定）色の書き間違い（`#12345`、`white` など）は、画面を開いたときに項目の名前と書いた値を知らせ、その色だけテーマの色に戻す。ほかの色は書いたとおりに使う。`[theme]` の中の知らない項目名は、ほかの項目と同じく設定ファイルの書き間違いとして知らせ、既定の設定を使う
+- （確定）自分のテーマは `[themes.名前]` に書く。`base` で組み込みのテーマを選び（書かなければ `default`）、`background`（端末と画面の背景）・`foreground`（端末の文字）・`cursor`・`accent`（ボタンの強調の色）・16色（`black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` と `bright_` を付けた8つ）を書くと、その色だけ base の色を上書きする。色は `#rrggbb` か `#rgb`。例: `base = "solarized-dark"` と `accent = "#ff5f87"` なら、Solarized 暗の色のまま強調の色だけが #ff5f87 になる
+  - 確かめ方: 単体テスト「設定ファイルの [themes.名前]（自分のテーマ）」（web/src/theme.test.ts）、上と同じ通しのテスト・`TestConfigTheme`
+  - 実物での確かめ方: 設定ファイルに `[themes.my-dark]` と `base = "solarized-dark"`・`accent = "#ff5f87"` を書き、`[theme]` を `name = "my-dark"` にして読み込み直す → Solarized 暗の色で、tmux ボタンなどの強調の色だけ桃色になる
+- （確定）`[themes.名前]` の書き間違いは、画面を開いたときに知らせる（選んでいないテーマのものも）。色の書き間違い（`#12345`、`white` など）は項目の名前と書いた値を知らせ、その色だけ base の色に戻す。ほかの色は書いたとおりに使う。知らない項目は知らせて使わない。知らない `base` は知らせて default をもとにする。組み込みと同じ名前は知らせ、組み込みのテーマを使う。どれも設定全体の書き間違いにはしない（ほかの設定はそのまま使う）
   - 確かめ方: 上と同じテスト
 - （確定）`[font]` の `stack`（版 2 の書き方）に、使うフォントを優先する順に並べる（例: `stack = ["fonts/MyMono.woff2", "Noto Sans Mono CJK JP", "JetBrains Mono"]`）。端末の文字は、文字ごとに並びの先頭から順に、その文字を持つフォントで描く（英字は MyMono、MyMono に無い漢字は Noto）。並びのどれも持たない文字は JetBrains Mono などの既定の並びで描く
   - 確かめ方: `TestFontStack`（fonts_test.go）、単体テスト「stack の並びは書いた順に置く」（web/src/font.test.ts）、通しのテスト「[font] の stack（版 2）は並びの先頭から順に、その文字を持つフォントで描く。…」（web/e2e/app.test.ts。英字だけ持つフォントとキリル文字だけ持つフォントを並べ、ブラウザが文字ごとに実際に描いたフォントの名前を確かめる。並びを入れ替えると先にあるものが勝つことも確かめる）
@@ -221,9 +236,13 @@
 
 ## 画面でテーマとフォントを選ぶ
 
-- （確定）設定画面の「テーマ」の行に組み込みのテーマ（既定・明るい・Solarized 暗・Solarized 明）を並べ、今のものに印を付ける。押すと読み込み直さずにすぐ色が変わり、設定ファイルの `[theme]` の `name` を書き換える。`[theme]` に書いた色（`accent` など）は今までどおりその上に重ねる。続けて見比べられるよう、設定画面は閉じない
-  - 確かめ方: `TestAppearanceIsWrittenBackKeepingTheRest`（configwrite_test.go）、単体テスト「設定画面のテーマの行」（web/src/settings.test.ts）、通しのテスト「設定画面でテーマと fonts/ のフォントを選ぶとすぐ画面に反映され、…」（web/e2e/app.test.ts）
-  - 実機での確かめ方: `make install` して palmterm を再起動し、スマホで tmux パネル →「設定」→「テーマ」の「明るい」→ すぐ白地になり、PC の `~/.config/palmterm/config.toml` の `[theme]` に `name = "light"` が入る
+- （確定）設定画面の「テーマ」の行には「一覧」のボタンだけがあり、押すとテーマの一覧を開く（小さい画面では設定画面に代わって開き、「閉じる」で設定画面に戻る。2列の画面では右の列に出る。「設定画面」の節）
+  - 確かめ方: 単体テスト「設定画面のテーマの行」（web/src/settings.test.ts）、通しのテスト「tmux パネルに残るのは…」と、「設定画面」の節の2列・1列の通しのテスト（web/e2e/app.test.ts）
+- （確定）テーマの一覧には組み込みのテーマ（既定・明るい・Solarized 暗・Solarized 明・Rosé Pine・Rosé Pine Moon・Rosé Pine Dawn・Catppuccin Latte・Catppuccin Frappé・Catppuccin Macchiato・Catppuccin Mocha）と、その後ろに `[themes.名前]` の自分のテーマ（書いた名前のまま、名前の順）が並ぶ。各行に名前と色見本（テーマの端末の背景の上に、端末の文字の色で書いた見本の文字 `~/src $ ls -la` と、端末の16色の四角を8個ずつ2段）を出し、今のテーマの行に印（枠と ✓）を付ける。色見本は今の設定ファイルの `[themes.名前]` から一覧を開くたびに作る
+  - 確かめ方: 単体テスト「テーマの一覧」（web/src/themelist.test.ts）、通しのテスト「設定画面でテーマと fonts/ のフォントを選ぶとすぐ画面に反映され、…」（web/e2e/app.test.ts。並び・名前・印と、色見本の背景・文字の色・16色を確かめる）
+- （確定）一覧の行を押すと読み込み直さずにすぐその色になり、設定ファイルの `[theme]` の `name` を書き換え、印がその行に移る（書き戻せなかったときは移らない）。続けて見比べられるよう、一覧は閉じない
+  - 確かめ方: `TestAppearanceIsWrittenBackKeepingTheRest`（configwrite_test.go）、単体テスト「テーマの一覧」（web/src/themelist.test.ts）、上と同じ通しのテスト（自分のテーマを押すと読み込み直さずにその色になり `name` が書き換わり、一覧が開いたまま印が移ることを確かめる）
+  - 実機での確かめ方: `make install` して palmterm を再起動し、スマホで tmux パネル →「設定」→「テーマ」の「一覧」→ 各行に色見本が出る。「明るい」の行を押す → すぐ白地になり、一覧は開いたままで印が「明るい」に移り、PC の `~/.config/palmterm/config.toml` の `[theme]` に `name = "light"` が入る
 - （確定）フォントの一覧の各行の「使う」を押すと、読み込み直さずにすぐ端末の文字がそのフォントになり（一覧に「使用中」が付く）、設定ファイルの `[font]` を書き換える。`stack` の書き方なら並びをそのフォント1つ（`stack = ["fonts/名前"]`）にし、版 1 の書き方なら `file` を `"fonts/名前"` に書き換える（`family` の行は残す）。一覧の先頭の「既定のフォント」の「使う」は `stack`（版 1 なら `file`）の行を消す（版 1 なら `family` か JetBrains Mono で描く）。`stack` の書き方では、並びの先頭が一覧のファイルならその行に「使用中」が付く
   - 確かめ方（stack）: `TestAppearanceRewritesTheStack`（configwrite_test.go）と上の通しのテスト「[font] の stack（版 2）…」
   - 確かめ方: 上と同じテスト、単体テスト「画面から足したフォントの一覧」（web/src/fontfiles.test.ts）。通しのテストはブラウザが実際に描いたフォントの名前を確かめる
@@ -234,8 +253,8 @@
   - 確かめ方: `TestAppearanceIsWrittenBackKeepingTheRest` と上の通しのテスト（別のブラウザで開き直す）
 - （確定）設定ファイルに書き間違いがあって読めないとき（TOML として読めない・知らない項目・値の間違い）は書き戻さず、画面に「書き間違いがあるので、書き戻しませんでした」と理由を知らせ、色もフォントも変えない。書き換える行を見つけられない書き方（`theme = { … }` のインラインのテーブル、`theme.name = …` のドットの付いた書き方、複数行の文字列）も書き戻さず、手で直すよう知らせる
   - 確かめ方: `TestAppearanceIsNotWrittenToAnUnreadableConfig`（configwrite_test.go）と上の通しのテスト
-- （確定）選べるのは組み込みのテーマと、`fonts/` の直下にあるフォント・PC に入っているフォント・JetBrains Mono の名前だけで、ほかの値は断る。書き戻せるのはログインした端末だけ
-  - 確かめ方: `TestAppearanceRejectsUnknownNames`、`TestThemeNamesMatchTheScreen`（configwrite_test.go。サーバーの知っているテーマの名前が画面の組み込みのテーマと同じ）
+- （確定）選べるのは組み込みのテーマと今の設定ファイルの `[themes.名前]` のテーマ、`fonts/` の直下にあるフォント・PC に入っているフォント・JetBrains Mono の名前だけで、ほかの値は断る。書き戻せるのはログインした端末だけ
+  - 確かめ方: `TestAppearanceRejectsUnknownNames`、`TestRosePineAndCatppuccinCanBeChosen`、`TestThemeNamesMatchTheScreen`（configwrite_test.go。サーバーの知っているテーマの名前が画面の組み込みのテーマと同じ）
 
 ## 画面で言語を選ぶ
 

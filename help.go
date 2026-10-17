@@ -12,7 +12,6 @@ import (
 var flagUsageJa = map[string]string{
 	"listen":            "待ち受けるアドレス（HTTP）",
 	"session":           "つなぐ tmux のセッション",
-	"token":             "ログイン用のトークン（既定は ~/.config/palmterm/token。最初の起動で作る）",
 	"allow-origin":      "WebSocket を受け付けるほかの Origin。カンマ区切り（Vite の開発用サーバーなど）",
 	"upload-dir":        "送ったファイルの保存先（既定は ~/.cache/palmterm/uploads）",
 	"config":            "設定ファイル（既定は ~/.config/palmterm/config.toml）",

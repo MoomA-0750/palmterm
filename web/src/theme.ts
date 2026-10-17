@@ -1,32 +1,15 @@
-// 画面の色（設定ファイルの [theme]）。name で組み込みのテーマを選び、書いた色だけ上書きする。
-// 書き間違えた色や知らないテーマの名前は、その所だけ既定に戻して知らせる。
+// 画面の色。設定ファイルの [theme] の name で、組み込みのテーマか [themes.名前] に書いた自分のテーマを選ぶ。
+// 自分のテーマは base の組み込みのテーマに、書いた色だけ重ねる。書き間違いは、その所だけ base に戻して知らせる。
 
 import { t } from "./i18n";
 
 /** 設定ファイルの [theme]（サーバーはそのまま渡す）。 */
 export interface ThemeConfig {
   name?: string;
-  background?: string;
-  foreground?: string;
-  cursor?: string;
-  accent?: string;
-  black?: string;
-  red?: string;
-  green?: string;
-  yellow?: string;
-  blue?: string;
-  magenta?: string;
-  cyan?: string;
-  white?: string;
-  bright_black?: string;
-  bright_red?: string;
-  bright_green?: string;
-  bright_yellow?: string;
-  bright_blue?: string;
-  bright_magenta?: string;
-  bright_cyan?: string;
-  bright_white?: string;
 }
+
+/** 設定ファイルの [themes.名前]（サーバーは中身を確かめずにそのまま渡す）。 */
+export type CustomThemes = Record<string, Record<string, unknown>>;
 
 /** 端末の16色の名前（ANSI の 0〜15 の順）。 */
 export const ANSI_NAMES = [
@@ -118,6 +101,113 @@ export const THEMES: Record<string, Theme> = {
       "toast-bg": "#073642", "toast-fg": "#fdf6e3",
     },
   },
+  // Rosé Pine（https://rosepinetheme.com）と Catppuccin（https://catppuccin.com）。端末の色は公式の Alacritty のテーマと同じ。
+  // ボタンや帯の色は公式の配色の名前から選んだ（Rosé Pine は surface・overlay・foam など、Catppuccin は mantle・surface0・mauve など）。
+  "rose-pine": {
+    scheme: "dark",
+    term: {
+      fg: "#e0def4", bg: "#191724", cursor: "#524f67",
+      colors: [
+        "#26233a", "#eb6f92", "#31748f", "#f6c177", "#9ccfd8", "#c4a7e7", "#ebbcba", "#e0def4",
+        "#6e6a86", "#eb6f92", "#31748f", "#f6c177", "#9ccfd8", "#c4a7e7", "#ebbcba", "#e0def4",
+      ],
+    },
+    ui: {
+      "bg": "#191724", "bar-bg": "#1f1d2e", "btn-bg": "#26233a", "btn-fg": "#e0def4", "btn-active": "#403d52",
+      "accent": "#9ccfd8", "accent-dim": "#3e4a59", "on-accent": "#191724", "panel-bg": "rgba(31, 29, 46, 0.97)", "muted-fg": "#e0def4",
+      "dim-fg": "#908caa", "label-fg": "#c4a7e7", "input-bg": "#191724", "input-border": "#524f67", "toast-bg": "#403d52", "toast-fg": "#e0def4",
+    },
+  },
+  "rose-pine-moon": {
+    scheme: "dark",
+    term: {
+      fg: "#e0def4", bg: "#232136", cursor: "#56526e",
+      colors: [
+        "#393552", "#eb6f92", "#3e8fb0", "#f6c177", "#9ccfd8", "#c4a7e7", "#ea9a97", "#e0def4",
+        "#6e6a86", "#eb6f92", "#3e8fb0", "#f6c177", "#9ccfd8", "#c4a7e7", "#ea9a97", "#e0def4",
+      ],
+    },
+    ui: {
+      "bg": "#232136", "bar-bg": "#2a273f", "btn-bg": "#393552", "btn-fg": "#e0def4", "btn-active": "#44415a",
+      "accent": "#9ccfd8", "accent-dim": "#475165", "on-accent": "#232136", "panel-bg": "rgba(42, 39, 63, 0.97)", "muted-fg": "#e0def4",
+      "dim-fg": "#908caa", "label-fg": "#c4a7e7", "input-bg": "#232136", "input-border": "#56526e", "toast-bg": "#44415a", "toast-fg": "#e0def4",
+    },
+  },
+  "rose-pine-dawn": {
+    scheme: "light",
+    term: {
+      fg: "#575279", bg: "#faf4ed", cursor: "#cecacd",
+      colors: [
+        "#f2e9e1", "#b4637a", "#286983", "#ea9d34", "#56949f", "#907aa9", "#d7827e", "#575279",
+        "#9893a5", "#b4637a", "#286983", "#ea9d34", "#56949f", "#907aa9", "#d7827e", "#575279",
+      ],
+    },
+    ui: {
+      "bg": "#faf4ed", "bar-bg": "#f2e9e1", "btn-bg": "#dfdad9", "btn-fg": "#575279", "btn-active": "#cecacd",
+      "accent": "#286983", "accent-dim": "#c0c9ca", "on-accent": "#faf4ed", "panel-bg": "rgba(242, 233, 225, 0.97)", "muted-fg": "#575279",
+      "dim-fg": "#797593", "label-fg": "#907aa9", "input-bg": "#fffaf3", "input-border": "#9893a5", "toast-bg": "#575279", "toast-fg": "#faf4ed",
+    },
+  },
+  "catppuccin-latte": {
+    scheme: "light",
+    term: {
+      fg: "#4c4f69", bg: "#eff1f5", cursor: "#dc8a78",
+      colors: [
+        "#bcc0cc", "#d20f39", "#40a02b", "#df8e1d", "#1e66f5", "#ea76cb", "#179299", "#5c5f77",
+        "#acb0be", "#d20f39", "#40a02b", "#df8e1d", "#1e66f5", "#ea76cb", "#179299", "#6c6f85",
+      ],
+    },
+    ui: {
+      "bg": "#eff1f5", "bar-bg": "#e6e9ef", "btn-bg": "#ccd0da", "btn-fg": "#4c4f69", "btn-active": "#bcc0cc",
+      "accent": "#8839ef", "accent-dim": "#cfbdef", "on-accent": "#eff1f5", "panel-bg": "rgba(230, 233, 239, 0.97)", "muted-fg": "#5c5f77",
+      "dim-fg": "#6c6f85", "label-fg": "#7287fd", "input-bg": "#eff1f5", "input-border": "#9ca0b0", "toast-bg": "#4c4f69", "toast-fg": "#eff1f5",
+    },
+  },
+  "catppuccin-frappe": {
+    scheme: "dark",
+    term: {
+      fg: "#c6d0f5", bg: "#303446", cursor: "#f2d5cf",
+      colors: [
+        "#51576d", "#e78284", "#a6d189", "#e5c890", "#8caaee", "#f4b8e4", "#81c8be", "#b5bfe2",
+        "#626880", "#e78284", "#a6d189", "#e5c890", "#8caaee", "#f4b8e4", "#81c8be", "#a5adce",
+      ],
+    },
+    ui: {
+      "bg": "#303446", "bar-bg": "#292c3c", "btn-bg": "#414559", "btn-fg": "#c6d0f5", "btn-active": "#51576d",
+      "accent": "#ca9ee6", "accent-dim": "#514967", "on-accent": "#303446", "panel-bg": "rgba(41, 44, 60, 0.97)", "muted-fg": "#b5bfe2",
+      "dim-fg": "#a5adce", "label-fg": "#babbf1", "input-bg": "#232634", "input-border": "#626880", "toast-bg": "#51576d", "toast-fg": "#c6d0f5",
+    },
+  },
+  "catppuccin-macchiato": {
+    scheme: "dark",
+    term: {
+      fg: "#cad3f5", bg: "#24273a", cursor: "#f4dbd6",
+      colors: [
+        "#494d64", "#ed8796", "#a6da95", "#eed49f", "#8aadf4", "#f5bde6", "#8bd5ca", "#b8c0e0",
+        "#5b6078", "#ed8796", "#a6da95", "#eed49f", "#8aadf4", "#f5bde6", "#8bd5ca", "#a5adcb",
+      ],
+    },
+    ui: {
+      "bg": "#24273a", "bar-bg": "#1e2030", "btn-bg": "#363a4f", "btn-fg": "#cad3f5", "btn-active": "#494d64",
+      "accent": "#c6a0f6", "accent-dim": "#484062", "on-accent": "#24273a", "panel-bg": "rgba(30, 32, 48, 0.97)", "muted-fg": "#b8c0e0",
+      "dim-fg": "#a5adcb", "label-fg": "#b7bdf8", "input-bg": "#181926", "input-border": "#5b6078", "toast-bg": "#494d64", "toast-fg": "#cad3f5",
+    },
+  },
+  "catppuccin-mocha": {
+    scheme: "dark",
+    term: {
+      fg: "#cdd6f4", bg: "#1e1e2e", cursor: "#f5e0dc",
+      colors: [
+        "#45475a", "#f38ba8", "#a6e3a1", "#f9e2af", "#89b4fa", "#f5c2e7", "#94e2d5", "#bac2de",
+        "#585b70", "#f38ba8", "#a6e3a1", "#f9e2af", "#89b4fa", "#f5c2e7", "#94e2d5", "#a6adc8",
+      ],
+    },
+    ui: {
+      "bg": "#1e1e2e", "bar-bg": "#181825", "btn-bg": "#313244", "btn-fg": "#cdd6f4", "btn-active": "#45475a",
+      "accent": "#cba6f7", "accent-dim": "#453c5a", "on-accent": "#1e1e2e", "panel-bg": "rgba(24, 24, 37, 0.97)", "muted-fg": "#bac2de",
+      "dim-fg": "#a6adc8", "label-fg": "#b4befe", "input-bg": "#11111b", "input-border": "#585b70", "toast-bg": "#45475a", "toast-fg": "#cdd6f4",
+    },
+  },
 };
 
 const COLOR = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -134,21 +224,36 @@ function mix(a: string, b: string, ratio: number): string {
   return "#" + [0, 1, 2].map((i) => Math.round(ch(a, i) * ratio + ch(b, i) * (1 - ratio)).toString(16).padStart(2, "0")).join("");
 }
 
-/** 設定の [theme] から使う色を決める。書き間違いは、その所だけ既定に戻して理由を返す。 */
-export function resolveTheme(cfg: ThemeConfig = {}): { theme: Theme; errors: string[] } {
-  const errors: string[] = [];
-  let base = THEMES.default;
-  if (cfg.name !== undefined && cfg.name !== "") {
-    if (Object.hasOwn(THEMES, cfg.name)) base = THEMES[cfg.name];
-    else errors.push(t("themeUnknown", { name: cfg.name, names: Object.keys(THEMES).join(", ") }));
-  }
-  const theme: Theme = { scheme: base.scheme, term: { ...base.term, colors: [...base.term.colors] }, ui: { ...base.ui } };
+/** 自分のテーマに書ける色の名前。 */
+const COLOR_KEYS = ["background", "foreground", "cursor", "accent", ...ANSI_NAMES];
 
-  const color = (key: keyof ThemeConfig): string | undefined => {
-    const v = cfg[key];
+function copyTheme(base: Theme): Theme {
+  return { scheme: base.scheme, term: { ...base.term, colors: [...base.term.colors] }, ui: { ...base.ui } };
+}
+
+/** 選べるテーマの名前（組み込みのものの後ろに、自分のテーマを書いた順に。組み込みと同じ名前のものは除く）。 */
+export function themeNames(customs: CustomThemes = {}): string[] {
+  return [...Object.keys(THEMES), ...Object.keys(customs).filter((name) => !Object.hasOwn(THEMES, name))];
+}
+
+/** [themes.名前] から色を決める。書き間違いは、その所だけ base の色に戻して理由を返す。 */
+function customTheme(name: string, def: Record<string, unknown>): { theme: Theme; errors: string[] } {
+  const errors: string[] = [];
+  for (const key of Object.keys(def)) {
+    if (key !== "base" && !COLOR_KEYS.includes(key)) errors.push(t("themeUnknownKey", { name, key }));
+  }
+  let base = THEMES.default;
+  if (def.base !== undefined) {
+    if (typeof def.base === "string" && Object.hasOwn(THEMES, def.base)) base = THEMES[def.base];
+    else errors.push(t("themeUnknownBase", { name, base: String(def.base), names: Object.keys(THEMES).join(", ") }));
+  }
+  const theme = copyTheme(base);
+
+  const color = (key: string): string | undefined => {
+    const v = def[key];
     if (v === undefined || v === "") return undefined;
-    if (COLOR.test(v)) return normalize(v);
-    errors.push(t("themeBadColor", { key, value: v }));
+    if (typeof v === "string" && COLOR.test(v)) return normalize(v);
+    errors.push(t("themeBadColor", { name, key, value: String(v) }));
     return undefined;
   };
   const bg = color("background");
@@ -162,11 +267,33 @@ export function resolveTheme(cfg: ThemeConfig = {}): { theme: Theme; errors: str
     theme.ui.accent = accent;
     theme.ui["accent-dim"] = mix(accent, theme.ui["bar-bg"], 0.25);
   }
-  ANSI_NAMES.forEach((name, i) => {
-    const c = color(name);
+  ANSI_NAMES.forEach((key, i) => {
+    const c = color(key);
     if (c) theme.term.colors[i] = c;
   });
   return { theme, errors };
+}
+
+/**
+ * [theme] の name で使う色を決める。組み込みのテーマが先で、無ければ [themes.名前]。
+ * どちらにも無い名前は知らせて default にする。errors には選んだ自分のテーマの書き間違いも入る。
+ */
+export function resolveTheme(name: string | undefined, customs: CustomThemes = {}): { theme: Theme; errors: string[] } {
+  if (name === undefined || name === "") return { theme: copyTheme(THEMES.default), errors: [] };
+  if (Object.hasOwn(THEMES, name)) return { theme: copyTheme(THEMES[name]), errors: [] };
+  const def = Object.hasOwn(customs, name) ? customs[name] : undefined;
+  if (def && typeof def === "object") return customTheme(name, def);
+  return { theme: copyTheme(THEMES.default), errors: [t("themeUnknown", { name, names: themeNames(customs).join(", ") })] };
+}
+
+/** [themes] の書き間違い（画面を開いたときに知らせる）。skip の名前のもの（resolveTheme で知らせたもの）は除く。 */
+export function themeProblems(customs: CustomThemes = {}, skip?: string): string[] {
+  const errors: string[] = [];
+  for (const [name, def] of Object.entries(customs)) {
+    if (Object.hasOwn(THEMES, name)) errors.push(t("themeSameAsBuiltin", { name }));
+    else if (name !== skip) errors.push(...customTheme(name, def ?? {}).errors);
+  }
+  return errors;
 }
 
 /** 色を画面に当てる。ボタンの色は root（:root）に、端末の色は端末の要素に（wterm の .wterm の既定より強く）。 */

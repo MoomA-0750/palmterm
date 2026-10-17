@@ -19,9 +19,10 @@ import (
 	"unicode/utf8"
 )
 
-// ログインした端末（ブラウザ）ごとの記録。/auth で正しいトークンを受け取るたびに1つ作り、ランダムな値を
+// ログインした端末（ブラウザ）ごとの記録。使い捨てのトークンでログインするたびに1つ作り、ランダムな値を
 // Cookie に入れる。サーバーには値のハッシュだけを持つので、記録のファイルが読まれても Cookie は作れない。
-// 端末ごとに消せる（ログアウト・取り消し）。トークンを変えると、前のトークンで作った記録は全部捨てる。
+// 端末ごとに消せる（ログアウト・取り消し）。記録には token ファイルの中身（記録の鍵）から計算した値を添え、
+// 鍵を変えると、前の鍵で作った記録は全部捨てる。
 
 const (
 	loginLifetime = 365 * 24 * time.Hour
@@ -40,7 +41,7 @@ type device struct {
 }
 
 type deviceFile struct {
-	Token   string    `json:"token"` // どのトークンで作った記録か（トークンから計算した値）
+	Token   string    `json:"token"` // どの鍵（token ファイルの中身）で作った記録か（鍵から計算した値）
 	Devices []*device `json:"devices"`
 }
 
@@ -52,9 +53,9 @@ type deviceStore struct {
 	now     func() time.Time   // テストで差し替える
 }
 
-// path の記録を読む。別のトークンで作った記録と、期限の切れた記録は捨てる。
-func newDeviceStore(path, token string) *deviceStore {
-	mac := hmac.New(sha256.New, []byte(token))
+// path の記録を読む。別の鍵で作った記録と、期限の切れた記録は捨てる。
+func newDeviceStore(path, key string) *deviceStore {
+	mac := hmac.New(sha256.New, []byte(key))
 	mac.Write([]byte("palmterm devices v1"))
 	d := &deviceStore{path: path, tokenID: hex.EncodeToString(mac.Sum(nil)), devices: map[string]*device{}, now: time.Now}
 	if path == "" {
@@ -73,7 +74,7 @@ func newDeviceStore(path, token string) *deviceStore {
 		return d
 	}
 	if !hmac.Equal([]byte(f.Token), []byte(d.tokenID)) {
-		return d // トークンが変わった：全端末を締め出す
+		return d // 鍵が変わった：全端末を締め出す
 	}
 	for _, dev := range f.Devices {
 		if dev.Hash != "" && dev.ID != "" && d.now().Sub(dev.Created) < loginLifetime {
@@ -97,13 +98,13 @@ func randomHex(n int) string {
 	return hex.EncodeToString(buf)
 }
 
-// 新しい端末を記録し、Cookie に入れる値を返す。
-func (d *deviceStore) login(userAgent string) (string, error) {
+// 新しい端末を記録し、Cookie に入れる値を返す。label はログインのページで入れた名前（空なら付けない）。
+func (d *deviceStore) login(userAgent, label string) (string, error) {
 	secret := randomHex(32)
 	now := d.now()
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.devices[hashSecret(secret)] = &device{ID: randomHex(8), Hash: hashSecret(secret), Name: deviceName(userAgent), Created: now, LastSeen: now, saved: now}
+	d.devices[hashSecret(secret)] = &device{ID: randomHex(8), Hash: hashSecret(secret), Name: deviceName(userAgent), Label: cleanLabel(label), Created: now, LastSeen: now, saved: now}
 	return secret, d.saveLocked()
 }
 
@@ -158,8 +159,8 @@ func (d *deviceStore) removeAll() (int, error) {
 // 端末に付けた名前の長さの上限（文字数）。
 const maxDeviceLabel = 40
 
-// id の端末に名前を付ける。前後の空白と制御文字は除き、空なら付けた名前を消す。端末が無ければ false。
-func (d *deviceStore) rename(id, label string) (bool, error) {
+// 端末に付ける名前を整える。制御文字と前後の空白を除き、長すぎれば切る。
+func cleanLabel(label string) string {
 	label = strings.TrimSpace(strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
 			return -1
@@ -167,8 +168,14 @@ func (d *deviceStore) rename(id, label string) (bool, error) {
 		return r
 	}, label))
 	if utf8.RuneCountInString(label) > maxDeviceLabel {
-		label = string([]rune(label)[:maxDeviceLabel])
+		label = strings.TrimSpace(string([]rune(label)[:maxDeviceLabel]))
 	}
+	return label
+}
+
+// id の端末に名前を付ける。前後の空白と制御文字は除き、空なら付けた名前を消す。端末が無ければ false。
+func (d *deviceStore) rename(id, label string) (bool, error) {
+	label = cleanLabel(label)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for _, dev := range d.devices {

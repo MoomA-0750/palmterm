@@ -126,9 +126,11 @@ make          # 画面をビルドして ./palmterm を作る
 ./palmterm    # 127.0.0.1:7681 で待ち受け、ログイン用の URL を表示する
 ```
 
-表示された `http://127.0.0.1:7681/auth?token=…` を一度開けば、以後そのブラウザはログインしたままになる。
-`palmterm url` で、動いている palmterm のログイン用の URL（`tailscale serve` が中継していればその URL も）と、
-スマホのカメラで読める QR コードを出せる。
+表示された `http://127.0.0.1:7681/auth?token=…` を開くと、端末の名前の欄と「ログイン」ボタンのページが出る。
+名前（空なら「iPhone · Safari」のような自動の名前）を入れてボタンを押せば、以後そのブラウザはログインしたままになる。
+ログイン用の URL は使い捨てで、1回ログインすると使えなくなり、出してから5分で切れる。
+`palmterm url` を打つたびに、動いている palmterm の新しいログイン用の URL（`tailscale serve` が中継していれば
+その URL も）と、スマホのカメラで読める QR コードを出せる。
 つなぐ tmux のセッションは `main`（なければ作る）。
 
 ### スマホから
@@ -149,7 +151,7 @@ tailscale serve --bg 7681
 この PC の LAN のプライベートな IPv4 アドレス（と Tailscale のアドレス）ごとに待ち受け、`https://<アドレス>:7682/auth?token=…`
 を表示する。アドレスを書けば（`-lan 192.168.1.5:7682`）そのアドレスだけで待ち受ける。証明書は自分で署名した
 ものを `~/.config/palmterm/` に作る（新しい IP アドレスが出てきたら、前のアドレスも残して作り直す）ので、
-ブラウザは最初に警告を出す。「詳細設定」から先へ進む。LAN 側を HTTPS にしているのは、トークンを平文で流さないためと、スマホの
+ブラウザは最初に警告を出す。「詳細設定」から先へ進む。LAN 側を HTTPS にしているのは、トークンや Cookie を平文で流さないためと、スマホの
 クリップボードへのコピーにブラウザのクリップボードの機能を使えるようにするため。
 
 ### サービスとして動かす
@@ -170,8 +172,8 @@ palmterm url                                   # ログイン用の URL と、�
 
 ### オプション
 
-`palmterm url [-no-qr]` はログイン用の URL と QR コードを出す。`palmterm logout-all` は動いている palmterm の
-全端末のログインを取り消し、開いている接続も切る（端末をなくしたときなど。トークンは変わらない）。`palmterm open URL` は URL を palmterm の画面に渡す
+`palmterm url [-no-qr]` は新しい使い捨てのログイン用の URL と QR コードを出す。`palmterm logout-all` は動いている palmterm の
+全端末のログインを取り消し、開いている接続も切る（端末をなくしたときなど）。`palmterm open URL` は URL を palmterm の画面に渡す
 （[リンクをスマホで開く](#リンクをスマホで開く)）。
 
 | オプション | 既定 | |
@@ -179,7 +181,6 @@ palmterm url                                   # ログイン用の URL と、�
 | `-listen` | `127.0.0.1:7681` | 待ち受けるアドレス（HTTP） |
 | `-lan` | なし | LAN 向けに HTTPS でも待ち受けるアドレス（例 `:7682`） |
 | `-session` | `main` | つなぐ tmux のセッション |
-| `-token` | `~/.config/palmterm/token` | ログイン用のトークン（`PALMTERM_TOKEN` でも可）。最初の起動でランダムに作る |
 | `-config` | `~/.config/palmterm/config.toml` | 設定ファイル |
 | `-upload-dir` | `~/.cache/palmterm/uploads` | アップロードした画像の保存先 |
 | `-relay-browser` | `true` | tmux の中のプログラムが開こうとしたリンクを palmterm の画面に出す（上記） |
@@ -217,24 +218,41 @@ label = ":wq"
 
 ### 色（テーマ）
 
-`[theme]` の `name` で組み込みのテーマを選び、書いた色だけ上書きする。
+`[theme]` の `name` でテーマを選ぶ。組み込みのテーマか、`[themes.名前]` に書いた自分のテーマを選べる。
+`[theme]` に書けるのは `name` だけで、色を書くと設定ファイルの書き間違いとして知らせる。
 
 ```toml
 [theme]
-name = "light"         # "default"（既定）・"light"・"solarized-dark"・"solarized-light"
-background = "#fafafa" # 端末と画面の背景
-foreground = "#1f2328" # 端末の文字
-cursor = "#1f2328"
-accent = "#0969da"     # ボタンの強調の色（既定は緑）
-red = "#d1242f"        # 端末の16色の1つ
+name = "my-dark"       # 組み込みのテーマ（下の表）か自分のテーマ
+
+[themes.my-dark]
+base = "solarized-dark" # もとにする組み込みのテーマ（書かなければ "default"）
+accent = "#ff5f87"      # ボタンの強調の色
+# background = "#002b36" # 端末と画面の背景
+# foreground = "#839496" # 端末の文字
+# cursor = "#93a1a1"
+# red = "#dc322f"        # 端末の16色の1つ
 ```
 
-16色は `black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` と、`bright_` を付けた
-`bright_black`〜`bright_white`。色は `#rrggbb` か `#rgb` で書く。書き間違えた色（`#12345` など）や
-知らないテーマの名前は画面を開いたときに知らせ、その所だけ既定の色に戻す。
+組み込みのテーマ:
 
-テーマは画面からも選べる。設定画面の「テーマ」の行で押すと、すぐ色が変わり、設定ファイルの
-`[theme]` の `name` の行を書き換える（ほかの行・コメント・並び順はそのまま。ファイルが無ければ作る）。
+| name | 色 |
+| --- | --- |
+| `default` | 既定の暗い色（書かなければこれ） |
+| `light` | 明るい色 |
+| `solarized-dark`・`solarized-light` | Solarized の暗・明 |
+| `rose-pine`・`rose-pine-moon`・`rose-pine-dawn` | Rosé Pine（dawn は明るい） |
+| `catppuccin-latte`・`catppuccin-frappe`・`catppuccin-macchiato`・`catppuccin-mocha` | Catppuccin（latte は明るい） |
+
+自分のテーマは `base` の色に、書いた色だけを重ねる。16色は `black` `red` `green` `yellow` `blue`
+`magenta` `cyan` `white` と、`bright_` を付けた `bright_black`〜`bright_white`。色は `#rrggbb` か
+`#rgb` で書く。`[themes.名前]` の書き間違いは画面を開いたときに知らせる。書き間違えた色（`#12345` など）は
+その色だけ `base` の色に戻し、知らない項目・知らない `base`・組み込みと同じ名前も知らせる（同じ名前なら
+組み込みのテーマを使う）。`[theme]` の知らないテーマの名前は知らせて `default` を使う。
+
+テーマは画面からも選べる。設定画面の「テーマ」の「一覧」で、テーマごとに名前と色見本（背景の上の文字の色と、端末の16色）が並ぶ
+（自分のテーマは組み込みのものの後ろに並ぶ）。行を押すと、すぐ色が変わり、設定ファイルの
+`[theme]` の `name` の行を書き換える。一覧は開いたままなので、続けて押して見比べられる（ほかの行・コメント・並び順はそのまま。ファイルが無ければ作る）。
 設定ファイルに書き間違いがあって読めないときは書き換えず、理由を知らせる。
 
 ### フォント
@@ -292,17 +310,21 @@ stack = ["fonts/MyMono.woff2", "Noto Sans Mono CJK JP", "JetBrains Mono"]
 
 palmterm にログインした人は、**この PC のシェルを使える**。外に漏らさないこと。
 
-- トークンは1つだけで、`~/.config/palmterm/token`（権限 0600。緩ければ起動時に直す）に保存し、再起動しても変わらない。
-  トークン入りのログイン用 URL を起動時に表示するので、journal などのログにも残る。
-- `/auth?token=…` を開くと、その端末（ブラウザ）を記録し、1年間有効な Cookie（HttpOnly、SameSite=Lax、
+- ログイン用のトークンは使い捨て。起動時と `palmterm url` のたびに新しく出し、1回ログインに使うか、出してから
+  5分たつと使えない。サーバーのメモリにだけ持つので、再起動すると、まだ使っていないものもすべて無効になる。
+  起動時の案内に URL を出すので journal などのログにも残るが、5分で切れる。
+- ログイン用の URL を開いただけではトークンを使わない（チャットのアプリなどのリンクのプレビューで使い切られない）。
+  ページの「ログイン」ボタンを押したときに使う。
+- ログインすると、その端末（ブラウザ）を記録し、1年間有効な Cookie（HttpOnly、SameSite=Lax、
   HTTPS なら Secure）を入れる。Cookie の中身はトークンではなく、端末ごとのランダムな値。サーバーは
   その値のハッシュだけを `~/.config/palmterm/devices.json`（権限 0600）に持つ。画面・API・WebSocket の
   すべてでこれを確かめ、WebSocket はさらに Origin も確かめる。
 - ブラウザは Cookie を同じホスト名のすべてのポートに送るので、同じホストで開いたほかのサービス
-  （`127.0.0.1` の別のポートの開発用サーバーなど）にも Cookie が届く。漏れた Cookie はトークンを明かさず、
-  その端末の分だけ取り消せる（取り消すと、その端末の開いている接続もすぐ切る）。
-- 1台ずつではなく全端末を締め出すには、トークンのファイルを消して（または `-token` で別の値にして）
-  再起動する。前のトークンで記録した端末は全部無効になる。
+  （`127.0.0.1` の別のポートの開発用サーバーなど）にも Cookie が届く。漏れた Cookie では新しい端末で
+  ログインできず、その端末の分だけ取り消せる（取り消すと、その端末の開いている接続もすぐ切る）。
+- 1台ずつではなく全端末を締め出すには `palmterm logout-all`。
+- `~/.config/palmterm/token`（権限 0600。最初の起動で作り、緩ければ起動時に直す）はログインには使わず、
+  ログインした端末の記録の鍵にする。このファイルを消して再起動しても、全端末を締め出せる。
 - 既定では 127.0.0.1 でしか待ち受けない。`-lan :7682` も、すべてのネットワークではなく、この PC の
   プライベート（RFC 1918）・リンクローカル・Tailscale（100.64.0.0/10）の IPv4 アドレスだけで待ち受ける。
   それ以外で待ち受けるにはアドレスを書く。インターネットには公開しないこと。
@@ -311,7 +333,7 @@ palmterm にログインした人は、**この PC のシェルを使える**。
 ## 開発
 
 ```sh
-make dev    # Go のサーバー（7681）と Vite（5173）を起動。http://localhost:5173/auth?token=… を開く
+make dev    # Go のサーバー（7681）と Vite（5173）を起動。表示された URL の 127.0.0.1:7681 を localhost:5173 にして開く
 make test   # Go のテスト、画面の単体テスト（vitest）、Chromium での通しのテスト（playwright-core）
 ```
 

@@ -16,10 +16,11 @@ import { setupNerdIcons } from "./nerd";
 import { pasteSequence } from "./paste";
 import { SoftKeyboard } from "./softkeyboard";
 import { applyFont, type FontConfig, type FontEntry, fontErrorKey } from "./font";
-import { applyTheme, resolveTheme, THEMES, type ThemeConfig } from "./theme";
+import { applyTheme, type CustomThemes, resolveTheme, type ThemeConfig, themeNames, themeProblems } from "./theme";
 import { chooseAppearance, type AppearanceChange } from "./appearance";
 import { setupSettings } from "./settings";
 import { setupSheets } from "./sheets";
+import { setupThemes } from "./themelist";
 import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
 
@@ -38,6 +39,8 @@ interface ServerConfig {
   language: Lang;
   keys?: KeyConfig[];
   theme?: ThemeConfig;
+  /** 自分のテーマ（[themes.名前]）。 */
+  themes?: CustomThemes;
   font?: FontConfig;
   /** [font] から決めたフォントの並び（先頭から順に使う）。 */
   fontFaces?: FontEntry[];
@@ -55,8 +58,9 @@ let serverConfig: ServerConfig = (await fetch("/api/config", { cache: "no-store"
   .catch(() => null)) ?? { language: "en", path: "" };
 setLang(serverConfig.language);
 applyStaticTexts();
-// 色は [theme] で選んだテーマに、書いた色だけ上書きする。書き間違えた色は既定に戻して知らせる（起動の所）。
-const { theme, errors: themeErrors } = resolveTheme(serverConfig.theme);
+// 色は [theme] の name で選んだテーマ（組み込みか [themes.名前]）。[themes] の書き間違いは選んでいないものも知らせる（起動の所）。
+const { theme, errors: chosenThemeErrors } = resolveTheme(serverConfig.theme?.name, serverConfig.themes);
+const themeErrors = [...chosenThemeErrors, ...themeProblems(serverConfig.themes, serverConfig.theme?.name)];
 applyTheme(theme, document.documentElement, termEl);
 // フォントは [font] の並びの先頭から順に、その文字を持つもの（PC から配られたもの、無ければスマホの同じ名前のもの）。
 // 並びのどれも持たない文字は JetBrains Mono。
@@ -460,18 +464,25 @@ function setKeybarShown(shown: boolean, save = true) {
 }
 setKeybarShown(loadSetting("keybar", "shown") !== "hidden", false);
 
-// 設定画面（tmux パネルの「設定」で開く）。フォントと端末の一覧はこの上に開く。
+// テーマの一覧（設定画面の「テーマ」の「一覧」で開く）。色見本は今の設定ファイルの [themes.名前] から作る。
+const themes = setupThemes({
+  names: () => themeNames(serverConfig.themes),
+  current: () => {
+    const name = serverConfig.theme?.name;
+    return name && themeNames(serverConfig.themes).includes(name) ? name : "default";
+  },
+  resolve: (name) => resolveTheme(name, serverConfig.themes).theme,
+  choose: (name) => changeAppearance({ theme: name }),
+});
+
+// 設定画面（tmux パネルの「設定」で開く）。フォント・テーマ・端末の一覧はこの上に開く。
 const settings = setupSettings({
   fontSize: { get: () => fontSize, change: (delta) => setFontSize(fontSize + delta) },
   keybar: { shown: () => keybarShown, set: (shown) => setKeybarShown(shown) },
-  theme: {
-    names: Object.keys(THEMES),
-    current: () => (serverConfig.theme?.name && Object.hasOwn(THEMES, serverConfig.theme.name) ? serverConfig.theme.name : "default"),
-    choose: (name) => changeAppearance({ theme: name }),
-  },
   language: { current: () => serverConfig.language, choose: (lang) => changeLanguage(lang) },
   openDevices: () => openDevices(),
   openFonts: () => fonts.open(),
+  openThemes: () => themes.open(),
   version: serverConfig.version,
 });
 
@@ -814,6 +825,7 @@ setupSheets(
     ["settings", "settings-close"],
     ["devices", "devices-close"],
     ["fonts", "fonts-close"],
+    ["themes", "themes-close"],
   ].map(([el, close]) => ({ el: $(el), close: $(close) })),
 );
 
@@ -827,7 +839,7 @@ async function changeAppearance(change: AppearanceChange): Promise<boolean> {
     toast(t("appearanceFailed", { error: e instanceof Error ? e.message : String(e) }), 10000);
     return false;
   }
-  const { theme, errors } = resolveTheme(serverConfig.theme);
+  const { theme, errors } = resolveTheme(serverConfig.theme?.name, serverConfig.themes);
   applyTheme(theme, document.documentElement, termEl);
   applyFont(serverConfig.fontFaces, document.documentElement);
   const problems = [...errors, ...(serverConfig.fontError ? [t(fontErrorKey(serverConfig.font), { error: serverConfig.fontError })] : [])];

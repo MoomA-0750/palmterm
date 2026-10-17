@@ -2,8 +2,12 @@ package main
 
 import (
 	"bytes"
+	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -63,15 +67,32 @@ func TestRenderQRMatchesCode(t *testing.T) {
 	}
 }
 
-// サーバーが書いた URL の控えを読み、Tailscale の URL を先頭に足して並べ、先頭の URL の QR を出す。
-func TestRunURLPrintsURLsAndQR(t *testing.T) {
+// URL の行から token= の値を取り出す。
+func tokenOf(t *testing.T, u string) string {
+	t.Helper()
+	parsed, err := url.Parse(u)
+	if err != nil || parsed.Query().Get("token") == "" {
+		t.Fatalf("トークンの無い URL: %q", u)
+	}
+	return parsed.Query().Get("token")
+}
+
+// palmterm url を打つたびに、動いている palmterm が新しいトークンを出し、待ち受けている各アドレスの URL
+// （Tailscale の URL を先頭に足す）と、先頭の URL の QR を出す。前の版の URL の控えは消す。
+func TestRunURLIssuesANewTokenEachTime(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_RUNTIME_DIR", dir)
-	if err := writeLoginURLs([]string{"http://127.0.0.1:7681/auth?token=tok", "https://192.0.2.10:7682/auth?token=tok"}); err != nil {
-		t.Fatal(err)
+	stale := filepath.Join(dir, "palmterm", staleLoginURLsFile)
+	os.MkdirAll(filepath.Dir(stale), 0o700)
+	os.WriteFile(stale, []byte("http://127.0.0.1:7681/auth?token=fixed\n"), 0o600)
+	s := newTestServer(t)
+	s.loginBases = []string{"http://127.0.0.1:7681", "https://192.0.2.10:7682"}
+	s.setupLoginSocket()
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("前の版の控えが残っています: %v", err)
 	}
-	if info, _ := os.Stat(filepath.Join(dir, "palmterm", loginURLsFile)); info.Mode().Perm() != 0o600 {
-		t.Fatalf("権限: %v", info.Mode())
+	if info, err := os.Stat(filepath.Join(dir, "palmterm", loginSocketName)); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("ソケット: %v %v", info, err)
 	}
 	old := tailscaleServeStatus
 	tailscaleServeStatus = func() ([]byte, error) { return []byte(serveStatusJSON), nil }
@@ -81,19 +102,56 @@ func TestRunURLPrintsURLsAndQR(t *testing.T) {
 	if code := runURL(&out, nil); code != 0 {
 		t.Fatalf("code=%d\n%s", code, out.String())
 	}
-	s := out.String()
-	first := strings.Index(s, "https://box.example.ts.net/auth?token=tok")
-	if first < 0 || first > strings.Index(s, "http://127.0.0.1:7681") || !strings.Contains(s, "https://192.0.2.10:7682") || !strings.Contains(s, "█") {
-		t.Fatalf("%s", s)
+	got := out.String()
+	lines := strings.Split(got, "\n")
+	if !strings.HasPrefix(lines[0], "https://box.example.ts.net/auth?token=") || !strings.HasPrefix(lines[1], "https://box.example.ts.net:8443/auth?token=") ||
+		!strings.HasPrefix(lines[2], "http://127.0.0.1:7681/auth?token=") || !strings.HasPrefix(lines[3], "https://192.0.2.10:7682/auth?token=") || !strings.Contains(got, "█") {
+		t.Fatalf("%s", got)
+	}
+	first := tokenOf(t, lines[0])
+	for _, l := range lines[1:4] {
+		if tokenOf(t, l) != first {
+			t.Fatalf("アドレスごとにトークンが違います: %s", got)
+		}
 	}
 
 	out.Reset()
 	if code := runURL(&out, []string{"-no-qr"}); code != 0 || strings.Contains(out.String(), "█") {
 		t.Fatalf("-no-qr: %s", out.String())
 	}
+	second := tokenOf(t, strings.Split(out.String(), "\n")[0])
+	if second == first {
+		t.Fatal("打ち直してもトークンが同じです")
+	}
+	// どちらのトークンでも（まだ使っていなければ）ログインのページが出る
+	for _, tok := range []string{first, second} {
+		if w := getLoginPage(s, tok, ""); w.Code != http.StatusOK {
+			t.Fatalf("%s: code=%d", tok, w.Code)
+		}
+	}
 }
 
-// palmterm が動いていなければ（控えが無ければ）、そう知らせて 1 を返す。
+// 起動時の案内（ログ）にも、使い捨てのログイン用の URL を出す（LAN の URL も同じトークン）。
+func TestStartupLogShowsOneTimeLoginURL(t *testing.T) {
+	s := newTestServer(t)
+	s.loginBases = []string{"http://127.0.0.1:7681", "https://192.0.2.10:7682"}
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	s.logLoginURLs()
+	m := regexp.MustCompile(`http://127\.0\.0\.1:7681/auth\?token=([0-9a-f]+)`).FindStringSubmatch(buf.String())
+	if m == nil || !strings.Contains(buf.String(), "https://192.0.2.10:7682/auth?token="+m[1]) || !strings.Contains(buf.String(), "palmterm url") {
+		t.Fatalf("%s", buf.String())
+	}
+	if m[1] == testToken {
+		t.Fatal("固定のトークンを出しています")
+	}
+	if w := postLogin(s, m[1], "", ""); w.Code != http.StatusSeeOther {
+		t.Fatalf("案内の URL でログインできません: code=%d", w.Code)
+	}
+}
+
+// palmterm が動いていなければ（ソケットにつなげなければ）、そう知らせて 1 を返す。
 func TestRunURLWithoutServer(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 	var out bytes.Buffer

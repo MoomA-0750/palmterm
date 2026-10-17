@@ -2,9 +2,8 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/json"
+	"html/template"
 	"log"
 	"net/http"
 	"time"
@@ -14,16 +13,45 @@ const cookieName = "palmterm_token"
 
 type deviceKey struct{}
 
-// /auth?token=… で正しいトークンを受け取ったら、この端末を記録して Cookie を入れ、以降はそれで通す。
+// GET /auth?token=… は、使い捨てのトークンが使えれば、端末の名前の欄と「ログイン」ボタンのページを出す。
+// 開いただけではトークンを使わない（チャットのアプリなどがリンクのプレビューを取りに来ても使い切られない）。
+// ボタンで POST /auth すると、トークンを使い切って、この端末を記録して Cookie を入れ、以降はそれで通す。
 // Cookie にはトークンではなく端末ごとのランダムな値を入れる。Cookie はポートで分けられず、同じホスト名の
-// 別のポートのサービスにも送られるので、そこから漏れてもトークン（新しい端末でのログイン）は渡らず、
+// 別のポートのサービスにも送られるので、そこから漏れても新しい端末でのログインには使えず、
 // 漏れた端末の分だけ取り消せる。
-func (s *server) handleAuth(w http.ResponseWriter, r *http.Request) {
-	if !s.validToken(r.URL.Query().Get("token")) {
-		http.Error(w, tr("トークンが違います", "Wrong token"), http.StatusUnauthorized)
+func (s *server) handleAuthPage(w http.ResponseWriter, r *http.Request) {
+	tok := r.URL.Query().Get("token")
+	if !s.logins.valid(tok) {
+		badLoginToken(w)
 		return
 	}
-	secret, err := s.devices.login(r.UserAgent())
+	// トークンを含む URL をほかへ渡さない・キャッシュさせない・ほかのページに埋め込ませない。
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	loginPage.Execute(w, map[string]string{
+		"Lang":   tr("ja", "en"),
+		"Title":  tr("palmterm にログイン", "Log in to palmterm"),
+		"Label":  tr("この端末の名前", "Name for this device"),
+		"Hint":   tr("「ログイン中の端末」の一覧に出ます。空なら自動の名前になります。", "Shown in the list of logged-in devices. Leave empty to use the automatic name."),
+		"Auto":   deviceName(r.UserAgent()),
+		"Button": tr("ログイン", "Log in"),
+		"Token":  tok,
+	})
+}
+
+func (s *server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if !s.logins.use(r.PostForm.Get("token")) {
+		badLoginToken(w)
+		return
+	}
+	secret, err := s.devices.login(r.UserAgent(), r.PostForm.Get("name"))
 	if err != nil {
 		// 記録をファイルに書けなくても、動いている間はログインできる（再起動するとログインし直し）。
 		log.Printf(tr("ログインした端末の記録を書けませんでした: %v", "Could not save the logged-in devices: %v"), err)
@@ -43,6 +71,45 @@ func (s *server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
+func badLoginToken(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+	http.Error(w, tr("このログイン用の URL は使えません（使用済みか、出してから5分たっています）。PC で palmterm url を実行し、新しい URL を開いてください",
+		"This login URL no longer works (already used, or older than 5 minutes). Run palmterm url on the PC and open the new URL"), http.StatusUnauthorized)
+}
+
+var loginPage = template.Must(template.New("login").Parse(`<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>palmterm</title>
+<style>
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+form { width: min(360px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 12px; }
+h1 { font-size: 1.25rem; margin: 0 0 4px; }
+label { font-weight: 600; }
+input, button { font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 8px; }
+input { border: 1px solid #8888; }
+input::placeholder { opacity: .5; }
+p { margin: 0; font-size: .875rem; opacity: .7; }
+button { border: 0; background: #2563eb; color: #fff; font-weight: 600; }
+</style>
+</head>
+<body>
+<form id="login" method="post" action="/auth">
+<h1>{{.Title}}</h1>
+<label for="name">{{.Label}}</label>
+<input id="name" name="name" placeholder="{{.Auto}}" autocomplete="off">
+<p>{{.Hint}}</p>
+<input type="hidden" name="token" value="{{.Token}}">
+<button type="submit">{{.Button}}</button>
+</form>
+</body>
+</html>
+`))
+
 func isHTTPS(r *http.Request) bool {
 	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 }
@@ -54,7 +121,7 @@ func (s *server) requireAuth(next http.Handler) http.Handler {
 			dev = s.devices.lookup(c.Value)
 		}
 		if dev == nil {
-			http.Error(w, tr("サーバーの起動時に表示された /auth?token=… の URL で開いてください（palmterm url でも出せます）", "Open the /auth?token=… URL printed when the server started (or run: palmterm url)"), http.StatusUnauthorized)
+			http.Error(w, tr("ログインしていません。PC で palmterm url を実行し、出たログイン用の URL（QR コード）を開いてください", "Not logged in. Run palmterm url on the PC and open the login URL (or scan the QR code) it prints"), http.StatusUnauthorized)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), deviceKey{}, dev.ID)))
@@ -65,12 +132,6 @@ func (s *server) requireAuth(next http.Handler) http.Handler {
 func deviceID(r *http.Request) string {
 	id, _ := r.Context().Value(deviceKey{}).(string)
 	return id
-}
-
-// トークンが合っているか。長さの違いも時間から分からないよう、ハッシュにして同じ長さにしてから比べる。
-func (s *server) validToken(t string) bool {
-	got, want := sha256.Sum256([]byte(t)), sha256.Sum256([]byte(s.token))
-	return t != "" && subtle.ConstantTimeCompare(got[:], want[:]) == 1
 }
 
 type deviceInfo struct {

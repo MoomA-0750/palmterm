@@ -12,19 +12,29 @@ language = "en"
 
 # 画面の色 / Colors
 [theme]
-# 組み込みのテーマ / Built-in theme: "default"（既定 / default）, "light", "solarized-dark", "solarized-light"
+# 組み込みのテーマ / Built-in theme: "default"（既定 / default）, "light", "solarized-dark", "solarized-light",
+#   "rose-pine", "rose-pine-moon", "rose-pine-dawn", "catppuccin-latte", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"
 # 画面の tmux パネルの「テーマ」で選ぶと、この行が書き換わる / Picking a theme in the tmux panel rewrites this line
 name = "default"
-# 書いた色だけ、テーマの色を上書きする（"#rrggbb" か "#rgb"）。書き間違えた色は画面で知らせ、テーマの色に戻す。
-# Colors you write override the theme ("#rrggbb" or "#rgb"). A mistyped color is reported on the page and ignored.
+# [theme] に書けるのは name だけ。色を変えたいときは、下の [themes.名前] に自分のテーマを作り、name にその名前を書く。
+# Only name goes in [theme]. To change colors, make your own theme in [themes.<name>] below and put its name here.
+
+# 自分のテーマ / Your own themes（[themes.名前] / [themes.<name>]。いくつでも書ける / as many as you like）
+# base で組み込みのテーマを選び（書かなければ "default"）、書いた色だけ base の色を上書きする（"#rrggbb" か "#rgb"）。
+# 書き間違えた色は画面で知らせ、base の色に戻す。テーマの一覧にも、組み込みのテーマの後ろに並ぶ。
+# base picks a built-in theme (defaults to "default"); colors you write override it ("#rrggbb" or "#rgb").
+# A mistyped color is reported on the page and the base color is used. Your themes also appear in the theme list.
+# [themes.my-dark]
+# base = "solarized-dark"
 # background = "#1e1e1e"   # 端末と画面の背景 / terminal and page background
 # foreground = "#d4d4d4"   # 端末の文字 / terminal text
 # cursor = "#aeafad"
-# accent = "#3fb950"       # ボタンの強調の色 / button accent
+# accent = "#ff5f87"       # ボタンの強調の色 / button accent
 # 端末の16色 / The 16 terminal colors:
 #   black red green yellow blue magenta cyan white
 #   bright_black bright_red bright_green bright_yellow bright_blue bright_magenta bright_cyan bright_white
 # red = "#f44747"
+# 使うときは [theme] を name = "my-dark" にする / To use it, set name = "my-dark" in [theme]
 
 # 端末のフォント / Terminal font（書かなければ JetBrains Mono / JetBrains Mono if unset）
 [font]

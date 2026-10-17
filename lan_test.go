@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -154,7 +155,7 @@ func TestLoginOverHTTPS(t *testing.T) {
 
 	client := srv.Client()
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	resp, err := client.Get(srv.URL + "/auth?token=" + testToken)
+	resp, err := client.PostForm(srv.URL+"/auth", url.Values{"token": {s.logins.issue()}})
 	if err != nil {
 		t.Fatal(err)
 	}

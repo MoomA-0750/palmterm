@@ -14,7 +14,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 const BINARY = resolve(__dirname, "../../palmterm");
 const CHROMIUM = process.env.CHROMIUM ?? "/usr/bin/chromium";
-const TOKEN = "e2etoken";
 const SESSION = "e2e";
 
 const dir = mkdtempSync(join(tmpdir(), "palmterm-e2e-"));
@@ -120,6 +119,21 @@ function key(label: string) {
   return page.locator(`#keybar button:text-is("${label}"), #keybar button[aria-label="${label}"]`).first();
 }
 
+/** palmterm url で、新しい使い捨てのログイン用の URL を出させる（at は URL の頭。base か lanBase）。 */
+function loginURL(at = base): string {
+  const out = execFileSync(BINARY, ["url", "-no-qr"], { env, encoding: "utf8" });
+  const url = out.split("\n").find((l) => l.startsWith(`${at}/auth?token=`));
+  if (!url) throw new Error(`palmterm url に ${at} の URL がありません:\n${out}`);
+  return url;
+}
+
+/** 使い捨てのログイン用の URL を開き、「ログイン」ボタンを押してログインする。 */
+async function login(p: Page, at = base) {
+  await p.goto(loginURL(at));
+  await p.locator('#login button[type="submit"]').click();
+  await p.waitForURL(`${at}/`);
+}
+
 async function openPage() {
   await page.goto(`${base}/`);
   await page.waitForFunction(() => document.querySelector(".term-row") !== null);
@@ -146,10 +160,10 @@ beforeAll(async () => {
   lanBase = `https://127.0.0.1:${lanPort}`;
   server = spawn(
     BINARY,
-    ["-listen", `127.0.0.1:${port}`, "-lan", `127.0.0.1:${lanPort}`, "-token", TOKEN, "-session", SESSION, "-config", configPath, "-upload-dir", uploadDir],
+    ["-listen", `127.0.0.1:${port}`, "-lan", `127.0.0.1:${lanPort}`, "-session", SESSION, "-config", configPath, "-upload-dir", uploadDir],
     { env, stdio: "ignore" },
   );
-  await waitUntil("サーバーが立ち上がる", async () => fetch(`${base}/auth?token=${TOKEN}`, { redirect: "manual" }).then((r) => r.status === 303, () => false));
+  await waitUntil("サーバーが立ち上がる", async () => fetch(`${base}/`, { redirect: "manual" }).then((r) => r.status === 401, () => false));
 
   browser = await chromium.launch({ executablePath: CHROMIUM, headless: true, env: { ...process.env, XDG_DATA_HOME: browserData } });
   const context = await browser.newContext({ viewport: { width: 400, height: 760 } });
@@ -172,7 +186,7 @@ beforeAll(async () => {
     };
   });
   page = await context.newPage();
-  await page.goto(`${base}/auth?token=${TOKEN}`);
+  await login(page);
 }, 30_000);
 
 afterAll(async () => {
@@ -490,7 +504,7 @@ describe("tmux のタブとパネル", () => {
       page.evaluate(() => {
         const box = document.getElementById("term")!.getBoundingClientRect();
         const el = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-        return el?.closest("#settings, #fonts, #devices, #term")?.id ?? "";
+        return el?.closest("#settings, #fonts, #themes, #devices, #term")?.id ?? "";
       });
     expect(await topAt()).toBe("settings");
 
@@ -499,6 +513,16 @@ describe("tmux のタブとパネル", () => {
     expect(await topAt()).toBe("fonts");
     await page.locator("#fonts-close").click();
     expect(await page.locator("#fonts").isHidden()).toBe(true);
+    expect(await page.locator("#settings").isVisible()).toBe(true);
+    expect(await topAt()).toBe("settings");
+
+    // テーマの行は横並びのボタンの代わりに「一覧」で、押すとテーマの一覧が設定画面に代わって出る
+    expect(await page.locator("#settings .settings-row", { hasText: "Theme" }).locator("button").allTextContents()).toEqual(["List"]);
+    await page.locator("#settings .settings-themes").click();
+    await page.locator("#themes").waitFor({ state: "visible" });
+    expect(await topAt()).toBe("themes");
+    await page.locator("#themes-close").click();
+    expect(await page.locator("#themes").isHidden()).toBe(true);
     expect(await page.locator("#settings").isVisible()).toBe(true);
     expect(await topAt()).toBe("settings");
 
@@ -539,7 +563,7 @@ describe("tmux のタブとパネル", () => {
     const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
     try {
       const otherPage = await other.newPage();
-      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await login(otherPage);
       await otherPage.waitForFunction(() => document.querySelector("#keybar button") !== null);
       expect(await otherPage.locator("#keybar").isVisible()).toBe(true);
     } finally {
@@ -579,7 +603,7 @@ text = ":wq"
     expect(await sent()).toEqual(["\x1b[Z"]);
   });
 
-  it("[theme] でテーマを選ぶと端末とボタンの色が変わり、書いた色だけ上書きする。書き間違えた色は知らせて既定に戻す", async () => {
+  it("[theme] の name でテーマを選ぶと端末とボタンの色が変わる。[themes.名前] の自分のテーマは base に書いた色だけ重ね、書き間違いは知らせてその所だけ base に戻す。[theme] に色を書くと書き間違い", async () => {
     const colors = () =>
       page.evaluate(() => {
         const term = getComputedStyle(document.getElementById("term")!);
@@ -593,6 +617,7 @@ text = ":wq"
           tmuxBtn: getComputedStyle(document.getElementById("tmux-btn")!).color,
         };
       });
+    const toastText = async () => (await page.locator("#toast").textContent()) ?? "";
     const before = await colors();
     expect(before.termBg).toBe("rgb(30, 30, 30)");
 
@@ -603,7 +628,45 @@ text = ":wq"
     expect(light.keyBg).not.toBe(before.keyBg);
     expect(light.red).toBe("#cf222e");
 
-    writeFileSync(configPath, `[theme]\nname = "light"\nbackground = "#fafafa"\naccent = "#0969da"\nblue = "#0000ff"\nred = "#12345"\n`);
+    // Rosé Pine と Catppuccin も name で選べる（Dawn と Latte は明るいテーマ）
+    for (const [name, bg, fg, red] of [
+      ["rose-pine", "rgb(25, 23, 36)", "#e0def4", "#eb6f92"],
+      ["rose-pine-moon", "rgb(35, 33, 54)", "#e0def4", "#eb6f92"],
+      ["rose-pine-dawn", "rgb(250, 244, 237)", "#575279", "#b4637a"],
+      ["catppuccin-latte", "rgb(239, 241, 245)", "#4c4f69", "#d20f39"],
+      ["catppuccin-frappe", "rgb(48, 52, 70)", "#c6d0f5", "#e78284"],
+      ["catppuccin-macchiato", "rgb(36, 39, 58)", "#cad3f5", "#ed8796"],
+      ["catppuccin-mocha", "rgb(30, 30, 46)", "#cdd6f4", "#f38ba8"],
+    ]) {
+      writeFileSync(configPath, `[theme]\nname = "${name}"\n`);
+      await openPage();
+      const c = await colors();
+      expect([name, c.termBg, c.termFg, c.red]).toEqual([name, bg, fg, red]);
+      expect(c.keyBg).not.toBe(before.keyBg);
+      expect(await page.locator("#toast").isVisible()).toBe(false);
+    }
+
+    // 自分のテーマ：Solarized 暗の色のまま、強調の色だけが #ff5f87
+    writeFileSync(configPath, `[theme]\nname = "solarized-dark"\n`);
+    await openPage();
+    const solarized = await colors();
+    writeFileSync(configPath, `[theme]\nname = "my-dark"\n\n[themes.my-dark]\nbase = "solarized-dark"\naccent = "#ff5f87"\n`);
+    await openPage();
+    expect(await colors()).toEqual({ ...solarized, tmuxBtn: "rgb(255, 95, 135)" });
+    expect(solarized.tmuxBtn).not.toBe("rgb(255, 95, 135)");
+    expect(await page.locator("#toast").isVisible()).toBe(false);
+
+    // base を書かなければ既定のテーマをもとにする
+    writeFileSync(configPath, `[theme]\nname = "my-dark"\n\n[themes.my-dark]\naccent = "#ff5f87"\n`);
+    await openPage();
+    expect(await colors()).toEqual({ ...before, tmuxBtn: "rgb(255, 95, 135)" });
+
+    // 書き間違えた色はその色だけ base の色に戻し、知らない項目・知らない base・組み込みと同じ名前は知らせる（選んでいないテーマのものも）
+    writeFileSync(
+      configPath,
+      `[theme]\nname = "mine"\n\n[themes.mine]\nbase = "light"\nbackground = "#fafafa"\naccent = "#0969da"\nblue = "#0000ff"\nred = "#12345"\nglow = true\n\n` +
+        `[themes.other]\nbase = "dracula"\n\n[themes.light]\naccent = "#ff0000"\n`,
+    );
     await openPage();
     const custom = await colors();
     expect(custom.termBg).toBe("rgb(250, 250, 250)");
@@ -612,7 +675,20 @@ text = ":wq"
     expect(custom.red).toBe("#cf222e"); // 書き間違えた色は light の色のまま
     expect(custom.termFg).toBe(light.termFg); // 書いていない色もそのまま
     expect(custom.keyBg).toBe(light.keyBg);
-    expect(await page.locator("#toast").textContent()).toContain("[theme] red");
+    const problems = await toastText();
+    expect(problems).toContain("[themes.mine] red");
+    expect(problems).toContain("[themes.mine]: unknown key: glow");
+    expect(problems).toContain("[themes.other] base: unknown theme: dracula");
+    expect(problems).toContain("[themes.light]: a built-in theme has this name");
+    expect(problems).not.toContain("has a mistake");
+
+    // [theme] に name 以外を書くと設定ファイルの書き間違いとして知らせ、既定の設定を使う
+    writeFileSync(configPath, `language = "ja"\n[theme]\nname = "light"\naccent = "#ff5f87"\n`);
+    await openPage();
+    expect(await colors()).toEqual(before);
+    expect(await toastText()).toContain("theme.accent");
+    expect(await toastText()).toContain("[themes.NAME]");
+    expect(await page.getAttribute("#line", "placeholder")).toBe("Send with Ctrl+Enter or the send button"); // 言語も既定（英語）
 
     rmSync(configPath, { force: true });
     await openPage();
@@ -833,7 +909,7 @@ text = ":wq"
     const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
     try {
       const otherPage = await other.newPage();
-      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await login(otherPage);
       await otherPage.waitForFunction(() => document.querySelector(".term-row") !== null);
       expect(await otherPage.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--mono-font"))).toMatch(
         /palmterm font 1.*Palmterm Cyril.*Palmterm Local.*JetBrains Mono/,
@@ -926,15 +1002,20 @@ text = ":wq"
     const accent = (p: Page) => p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
     const chooseTheme = async (name: string) => {
       if (await page.locator("#settings").isHidden()) await openSettings();
-      await page.locator(`#settings .settings-theme[data-theme="${name}"]`).click();
+      if (await page.locator("#themes").isHidden()) await page.locator("#settings .settings-themes").click();
+      await page.locator(`#themes .theme-item[data-theme="${name}"]`).click();
     };
+    const marked = () => page.locator("#themes .theme-item.on").getAttribute("data-theme");
     const mine = `# mine
 language = "en" # English
 
 [theme]
 # colors
 name = "light"  # change later
-accent = "#0969da"
+
+[themes.my-dark]
+base = "solarized-dark"
+accent = "#ff5f87"
 
 [font]
 family = "Palmterm Local"
@@ -944,13 +1025,55 @@ family = "Palmterm Local"
     await openPage();
     expect(await termBg(page)).toBe("rgb(255, 255, 255)");
 
-    // テーマ：押すとすぐ色が変わり、設定画面は開いたまま、押したものに印が付く。書いた色（accent）はそのまま上書きする
-    await chooseTheme("solarized-dark");
+    // 一覧には組み込みのテーマ、その後ろに自分のテーマ（[themes.my-dark]）が並び、各行に名前と色見本、今のテーマに印
+    await openSettings();
+    await page.locator("#settings .settings-themes").click();
+    await page.locator("#themes").waitFor({ state: "visible" });
+    const items = page.locator("#themes .theme-item");
+    expect(await items.evaluateAll((bs) => bs.map((b) => b.getAttribute("data-theme")))).toEqual([
+      "default", "light", "solarized-dark", "solarized-light",
+      "rose-pine", "rose-pine-moon", "rose-pine-dawn", "catppuccin-latte", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha", "my-dark",
+    ]);
+    expect(await items.locator(".theme-name").allTextContents()).toEqual([
+      "Default", "Light", "Solarized dark", "Solarized light",
+      "Rosé Pine", "Rosé Pine Moon", "Rosé Pine Dawn", "Catppuccin Latte", "Catppuccin Frappé", "Catppuccin Macchiato", "Catppuccin Mocha",
+      "my-dark",
+    ]);
+    expect(await marked()).toBe("light");
+    const swatch = (name: string) =>
+      page.locator(`#themes .theme-item[data-theme="${name}"] .theme-swatch`).evaluate((sw) => ({
+        bg: getComputedStyle(sw).backgroundColor,
+        fg: getComputedStyle(sw.querySelector(".theme-sample")!).color,
+        sample: sw.querySelector(".theme-sample")!.textContent,
+        colors: [...sw.querySelectorAll(".theme-color")].map((c) => getComputedStyle(c).backgroundColor),
+      }));
+    const sd = await swatch("solarized-dark");
+    expect([sd.bg, sd.fg]).toEqual(["rgb(0, 43, 54)", "rgb(131, 148, 150)"]);
+    expect(sd.sample).not.toBe("");
+    expect(sd.colors).toHaveLength(16);
+    expect(sd.colors.slice(0, 2)).toEqual(["rgb(7, 54, 66)", "rgb(220, 50, 47)"]);
+    const lt = await swatch("light");
+    expect([lt.bg, lt.fg]).toEqual(["rgb(255, 255, 255)", "rgb(31, 35, 40)"]);
+    expect((await swatch("my-dark")).bg).toBe("rgb(0, 43, 54)"); // 自分のテーマは base の色
+
+    // 行を押すと読み込み直さずにその色になり、name が書き換わり、印が移る
+    await page.evaluate(() => ((window as unknown as { notReloaded: boolean }).notReloaded = true));
+    await chooseTheme("my-dark");
     await waitUntil("色が変わる", async () => (await termBg(page)) === "rgb(0, 43, 54)");
-    expect(await accent(page)).toBe("#0969da");
-    expect(await page.locator("#settings").isVisible()).toBe(true);
-    expect(await page.locator("#settings .settings-theme.on").getAttribute("data-theme")).toBe("solarized-dark");
+    expect(await accent(page)).toBe("#ff5f87");
+    await waitUntil("印が移る", async () => (await marked()) === "my-dark");
+    expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`name = "light"`, `name = "my-dark"`));
+    expect(await page.evaluate(() => (window as unknown as { notReloaded?: boolean }).notReloaded)).toBe(true);
+
+    // 一覧は開いたままで、続けて押して見比べられる
+    expect(await page.locator("#themes").isVisible()).toBe(true);
+    await chooseTheme("solarized-dark");
+    await waitUntil("強調の色が戻る", async () => (await accent(page)) === "#859900");
+    expect(await termBg(page)).toBe("rgb(0, 43, 54)");
+    expect(await page.locator("#themes").isVisible()).toBe(true);
+    await waitUntil("印が移る", async () => (await marked()) === "solarized-dark");
     expect(readFileSync(configPath, "utf8")).toBe(mine.replace(`name = "light"`, `name = "solarized-dark"`));
+    await page.locator("#themes-close").click();
 
     // フォント：設定画面の「フォント」の一覧で「使う」を押すと、読み込み直さずに端末の文字がそのフォントになる
     await page.locator("#settings .settings-fonts").click();
@@ -969,7 +1092,7 @@ family = "Palmterm Local"
     const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
     try {
       const otherPage = await other.newPage();
-      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await login(otherPage);
       await otherPage.waitForFunction(() => document.querySelector(".term-row") !== null);
       expect(await termBg(otherPage)).toBe("rgb(0, 43, 54)");
       expect(
@@ -1008,7 +1131,7 @@ family = "Palmterm Local"
     expect(await page.locator("#toast").textContent()).toContain("theme.backgroud");
     expect(readFileSync(configPath, "utf8")).toBe(bad);
     expect(await termBg(page)).toBe("rgb(30, 30, 30)");
-    expect(await page.locator("#settings .settings-theme.on").getAttribute("data-theme")).toBe("default");
+    expect(await marked()).toBe("default");
 
     rmSync(configPath, { force: true });
     await openPage();
@@ -1042,7 +1165,7 @@ family = "Palmterm Local"
     const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
     try {
       const otherPage = await other.newPage();
-      await otherPage.goto(`${base}/auth?token=${TOKEN}`);
+      await login(otherPage);
       await otherPage.waitForFunction(() => document.querySelector(".term-row") !== null);
       expect(await settingsTitle(otherPage)).toEqual(["ja", "設定"]);
     } finally {
@@ -1170,10 +1293,11 @@ describe("大きい画面の板", () => {
   const clickBackdrop = () => page.mouse.click(5, 5);
 
   /** 設定画面の右の列に、その一覧だけが出ているか（左の設定の行より右に並び、もう一方は隠れている）。 */
-  async function expectSide(id: "devices" | "fonts") {
+  async function expectSide(id: "devices" | "fonts" | "themes") {
     await page.locator(`#${id}`).waitFor({ state: "visible" });
-    const other = id === "devices" ? "fonts" : "devices";
-    expect(await page.locator(`#${other}`).isHidden()).toBe(true);
+    for (const other of ["devices", "fonts", "themes"].filter((o) => o !== id)) {
+      expect(await page.locator(`#${other}`).isHidden()).toBe(true);
+    }
     const settings = await layout("settings");
     const rows = await layout("settings-body");
     const side = await layout(id);
@@ -1185,7 +1309,7 @@ describe("大きい画面の板", () => {
     expect(await page.locator(`#${id}-close`).isVisible()).toBe(false); // 設定画面と一緒に閉じる
   }
 
-  it("幅 700px 以上かつ高さ 600px 以上では、板が周りを暗くして中央に浮き、暗い所か Esc で閉じる。設定画面は2列で、右に「ログイン中の端末」かフォントの一覧が出る", async () => {
+  it("幅 700px 以上かつ高さ 600px 以上では、板が周りを暗くして中央に浮き、暗い所か Esc で閉じる。設定画面は2列で、右に「ログイン中の端末」・フォント・テーマの一覧が出る", async () => {
     await page.setViewportSize({ width: 1024, height: 768 });
     try {
       // 設定画面：幅 900px の2列で、開いた直後の右は端末の一覧。暗い所で閉じる
@@ -1204,11 +1328,24 @@ describe("大きい画面の板", () => {
       await expectSide("fonts");
       await page.locator("#settings .settings-devices").click();
       await expectSide("devices");
+      await page.locator("#settings .settings-themes").click();
+      await expectSide("themes");
+      expect(await page.locator("#settings-body button.on:not(.settings-language)").evaluateAll((bs) => bs.map((b) => b.className))).toEqual([
+        "settings-themes on",
+      ]);
+      // 右のテーマの一覧で選んでも、一覧は右に出たまま
+      await page.locator('#themes .theme-item[data-theme="light"]').click();
+      await waitUntil("印が移る", async () => (await page.locator("#themes .theme-item.on").getAttribute("data-theme")) === "light");
+      await expectSide("themes");
+      await page.locator('#themes .theme-item[data-theme="default"]').click();
+      await waitUntil("印が戻る", async () => (await page.locator("#themes .theme-item.on").getAttribute("data-theme")) === "default");
+      rmSync(configPath, { force: true }); // 書き戻した設定ファイルは残さない
       await page.locator("#settings .settings-fonts").click();
       await expectSide("fonts");
       await page.keyboard.press("Escape");
       expect(await page.locator("#settings").isHidden()).toBe(true);
       expect(await page.locator("#fonts").isHidden()).toBe(true);
+      expect(await page.locator("#themes").isHidden()).toBe(true);
 
       // 開き直すと右はまた端末の一覧
       await openSettings();
@@ -1257,6 +1394,10 @@ describe("大きい画面の板", () => {
         await page.locator("#settings .settings-fonts").click();
         await expectFullScreen("fonts");
         await page.locator("#fonts-close").click();
+        await expectFullScreen("settings");
+        await page.locator("#settings .settings-themes").click();
+        await expectFullScreen("themes");
+        await page.locator("#themes-close").click();
         await expectFullScreen("settings");
         await page.locator("#settings .settings-devices").click();
         await expectFullScreen("devices");
@@ -1388,7 +1529,7 @@ describe("LAN（HTTPS）", () => {
     const context = await browser.newContext({ viewport: { width: 400, height: 760 }, ignoreHTTPSErrors: true });
     try {
       const lan = await context.newPage();
-      await lan.goto(`${lanBase}/auth?token=${TOKEN}`);
+      await login(lan, lanBase);
       expect(lan.url()).toBe(`${lanBase}/`);
       const cookie = (await context.cookies()).find((c) => c.name === "palmterm_token");
       expect(cookie?.secure).toBe(true);
@@ -1432,11 +1573,18 @@ describe("ログイン中の端末", () => {
     const phoneContext = await browser.newContext({ viewport: { width: 400, height: 760 }, userAgent: IPHONE });
     const pcContext = await browser.newContext({ viewport: { width: 400, height: 760 } });
     try {
+      // 使い捨ての URL を開くと名前の欄（自動の名前を薄く出す）と「ログイン」ボタンのページが出る。押すとログインし、同じ URL はもう使えない
       const phone = await phoneContext.newPage();
-      await phone.goto(`${base}/auth?token=${TOKEN}`);
+      const url = loginURL();
+      await phone.goto(url);
+      expect(await phone.locator("#name").getAttribute("placeholder")).toBe("iPhone · Safari");
+      await phone.goto(url);
+      await phone.locator('#login button[type="submit"]').click();
+      await phone.waitForURL(`${base}/`);
       await waitUntil("スマホがつながる", async () => (await phone.locator(".term-row").count()) > 0 && (await phone.locator("#status").isHidden()));
       const pc = await pcContext.newPage();
-      await pc.goto(`${base}/auth?token=${TOKEN}`);
+      expect((await pc.goto(url))?.status()).toBe(401);
+      await login(pc);
       await pc.waitForFunction(() => document.querySelector(".term-row") !== null);
 
       // 設定画面から一覧を開く。自分には印が付き、ボタンはログアウト
@@ -1468,12 +1616,12 @@ describe("ログイン中の端末", () => {
       expect(await phoneRow.locator(".device-revoke").textContent()).toBe("Revoke?");
       await phoneRow.locator(".device-revoke").click();
       await waitUntil("一覧から消える", async () => (await phoneRow.count()) === 0);
-      await waitUntil("スマホがログインし直す案内になる", async () => ((await phone.textContent("body").catch(() => "")) ?? "").includes("/auth?token="), 10_000);
+      await waitUntil("スマホがログインし直す案内になる", async () => ((await phone.textContent("body").catch(() => "")) ?? "").includes("palmterm url"), 10_000);
 
       // 自分をログアウトする
       await me.locator(".device-revoke").click();
       await me.locator(".device-revoke").click();
-      await waitUntil("ログインし直す案内になる", async () => ((await pc.textContent("body").catch(() => "")) ?? "").includes("/auth?token="));
+      await waitUntil("ログインし直す案内になる", async () => ((await pc.textContent("body").catch(() => "")) ?? "").includes("palmterm url"));
       expect((await pcContext.cookies()).find((c) => c.name === "palmterm_token")).toBeUndefined();
 
       // ほかの端末（いつもの画面）はそのまま使える

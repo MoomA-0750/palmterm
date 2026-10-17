@@ -130,9 +130,11 @@ make          # builds the web UI and ./palmterm
 ./palmterm    # listens on 127.0.0.1:7681 and prints a login URL
 ```
 
-Open the printed `http://127.0.0.1:7681/auth?token=…` URL once; the browser then stays logged in.
-`palmterm url` prints the login URLs of the running palmterm (including the Tailscale one, if `tailscale serve`
-points to it) and a QR code you can scan with your phone.
+Open the printed `http://127.0.0.1:7681/auth?token=…` URL: it shows a field for the device name and a
+“Log in” button. Enter a name (or leave it empty for an automatic one such as “iPhone · Safari”) and press the
+button; the browser then stays logged in. Login URLs are one-time: they stop working once used, and 5 minutes
+after they were issued. Each run of `palmterm url` prints new login URLs of the running palmterm (including the
+Tailscale one, if `tailscale serve` points to it) and a QR code you can scan with your phone.
 palmterm attaches to the tmux session `main` (creating it if needed).
 
 ### From your phone
@@ -155,7 +157,7 @@ palmterm listens on each of the PC's private LAN IPv4 addresses (and its Tailsca
 listen on that one only. It uses a self-signed certificate that it creates in `~/.config/palmterm/`
 (recreated when a new IP address appears, keeping the old ones), so the browser warns you the first
 time — choose “Advanced” and proceed. The LAN side uses HTTPS so the
-token is not sent in clear text and copying to the phone's clipboard uses the browser's clipboard API.
+token and cookie are not sent in clear text and copying to the phone's clipboard uses the browser's clipboard API.
 
 ### Run as a service
 
@@ -175,8 +177,8 @@ palmterm url                                   # login URLs and a QR code to sca
 
 ### Options
 
-`palmterm url [-no-qr]` prints the login URLs and a QR code; `palmterm logout-all` logs out every device of the
-running palmterm and closes their open connections (e.g. after losing a phone; the token stays the same); `palmterm open URL` hands a URL to the palmterm page
+`palmterm url [-no-qr]` prints new one-time login URLs and a QR code; `palmterm logout-all` logs out every device of the
+running palmterm and closes their open connections (e.g. after losing a phone); `palmterm open URL` hands a URL to the palmterm page
 (see [Opening links on your phone](#opening-links-on-your-phone)).
 
 | Flag | Default | |
@@ -184,7 +186,6 @@ running palmterm and closes their open connections (e.g. after losing a phone; t
 | `-listen` | `127.0.0.1:7681` | address to listen on (HTTP) |
 | `-lan` | off | also listen on this address over HTTPS for the local network, e.g. `:7682` |
 | `-session` | `main` | tmux session to attach to |
-| `-token` | `~/.config/palmterm/token` | login token (also `PALMTERM_TOKEN`); a random one is created on first run |
 | `-config` | `~/.config/palmterm/config.toml` | configuration file |
 | `-upload-dir` | `~/.cache/palmterm/uploads` | where uploaded images are saved |
 | `-relay-browser` | `true` | show links that programs in tmux open on the palmterm page (see above) |
@@ -223,25 +224,43 @@ palmterm understands it, and the page tells you so when it opens. Your settings 
 
 ### Colors (theme)
 
-`name` in `[theme]` picks a built-in theme; any color you write overrides just that color.
+`name` in `[theme]` picks a theme: a built-in one, or one of your own written under `[themes.NAME]`.
+`[theme]` takes only `name`; writing colors there is reported as a mistake in the config file.
 
 ```toml
 [theme]
-name = "light"         # "default" (default), "light", "solarized-dark" or "solarized-light"
-background = "#fafafa" # terminal and page background
-foreground = "#1f2328" # terminal text
-cursor = "#1f2328"
-accent = "#0969da"     # button accent (green by default)
-red = "#d1242f"        # one of the 16 terminal colors
+name = "my-dark"       # a built-in theme (listed below) or your own
+
+[themes.my-dark]
+base = "solarized-dark" # the built-in theme to start from ("default" if omitted)
+accent = "#ff5f87"      # button accent
+# background = "#002b36" # terminal and page background
+# foreground = "#839496" # terminal text
+# cursor = "#93a1a1"
+# red = "#dc322f"        # one of the 16 terminal colors
 ```
 
-The 16 colors are `black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` and their
-`bright_` versions (`bright_black` … `bright_white`). Write colors as `#rrggbb` or `#rgb`. A mistyped
-color (such as `#12345`) or an unknown theme name is reported when the page opens, and only that part
-falls back to the default.
+Built-in themes:
 
-You can also pick the theme on the page: tap one in the Theme row of Settings. The colors
-change at once and the `name` line under `[theme]` in the config file is rewritten (other lines, comments
+| name | Colors |
+| --- | --- |
+| `default` | The default dark colors (used when omitted) |
+| `light` | Light colors |
+| `solarized-dark`, `solarized-light` | Solarized dark and light |
+| `rose-pine`, `rose-pine-moon`, `rose-pine-dawn` | Rosé Pine (dawn is light) |
+| `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha` | Catppuccin (latte is light) |
+
+Your theme uses the colors of `base`, with only the colors you write replaced. The 16 colors are
+`black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` and their `bright_` versions
+(`bright_black` … `bright_white`). Write colors as `#rrggbb` or `#rgb`. Mistakes in `[themes.NAME]`
+are reported when the page opens: a mistyped color (such as `#12345`) falls back to the `base` color,
+and unknown keys, an unknown `base` and a name that a built-in theme already uses are reported too
+(the built-in theme wins). An unknown name in `[theme]` is reported and `default` is used.
+
+You can also pick the theme on the page: "List" in the Theme row of Settings lists each theme with its
+name and a color sample (the text color on the background, and the 16 terminal colors); your own themes are
+listed after the built-in ones. Tap a row and the colors
+change at once (the list stays open so you can compare them) and the `name` line under `[theme]` in the config file is rewritten (other lines, comments
 and their order stay as they are; the file is created if missing). If the config file has a mistake and
 cannot be read, it is left alone and the reason is shown.
 
@@ -303,19 +322,23 @@ Mistakes (unknown fields, keys or icons) are reported when the page opens; every
 
 Whoever logs in to palmterm gets **a shell on your machine**. Keep it private.
 
-- There is a single token, stored in `~/.config/palmterm/token` (mode 0600, fixed on startup if looser).
-  It survives restarts.
-  The login URL containing it is printed at startup, so it also ends up in logs such as the journal.
-- `/auth?token=…` records the device (browser) and sets an HttpOnly, SameSite=Lax cookie valid for a
+- Login tokens are one-time. A new one is issued at startup and by every `palmterm url`; it works for a
+  single login and only within 5 minutes. They are kept in memory only, so restarting palmterm
+  invalidates every unused one. The startup URL also ends up in logs such as the journal, but expires.
+- Opening a login URL does not use up the token (so link previews in chat apps cannot consume it);
+  pressing “Log in” on the page does.
+- Logging in records the device (browser) and sets an HttpOnly, SameSite=Lax cookie valid for a
   year (Secure over HTTPS). The cookie holds a random per-device value, not the token; the server keeps
   only its hash, in `~/.config/palmterm/devices.json` (mode 0600). Every page, API call and the
   WebSocket require it, and the WebSocket also checks the Origin.
 - Browsers send cookies to every port of the same host name, so other services you open on the same
   host (for example a dev server on another port of `127.0.0.1`) receive the cookie too. A leaked cookie
-  does not reveal the token and can be revoked on its own (revoking also closes that device's open
+  cannot log in a new device and can be revoked on its own (revoking also closes that device's open
   connections).
-- To log every device out at once, delete the token file (or pass a new `-token`) and restart; devices
-  recorded with the old token are dropped.
+- To log every device out at once, run `palmterm logout-all`.
+- `~/.config/palmterm/token` (mode 0600, created on first run, fixed on startup if looser) is not used to
+  log in; it is the key of the logged-in device records. Deleting it and restarting also logs every
+  device out.
 - By default palmterm only listens on 127.0.0.1. `-lan :7682` listens only on the PC's private
   (RFC 1918), link-local and Tailscale (100.64.0.0/10) IPv4 addresses, not on every interface; give an
   address to listen elsewhere. Do not expose palmterm to the internet.
@@ -324,7 +347,7 @@ Whoever logs in to palmterm gets **a shell on your machine**. Keep it private.
 ## Development
 
 ```sh
-make dev    # Go server on 7681 and Vite on 5173; open http://localhost:5173/auth?token=…
+make dev    # Go server on 7681 and Vite on 5173; open the printed URL with 127.0.0.1:7681 replaced by localhost:5173
 make test   # Go tests, web unit tests (vitest), end-to-end tests in Chromium (playwright-core)
 ```
 
