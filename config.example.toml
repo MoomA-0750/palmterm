@@ -12,7 +12,8 @@ language = "en"
 
 # 画面の色 / Colors
 [theme]
-# 組み込みのテーマ / Built-in theme: "default"（既定 / default）, "light", "solarized-dark", "solarized-light"
+# 組み込みのテーマ / Built-in theme: "default"（既定 / default）, "light", "solarized-dark", "solarized-light",
+#   "rose-pine", "rose-pine-moon", "rose-pine-dawn", "catppuccin-latte", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"
 # 画面の tmux パネルの「テーマ」で選ぶと、この行が書き換わる / Picking a theme in the tmux panel rewrites this line
 name = "default"
 # 書いた色だけ、テーマの色を上書きする（"#rrggbb" か "#rgb"）。書き間違えた色は画面で知らせ、テーマの色に戻す。

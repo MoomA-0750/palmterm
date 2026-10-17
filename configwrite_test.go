@@ -220,6 +220,21 @@ func TestAppearanceRejectsUnknownNames(t *testing.T) {
 	}
 }
 
+// 組み込みのテーマは Rosé Pine と Catppuccin も選べ、[theme] の name に書き戻す。
+func TestRosePineAndCatppuccinCanBeChosen(t *testing.T) {
+	s := newTestServer(t)
+	c := login(t, s, "")
+	for _, name := range []string{"rose-pine", "rose-pine-moon", "rose-pine-dawn", "catppuccin-latte", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha"} {
+		writeConfig(t, "[theme]\nname = \"default\"\n")
+		if code, msg := chooseAppearance(t, s, c, `{"theme":"`+name+`"}`); code != http.StatusOK {
+			t.Fatalf("%s: code=%d %s", name, code, msg)
+		}
+		if got, want := readConfigFile(t), "[theme]\nname = \""+name+"\"\n"; got != want {
+			t.Fatalf("%s: %q", name, got)
+		}
+	}
+}
+
 // 選べるテーマの名前は、画面の組み込みのテーマ（web/src/theme.ts の THEMES）と同じ。
 func TestThemeNamesMatchTheScreen(t *testing.T) {
 	src, err := os.ReadFile("web/src/theme.ts")

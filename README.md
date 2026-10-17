@@ -229,7 +229,7 @@ palmterm understands it, and the page tells you so when it opens. Your settings 
 
 ```toml
 [theme]
-name = "my-dark"       # "default" (default), "light", "solarized-dark", "solarized-light" or your own
+name = "my-dark"       # a built-in theme (listed below) or your own
 
 [themes.my-dark]
 base = "solarized-dark" # the built-in theme to start from ("default" if omitted)
@@ -239,6 +239,16 @@ accent = "#ff5f87"      # button accent
 # cursor = "#93a1a1"
 # red = "#dc322f"        # one of the 16 terminal colors
 ```
+
+Built-in themes:
+
+| name | Colors |
+| --- | --- |
+| `default` | The default dark colors (used when omitted) |
+| `light` | Light colors |
+| `solarized-dark`, `solarized-light` | Solarized dark and light |
+| `rose-pine`, `rose-pine-moon`, `rose-pine-dawn` | Rosé Pine (dawn is light) |
+| `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha` | Catppuccin (latte is light) |
 
 Your theme uses the colors of `base`, with only the colors you write replaced. The 16 colors are
 `black` `red` `green` `yellow` `blue` `magenta` `cyan` `white` and their `bright_` versions

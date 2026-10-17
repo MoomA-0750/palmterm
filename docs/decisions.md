@@ -373,3 +373,10 @@ SPEC.md の「予定」にあったもの。本人が寝ている間に作った
 - token ファイル（`~/.config/palmterm/token`）はログインには使わず、ログインした端末の記録（devices.json）の鍵として残した（本人と決めた推奨案）。記録はこの値から計算した値で鍵をかけてあるので、残せば更新前からログインしていた端末はログインし直さずに使える。`-token` と `PALMTERM_TOKEN` はなくした。それで動かしていた人は、鍵が token ファイルの中身に変わるので一度ログインし直す。`-token` を付けたままだと起動しない
 - `palmterm url` は、サーバーが書いた URL の控え（`login-urls`）を読む形をやめ、動いているサーバーに実行時のフォルダのソケットで新しいトークンを出させる形にした（本人と決めた推奨案）。控えのファイルは起動時に消す。ソケットは logout-all の `control.sock` とは別の `login.sock` にした。`control.sock` の受け口は logoutall.go にあり、課題の scope の外だったため。中身は同じ形（1行の命令、0600、本人だけのフォルダ）なので、あとで1つにまとめてもよい
 - ログインしていないときの 401 の案内は「PC で palmterm url を実行し、出た URL を開く」に変えた。起動時の URL はもう5分で使えなくなるため
+
+## 2026-10-17 Rosé Pine と Catppuccin を組み込みのテーマに足す
+
+- 課題 0024。`rose-pine`・`rose-pine-moon`・`rose-pine-dawn`・`catppuccin-latte`・`catppuccin-frappe`・`catppuccin-macchiato`・`catppuccin-mocha` を `web/src/theme.ts` の `THEMES` とサーバーの `themeNames` に足した
+- 端末の文字・背景・カーソル・16色は、公式の Alacritty のテーマ（rose-pine/alacritty の dist、catppuccin/alacritty）の値をそのまま使った。公式の配色は2系統で端末の色の割り当てが違う（例: Rosé Pine の green は pine、Catppuccin の bright_white は subtext0）ので、配色表から自分で割り当てず端末のテーマに合わせた
+- 公式のものが無いボタン・帯・パネルなどの色は配色の名前から選んだ。Rosé Pine は帯 surface・ボタン overlay・強調 foam（dawn は明るい背景で foam が薄いので pine）、Catppuccin は帯 mantle・ボタン surface0・強調 mauve（Catppuccin の既定の強調の色）。`accent-dim` は自分のテーマと同じく強調の色と帯の色を 1:3 で混ぜた
+- Rosé Pine の公式のカーソルの色（highlight high）は背景との差が小さいが、公式どおりにした

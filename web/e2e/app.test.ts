@@ -628,6 +628,24 @@ text = ":wq"
     expect(light.keyBg).not.toBe(before.keyBg);
     expect(light.red).toBe("#cf222e");
 
+    // Rosé Pine と Catppuccin も name で選べる（Dawn と Latte は明るいテーマ）
+    for (const [name, bg, fg, red] of [
+      ["rose-pine", "rgb(25, 23, 36)", "#e0def4", "#eb6f92"],
+      ["rose-pine-moon", "rgb(35, 33, 54)", "#e0def4", "#eb6f92"],
+      ["rose-pine-dawn", "rgb(250, 244, 237)", "#575279", "#b4637a"],
+      ["catppuccin-latte", "rgb(239, 241, 245)", "#4c4f69", "#d20f39"],
+      ["catppuccin-frappe", "rgb(48, 52, 70)", "#c6d0f5", "#e78284"],
+      ["catppuccin-macchiato", "rgb(36, 39, 58)", "#cad3f5", "#ed8796"],
+      ["catppuccin-mocha", "rgb(30, 30, 46)", "#cdd6f4", "#f38ba8"],
+    ]) {
+      writeFileSync(configPath, `[theme]\nname = "${name}"\n`);
+      await openPage();
+      const c = await colors();
+      expect([name, c.termBg, c.termFg, c.red]).toEqual([name, bg, fg, red]);
+      expect(c.keyBg).not.toBe(before.keyBg);
+      expect(await page.locator("#toast").isVisible()).toBe(false);
+    }
+
     // 自分のテーマ：Solarized 暗の色のまま、強調の色だけが #ff5f87
     writeFileSync(configPath, `[theme]\nname = "solarized-dark"\n`);
     await openPage();
@@ -1013,9 +1031,14 @@ family = "Palmterm Local"
     await page.locator("#themes").waitFor({ state: "visible" });
     const items = page.locator("#themes .theme-item");
     expect(await items.evaluateAll((bs) => bs.map((b) => b.getAttribute("data-theme")))).toEqual([
-      "default", "light", "solarized-dark", "solarized-light", "my-dark",
+      "default", "light", "solarized-dark", "solarized-light",
+      "rose-pine", "rose-pine-moon", "rose-pine-dawn", "catppuccin-latte", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha", "my-dark",
     ]);
-    expect(await items.locator(".theme-name").allTextContents()).toEqual(["Default", "Light", "Solarized dark", "Solarized light", "my-dark"]);
+    expect(await items.locator(".theme-name").allTextContents()).toEqual([
+      "Default", "Light", "Solarized dark", "Solarized light",
+      "Rosé Pine", "Rosé Pine Moon", "Rosé Pine Dawn", "Catppuccin Latte", "Catppuccin Frappé", "Catppuccin Macchiato", "Catppuccin Mocha",
+      "my-dark",
+    ]);
     expect(await marked()).toBe("light");
     const swatch = (name: string) =>
       page.locator(`#themes .theme-item[data-theme="${name}"] .theme-swatch`).evaluate((sw) => ({

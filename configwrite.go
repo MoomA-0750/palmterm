@@ -23,7 +23,11 @@ import (
 // 書き換えたあとに読み直して、変わったのがその1か所だけであることを確かめてから保存する。
 
 // 組み込みのテーマの名前（web/src/theme.ts の THEMES と同じ。TestThemeNamesMatchTheScreen で確かめる）。
-var themeNames = []string{"default", "light", "solarized-dark", "solarized-light"}
+var themeNames = []string{
+	"default", "light", "solarized-dark", "solarized-light",
+	"rose-pine", "rose-pine-moon", "rose-pine-dawn",
+	"catppuccin-latte", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-mocha",
+}
 
 // 今の設定ファイルに [themes.名前] の自分のテーマがあるか。設定ファイルが読めないときは true にして、
 // 名前ではなく「書き間違いがあるので書き戻さない」の方で断る。

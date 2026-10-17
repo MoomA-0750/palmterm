@@ -181,8 +181,8 @@
 - （確定）`version` がこの palmterm の知らない新しい値なら、読める項目（`language`、`[[keys]]`、`[theme]` の `name`、`[themes]`、`[font]`）だけ使い、知らない項目や書き方が変わって読めない項目は飛ばす。画面を開いたときに、書き間違いの知らせと同じ出し方で「新しい版の設定ファイルです」と知らせる（`/api/config` の応答の `newerConfig` に版が入る）。TOML として読めないときは今までどおり書き間違いとして知らせ、既定の設定を使う
   - 確かめ方: 自動テスト `TestConfigNewerVersionUsesWhatItCanRead`（auth_config_test.go）
   - 実物での確かめ方: 設定ファイルに `version = 3` と知らない項目を書き、ページを読み込み直す → 下に「新しい版の設定ファイルです（…、版 3）。この palmterm が読める項目だけ使います」と出て、言語とキーバーは書いたとおりになる
-- （確定）`[theme]` の `name` でテーマを選ぶ。組み込みのテーマは `default`（今までの暗い色。書かなければこれ）、`light`（明るい色）、`solarized-dark`、`solarized-light`。`[themes.名前]` に書いた自分のテーマの名前も書ける（組み込みと同じ名前なら組み込みのもの）。端末の文字・背景・16色と、ボタン・帯・パネル・入力欄の色がまとめて変わる。ページを読み込み直すと反映する。どちらにも無い名前は画面を開いたときに知らせ、default を使う。設定画面からも選べる（「画面でテーマとフォントを選ぶ」の節）
-  - 確かめ方: 単体テスト「設定ファイルの [theme]」（web/src/theme.test.ts）、通しのテスト「[theme] の name でテーマを選ぶと端末とボタンの色が変わる。[themes.名前] の自分のテーマは base に書いた色だけ重ね、…」（web/e2e/app.test.ts）、`TestConfigTheme`（auth_config_test.go）
+- （確定）`[theme]` の `name` でテーマを選ぶ。組み込みのテーマは `default`（今までの暗い色。書かなければこれ）、`light`（明るい色）、`solarized-dark`、`solarized-light`、`rose-pine`、`rose-pine-moon`、`rose-pine-dawn`（明るい）、`catppuccin-latte`（明るい）、`catppuccin-frappe`、`catppuccin-macchiato`、`catppuccin-mocha`。Rosé Pine と Catppuccin の端末の文字・背景・カーソル・16色は公式の Alacritty のテーマと同じで、ボタンなどの色は公式の配色の色から選ぶ。`[themes.名前]` に書いた自分のテーマの名前も書ける（組み込みと同じ名前なら組み込みのもの）。端末の文字・背景・16色と、ボタン・帯・パネル・入力欄の色がまとめて変わる。ページを読み込み直すと反映する。どちらにも無い名前は画面を開いたときに知らせ、default を使う。設定画面からも選べる（「画面でテーマとフォントを選ぶ」の節）
+  - 確かめ方: 単体テスト「設定ファイルの [theme]」（web/src/theme.test.ts。Rosé Pine と Catppuccin の背景・文字・16色の前の8色と明暗も確かめる）、通しのテスト「[theme] の name でテーマを選ぶと端末とボタンの色が変わる。[themes.名前] の自分のテーマは base に書いた色だけ重ね、…」（web/e2e/app.test.ts）、`TestConfigTheme`（auth_config_test.go）
   - 実物での確かめ方: 設定ファイルに `[theme]` と `name = "light"` を書き、ページを読み込み直す → 端末が白地に黒い文字になり、キーバーなどのボタンも明るい色になる。消して読み込み直すと元の色に戻る
 - （確定）`[theme]` に書けるのは `name` だけ。ほかの項目（`accent` などの色の行も）を書くと、設定ファイルの書き間違いとして「[theme] に書けるのは name だけです。色は [themes.名前] に書き…」と項目の名前を知らせ、既定の設定を使う
   - 確かめ方: 上と同じテスト
@@ -238,7 +238,7 @@
 
 - （確定）設定画面の「テーマ」の行には「一覧」のボタンだけがあり、押すとテーマの一覧を開く（小さい画面では設定画面に代わって開き、「閉じる」で設定画面に戻る。2列の画面では右の列に出る。「設定画面」の節）
   - 確かめ方: 単体テスト「設定画面のテーマの行」（web/src/settings.test.ts）、通しのテスト「tmux パネルに残るのは…」と、「設定画面」の節の2列・1列の通しのテスト（web/e2e/app.test.ts）
-- （確定）テーマの一覧には組み込みのテーマ（既定・明るい・Solarized 暗・Solarized 明）と、その後ろに `[themes.名前]` の自分のテーマ（書いた名前のまま、名前の順）が並ぶ。各行に名前と色見本（テーマの端末の背景の上に、端末の文字の色で書いた見本の文字 `~/src $ ls -la` と、端末の16色の四角を8個ずつ2段）を出し、今のテーマの行に印（枠と ✓）を付ける。色見本は今の設定ファイルの `[themes.名前]` から一覧を開くたびに作る
+- （確定）テーマの一覧には組み込みのテーマ（既定・明るい・Solarized 暗・Solarized 明・Rosé Pine・Rosé Pine Moon・Rosé Pine Dawn・Catppuccin Latte・Catppuccin Frappé・Catppuccin Macchiato・Catppuccin Mocha）と、その後ろに `[themes.名前]` の自分のテーマ（書いた名前のまま、名前の順）が並ぶ。各行に名前と色見本（テーマの端末の背景の上に、端末の文字の色で書いた見本の文字 `~/src $ ls -la` と、端末の16色の四角を8個ずつ2段）を出し、今のテーマの行に印（枠と ✓）を付ける。色見本は今の設定ファイルの `[themes.名前]` から一覧を開くたびに作る
   - 確かめ方: 単体テスト「テーマの一覧」（web/src/themelist.test.ts）、通しのテスト「設定画面でテーマと fonts/ のフォントを選ぶとすぐ画面に反映され、…」（web/e2e/app.test.ts。並び・名前・印と、色見本の背景・文字の色・16色を確かめる）
 - （確定）一覧の行を押すと読み込み直さずにすぐその色になり、設定ファイルの `[theme]` の `name` を書き換え、印がその行に移る（書き戻せなかったときは移らない）。続けて見比べられるよう、一覧は閉じない
   - 確かめ方: `TestAppearanceIsWrittenBackKeepingTheRest`（configwrite_test.go）、単体テスト「テーマの一覧」（web/src/themelist.test.ts）、上と同じ通しのテスト（自分のテーマを押すと読み込み直さずにその色になり `name` が書き換わり、一覧が開いたまま印が移ることを確かめる）
@@ -254,7 +254,7 @@
 - （確定）設定ファイルに書き間違いがあって読めないとき（TOML として読めない・知らない項目・値の間違い）は書き戻さず、画面に「書き間違いがあるので、書き戻しませんでした」と理由を知らせ、色もフォントも変えない。書き換える行を見つけられない書き方（`theme = { … }` のインラインのテーブル、`theme.name = …` のドットの付いた書き方、複数行の文字列）も書き戻さず、手で直すよう知らせる
   - 確かめ方: `TestAppearanceIsNotWrittenToAnUnreadableConfig`（configwrite_test.go）と上の通しのテスト
 - （確定）選べるのは組み込みのテーマと今の設定ファイルの `[themes.名前]` のテーマ、`fonts/` の直下にあるフォント・PC に入っているフォント・JetBrains Mono の名前だけで、ほかの値は断る。書き戻せるのはログインした端末だけ
-  - 確かめ方: `TestAppearanceRejectsUnknownNames`、`TestThemeNamesMatchTheScreen`（configwrite_test.go。サーバーの知っているテーマの名前が画面の組み込みのテーマと同じ）
+  - 確かめ方: `TestAppearanceRejectsUnknownNames`、`TestRosePineAndCatppuccinCanBeChosen`、`TestThemeNamesMatchTheScreen`（configwrite_test.go。サーバーの知っているテーマの名前が画面の組み込みのテーマと同じ）
 
 ## 画面で言語を選ぶ
 

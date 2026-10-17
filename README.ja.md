@@ -223,7 +223,7 @@ label = ":wq"
 
 ```toml
 [theme]
-name = "my-dark"       # "default"（既定）・"light"・"solarized-dark"・"solarized-light" か自分のテーマ
+name = "my-dark"       # 組み込みのテーマ（下の表）か自分のテーマ
 
 [themes.my-dark]
 base = "solarized-dark" # もとにする組み込みのテーマ（書かなければ "default"）
@@ -233,6 +233,16 @@ accent = "#ff5f87"      # ボタンの強調の色
 # cursor = "#93a1a1"
 # red = "#dc322f"        # 端末の16色の1つ
 ```
+
+組み込みのテーマ:
+
+| name | 色 |
+| --- | --- |
+| `default` | 既定の暗い色（書かなければこれ） |
+| `light` | 明るい色 |
+| `solarized-dark`・`solarized-light` | Solarized の暗・明 |
+| `rose-pine`・`rose-pine-moon`・`rose-pine-dawn` | Rosé Pine（dawn は明るい） |
+| `catppuccin-latte`・`catppuccin-frappe`・`catppuccin-macchiato`・`catppuccin-mocha` | Catppuccin（latte は明るい） |
 
 自分のテーマは `base` の色に、書いた色だけを重ねる。16色は `black` `red` `green` `yellow` `blue`
 `magenta` `cyan` `white` と、`bright_` を付けた `bright_black`〜`bright_white`。色は `#rrggbb` か
