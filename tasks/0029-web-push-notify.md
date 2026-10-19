@@ -1,6 +1,6 @@
 ---
 id: 0029
-status: done         # todo / doing / blocked / done
+status: blocked         # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - "notify*.go"
   - "push*.go"
@@ -34,7 +34,26 @@ after: [0028]
 - [ ] テスト: プッシュの送信（暗号化した中身と VAPID の署名）を Go のテストでテスト用の受け口に送って確かめ、make test が通る
 
 ## 本人に訊くこと
-（実行役が書く。本人は `task-loop answer` で答える）
+- task-loop の検査で止めた（2026-10-19 13:13）:
+  - テスト（make test）が通らない:
+```
+
+[41m[1m FAIL [22m[49m e2e/app.test.ts[2m > [22m大きい画面の板[2m > [22m幅 700px 以上かつ高さ 600px 以上では、板が周りを暗くして中央に浮き、暗い所か Esc で閉じる。設定画面は2列で、右に「ログイン中の端末」・フォント・テーマの一覧が出る
+[31m[1mAssertionError[22m: expected 77.8046875 to be greater than or equal to 160[39m
+[36m [2m❯[22m expectSide e2e/app.test.ts:[2m1306:20[22m[39m
+    [90m1304|[39m     expect(side.x).toBeGreaterThanOrEqual(rows.x + rows.w - 1);
+    [90m1305|[39m     expect(side.x + side.w).toBeLessThanOrEqual(settings.x + settings.…
+    [90m1306|[39m     expect(side.y).toBeGreaterThanOrEqual(settings.y - 1);
+    [90m   |[39m                    [31m^[39m
+    [90m1307|[39m     expect(side.y + side.h).toBeLessThanOrEqual(settings.y + settings.…
+    [90m1308|[39m     expect(side.w).toBeGreaterThan(300);
+[90m [2m❯[22m e2e/app.test.ts:[2m1328:7[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+make: *** [Makefile:28: test] Error 1
+```
+  - 実行役の出力: ~/.local/share/task-loop/logs/palmterm/0029-20261019-125308.log
 
 ## メモ
 - 「画面がつながっている端末」を WebSocket がつながっているかだけで決めると、iPhone で別のアプリに切り替えた・画面を消した直後は WebSocket が残っていて書き込めてしまい、プッシュが止まる。そこで画面から見えている・隠れたを `POST /api/push/presence` で知らせる形にした（terminal.go は scope の外なので WebSocket の制御メッセージにはしなかった）
