@@ -1298,9 +1298,13 @@ describe("大きい画面の板", () => {
     for (const other of ["devices", "fonts", "themes"].filter((o) => o !== id)) {
       expect(await page.locator(`#${other}`).isHidden()).toBe(true);
     }
-    const settings = await layout("settings");
-    const rows = await layout("settings-body");
-    const side = await layout(id);
+    // 一覧は中身を読み終えると伸び、板も一緒に高くなる。別々に測ると間で伸びて食い違うので、同じ瞬間に測る。
+    const [settings, rows, side] = await page.evaluate((ids) => {
+      return ids.map((i) => {
+        const r = document.getElementById(i)!.getBoundingClientRect();
+        return { x: r.x, y: r.y, w: r.width, h: r.height };
+      });
+    }, ["settings", "settings-body", id]);
     expect(side.x).toBeGreaterThanOrEqual(rows.x + rows.w - 1);
     expect(side.x + side.w).toBeLessThanOrEqual(settings.x + settings.w + 1);
     expect(side.y).toBeGreaterThanOrEqual(settings.y - 1);
