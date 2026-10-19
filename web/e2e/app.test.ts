@@ -1635,6 +1635,43 @@ describe("ログイン中の端末", () => {
   });
 });
 
+describe("ホーム画面のアプリ", () => {
+  it("画面は display: standalone とアイコンの manifest を読み、ログインの記録が無ければログイン用の URL を貼ってログインできる", async () => {
+    // 画面が読む manifest（ログインしていない別の記録からも取れる）
+    const href = await page.locator('link[rel="manifest"]').getAttribute("href");
+    expect(href).toBe("/manifest.webmanifest");
+    expect(await page.locator('link[rel="apple-touch-icon"]').getAttribute("href")).toBe("/icons/icon-180.png");
+
+    // ブラウザとログインの記録が分かれたホーム画面のアプリ（Cookie の無い別の記録）
+    const app = await browser.newContext({ viewport: { width: 400, height: 760 } });
+    try {
+      const p = await app.newPage();
+      const manifest = await (await p.request.get(`${base}${href}`)).json();
+      expect(manifest.display).toBe("standalone");
+      expect(manifest.start_url).toBe("/");
+      for (const icon of manifest.icons as { src: string }[]) {
+        const r = await p.request.get(`${base}${icon.src}`);
+        expect(r.status()).toBe(200);
+        expect(r.headers()["content-type"]).toBe("image/png");
+      }
+
+      // start_url を開くと、ログイン用の URL を貼る欄が出る。貼って「次へ」→「ログイン」で端末が使える
+      expect((await p.goto(`${base}/`))?.status()).toBe(401);
+      expect(await p.locator('link[rel="manifest"]').getAttribute("href")).toBe("/manifest.webmanifest");
+      await p.locator("#paste #token").fill(loginURL());
+      await p.locator('#paste button[type="submit"]').click();
+      await p.locator('#login button[type="submit"]').click();
+      await p.waitForURL(`${base}/`);
+      await waitUntil("つながる", async () => (await p.locator(".term-row").count()) > 0 && (await p.locator("#status").isHidden()));
+      await p.locator("#line").fill("echo app$((4+5))");
+      await p.locator("#send").click();
+      await waitUntil("app9 が出る", () => paneText().includes("\napp9\n"));
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe("ブラウザの受け渡し", () => {
   it("tmux の中のプログラムが開こうとした URL を画面に知らせ、押すと新しいタブで開く", async () => {
     // tmux の中のプログラムは BROWSER（palmterm-open）でブラウザを開く

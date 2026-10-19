@@ -164,6 +164,11 @@ tailscale serve --bg 7681
 ブラウザは最初に警告を出す。「詳細設定」から先へ進む。LAN 側を HTTPS にしているのは、トークンや Cookie を平文で流さないためと、スマホの
 クリップボードへのコピーにブラウザのクリップボードの機能を使えるようにするため。
 
+**ホーム画面に追加**：Safari の共有 →「ホーム画面に追加」（Android の Chrome ではメニューの「ホーム画面に追加」）で、
+palmterm のアイコンからアドレスバーなしの全画面で開ける。iPhone/iPad のホーム画面の palmterm は Safari とログインの記録が
+分かれていることがあり、そのときは「ログイン用の URL」の欄が出る。PC で `palmterm url` を実行し、出た URL をコピーして
+欄に貼り、「次へ」→「ログイン」を押す。Android で枠なしで開くには、正しい証明書の HTTPS（Tailscale）で開く必要がある。
+
 ### サービスとして動かす
 
 systemd のユーザーサービスのファイル（[contrib/systemd/palmterm.service](contrib/systemd/palmterm.service)）がある。

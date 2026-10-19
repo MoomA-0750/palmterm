@@ -396,3 +396,12 @@ SPEC.md の「予定」にあったもの。本人が寝ている間に作った
 - 帯から移るウィンドウは番号ではなく tmux のウィンドウ ID（`@N`）で指す。ID は閉じるまで変わらず、使い回されないので、閉じられていれば「無い」と分かる。番号で指したままだと、閉じたあとに同じ番号のほかのウィンドウへ移ってしまう
 - ID で移るのは新しい操作 `select-window-id` にした。palmterm がつないでいるセッションのウィンドウの ID の中に無ければ、何もせずウィンドウの一覧を返す（エラーにしないので知らせも出ない。帯は押した時点で消えている）。セッションの中から探すので、ほかのセッションのウィンドウにも移らない
 - 帯に出す番号は打ったときのまま（押したときに今の番号へ書き換えはしない）
+
+## 2026-10-19 ホーム画面に追加できるようにする（課題 0028）
+
+- manifest（`display: standalone`）に加えて、iOS 向けの `apple-mobile-web-app-capable` と `apple-touch-icon` も置いた。古い iOS は manifest の display を見ず、アイコンも `apple-touch-icon` を使うため
+- manifest と `/icons/` はログインなしで返す。Chrome は manifest を Cookie なしで取りに来ることがあり、ホーム画面のアプリはログインの記録が分かれることもあるため。中身は名前と色とアイコンだけ
+- iPhone/iPad のホーム画面のアプリは Safari と Cookie が分かれていることがある（iOS の版による）うえ、アドレスバーが無いので、ログイン用の URL を開けない。そこで、ログインしていないときの `/` を「ログイン用の URL を貼る欄」のページにした。貼ったものは `GET /auth?token=…` に渡し、URL を丸ごと貼ってもトークンを取り出す。ログインのページ・使い切るのは今までどおり `POST /auth` なので、安全の決まりは変わらない
+- 別の案として、ログイン済みの Safari からホーム画面のアプリへログインを渡す仕組み（短いコードを出す等）も考えたが、新しい受け口が要るのでやめた。今ある `palmterm url` をそのまま使える貼り付けにした
+- アイコンは `web/public/icons/icon.svg` を元に ImageMagick で 180・192・512px の PNG にした（`magick -background none -density 300 icon.svg -resize 512x512 icon-512.png`）。中身は 512px の安全域（中央 80%）に収めたので、Android の maskable にも同じ画像を使う
+- Makefile は課題の scope の外なので、`web/public` を palmterm の依存に足していない。`web/public` だけを変えたときは `touch web/index.html` してから make する

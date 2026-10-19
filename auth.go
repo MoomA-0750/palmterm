@@ -6,6 +6,8 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -20,7 +22,7 @@ type deviceKey struct{}
 // 別のポートのサービスにも送られるので、そこから漏れても新しい端末でのログインには使えず、
 // 漏れた端末の分だけ取り消せる。
 func (s *server) handleAuthPage(w http.ResponseWriter, r *http.Request) {
-	tok := r.URL.Query().Get("token")
+	tok := loginTokenFrom(r.URL.Query().Get("token"))
 	if !s.logins.valid(tok) {
 		badLoginToken(w)
 		return
@@ -71,6 +73,19 @@ func (s *server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
+// ログインしていない画面の欄に貼られたものからトークンを取り出す。ログイン用の URL を丸ごと貼っても、
+// トークンだけを貼ってもよい（ホーム画面のアプリにはアドレスバーが無く、URL を開けないため）。
+func loginTokenFrom(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.Index(s, "?"); i >= 0 {
+		if q, err := url.ParseQuery(s[i+1:]); err == nil {
+			return q.Get("token")
+		}
+		return ""
+	}
+	return s
+}
+
 func badLoginToken(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store")
 	http.Error(w, tr("このログイン用の URL は使えません（使用済みか、出してから5分たっています）。PC で palmterm url を実行し、新しい URL を開いてください",
@@ -110,6 +125,59 @@ button { border: 0; background: #2563eb; color: #fff; font-weight: 600; }
 </html>
 `))
 
+func notLoggedInPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusUnauthorized)
+	pastePage.Execute(w, map[string]string{
+		"Lang":   tr("ja", "en"),
+		"Title":  tr("palmterm にログイン", "Log in to palmterm"),
+		"Hint":   tr("PC で palmterm url を実行し、出たログイン用の URL（QR コード）を開いてください。ホーム画面から開いた palmterm では、その URL をここに貼って「次へ」を押します。", "Run palmterm url on the PC and open the login URL (or scan the QR code) it prints. In palmterm opened from the home screen, paste that URL here and tap Next."),
+		"Label":  tr("ログイン用の URL", "Login URL"),
+		"Button": tr("次へ", "Next"),
+	})
+}
+
+// ログインしていないときの画面。manifest も読ませておくと、この画面からでもホーム画面に追加できる。
+var pastePage = template.Must(template.New("paste").Parse(`<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#1e1e1e">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="palmterm">
+<title>palmterm</title>
+<style>
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+form { width: min(360px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 12px; }
+h1 { font-size: 1.25rem; margin: 0 0 4px; }
+label { font-weight: 600; }
+input, button { font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 8px; }
+input { border: 1px solid #8888; }
+p { margin: 0; font-size: .875rem; opacity: .7; }
+button { border: 0; background: #2563eb; color: #fff; font-weight: 600; }
+</style>
+</head>
+<body>
+<form id="paste" method="get" action="/auth">
+<h1>{{.Title}}</h1>
+<p>{{.Hint}}</p>
+<label for="token">{{.Label}}</label>
+<input id="token" name="token" placeholder="https://…/auth?token=…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+<button type="submit">{{.Button}}</button>
+</form>
+</body>
+</html>
+`))
+
 func isHTTPS(r *http.Request) bool {
 	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 }
@@ -121,6 +189,13 @@ func (s *server) requireAuth(next http.Handler) http.Handler {
 			dev = s.devices.lookup(c.Value)
 		}
 		if dev == nil {
+			// 画面そのもの（/）を開いたときは、ログイン用の URL を貼ってログインできるページを出す。
+			// ホーム画面に追加した palmterm は、ブラウザとログインの記録が分かれていることがあり、
+			// アドレスバーも無いので、ログイン用の URL を開く代わりにここへ貼る。
+			if r.Method == http.MethodGet && (r.URL.Path == "/" || r.URL.Path == "/index.html") {
+				notLoggedInPage(w, r)
+				return
+			}
 			http.Error(w, tr("ログインしていません。PC で palmterm url を実行し、出たログイン用の URL（QR コード）を開いてください", "Not logged in. Run palmterm url on the PC and open the login URL (or scan the QR code) it prints"), http.StatusUnauthorized)
 			return
 		}

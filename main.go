@@ -218,7 +218,12 @@ func (s *server) routes() http.Handler {
 	mux.Handle("POST /api/devices/rename", s.requireAuth(http.HandlerFunc(s.handleRenameDevice)))
 	mux.Handle("POST /api/upload", s.requireAuth(http.HandlerFunc(s.handleUpload)))
 	mux.Handle("GET /api/upload/{name}", s.requireAuth(http.HandlerFunc(s.handleUploadFile)))
-	mux.Handle("GET /", s.requireAuth(cacheAssets(http.FileServerFS(dist))))
+	// ホーム画面に追加するときの manifest とアイコンは、ログインしていなくても返す。ブラウザは Cookie を付けずに
+	// 取りに来ることがあり、ホーム画面のアプリはブラウザとログインの記録が分かれていることがあるため。中身に秘密は無い。
+	files := http.FileServerFS(dist)
+	mux.Handle("GET /manifest.webmanifest", files)
+	mux.Handle("GET /icons/", files)
+	mux.Handle("GET /", s.requireAuth(cacheAssets(files)))
 	return mux
 }
 

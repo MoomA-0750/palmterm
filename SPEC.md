@@ -59,6 +59,18 @@
 - （仮）ログイン用の認証の値は tmux の中のシェルの環境に渡さない（前の `PALMTERM_TOKEN` も tmux の環境から消す）
 - （仮）長く居座る不完全な接続は時間切れで切るが、端末の接続そのものは時間で切らない
 
+## ホーム画面に追加する
+
+- （仮）iPhone/iPad の Safari の「ホーム画面に追加」や Android の Chrome の「ホーム画面に追加」（インストール）で、palmterm の名前とアイコン（暗い地に `>_`）でホーム画面に置ける。押すとアドレスバーの無い全画面（standalone）で `/` を開く
+  - 画面は `/manifest.webmanifest`（名前 palmterm、`display: standalone`、`start_url: /`、192px と 512px のアイコン）と iOS 向けの `apple-touch-icon`（180px）・`apple-mobile-web-app-capable` を読む
+  - manifest と `/icons/` のアイコンはログインしていなくても返す（ブラウザが Cookie なしで取りに来ることがあり、中身に秘密は無い）。ほかのファイルと API は今までどおりログインが要る
+  - Android の Chrome で枠なしで開くのは、証明書が正しい HTTPS（`tailscale serve` など）か 127.0.0.1 のときだけ。`-lan` の自分で署名した証明書では、ブラウザのタブで開くことがある（Chrome の決まり）
+  - 確かめ方: 自動テスト `TestHomeScreenManifest`（homescreen_test.go）、通しのテスト「画面は display: standalone とアイコンの manifest を読み、…」（web/e2e/app.test.ts）
+  - 実機での確かめ方: Safari で palmterm を開き、共有 →「ホーム画面に追加」→ palmterm のアイコンと名前で置かれ、押すとアドレスバーなしで開く。Android の Chrome でもメニューの「ホーム画面に追加」で同じ
+- （仮）ログインしていないときに `/` を開くと、401 と一緒に「ログイン用の URL」の欄と「次へ」ボタンのページを設定の言語で出す（ホーム画面のアプリは Safari とログインの記録が分かれていることがあり、アドレスバーも無いため）。`palmterm url` の URL を丸ごと貼っても、トークンだけを貼ってもよい（前後の空白は除く）。「次へ」でログイン用の URL を開いたときと同じ名前の欄と「ログイン」ボタンのページに進み、押すとそのアプリの中でログインする。使えないトークンなら、ログイン用の URL と同じく 401 と案内を出す。`/` 以外（API など）のログインしていないときの返事は今までどおり文だけの 401
+  - 確かめ方: 自動テスト `TestPasteLoginURL`（homescreen_test.go）、通しのテスト「…ログインの記録が無ければログイン用の URL を貼ってログインできる」（web/e2e/app.test.ts）
+  - 実機での確かめ方: ホーム画面の palmterm を開く → ログインしていなければ URL の欄が出る。PC で `palmterm url` を実行し、出た URL をコピーして（QR をカメラで読んで長押しでコピーしてもよい）欄に貼る →「次へ」→「ログイン」で端末が使える
+
 ## LAN からの接続（`-lan`）
 
 - （確定）LAN 向けに HTTPS でも待ち受ける。ポートだけ書いたときは、この PC のプライベート・リンクローカル・Tailscale の IPv4 アドレスごとに待ち受け、それ以外（IPv6 のグローバルアドレスなど）には開かない。アドレスを書けばそのアドレスだけで待ち受ける

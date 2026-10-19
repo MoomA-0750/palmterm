@@ -169,6 +169,12 @@ listen on that one only. It uses a self-signed certificate that it creates in `~
 time — choose “Advanced” and proceed. The LAN side uses HTTPS so the
 token and cookie are not sent in clear text and copying to the phone's clipboard uses the browser's clipboard API.
 
+**Add to Home Screen.** In Safari, Share → “Add to Home Screen” (in Chrome on Android, menu → “Add to Home
+screen”) puts palmterm on the home screen; it opens full screen without the address bar. On iPhone/iPad the
+home-screen palmterm may not share its login with Safari; it then shows a “Login URL” field. Run
+`palmterm url` on the PC, copy the URL it prints, paste it there, and tap Next → Log in. On Android it opens
+without the browser frame only over HTTPS with a valid certificate (Tailscale).
+
 ### Run as a service
 
 palmterm comes with a systemd user service ([contrib/systemd/palmterm.service](contrib/systemd/palmterm.service)):
