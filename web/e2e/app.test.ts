@@ -482,7 +482,7 @@ describe("tmux のタブとパネル", () => {
 
     tmux("kill-pane", "-t", SESSION);
   });
-  it("tmux パネルに残るのは分割・ペイン・コピーモード・Ctrl+B・設定だけ。「設定」で設定画面が出て、文字サイズ・フォント・テーマ・言語・キーバー・ログイン中の端末・版が並ぶ。一覧を開いて閉じると設定画面に戻り、設定画面を閉じると端末に戻る", async () => {
+  it("tmux パネルに残るのは分割・ペイン・コピーモード・Ctrl+B・設定だけ。「設定」で設定画面が出て、文字サイズ・フォント・テーマ・言語・キーバー・通知・ログイン中の端末・版が並ぶ。一覧を開いて閉じると設定画面に戻り、設定画面を閉じると端末に戻る", async () => {
     await page.locator("#tmux-btn").click();
     const rows = page.locator("#tmuxpanel .tmux-row");
     expect(await rows.locator(".tmux-label").allTextContents()).toEqual(["Split", "Pane", "Other"]);
@@ -494,9 +494,9 @@ describe("tmux のタブとパネル", () => {
     expect(await page.locator("#tmuxpanel").isHidden()).toBe(true);
     await page.locator("#settings").waitFor({ state: "visible" });
     const labels = await page.locator("#settings .settings-label").allTextContents();
-    expect(labels.slice(0, 6)).toEqual(["Text", "Fonts", "Theme", "Language", "Key bar", "Devices"]);
+    expect(labels.slice(0, 7)).toEqual(["Text", "Fonts", "Theme", "Language", "Key bar", "Notifications", "Devices"]);
     // 版（サーバーはいつも版を返す。make の外で作れば dev）
-    expect(labels.slice(6)).toEqual(["Version"]);
+    expect(labels.slice(7)).toEqual(["Version"]);
     expect(await page.locator("#settings .settings-version").textContent()).toMatch(/^palmterm \S+/);
 
     // 上に重なって見えているもの（端末の画面の真ん中）
@@ -1298,9 +1298,13 @@ describe("大きい画面の板", () => {
     for (const other of ["devices", "fonts", "themes"].filter((o) => o !== id)) {
       expect(await page.locator(`#${other}`).isHidden()).toBe(true);
     }
-    const settings = await layout("settings");
-    const rows = await layout("settings-body");
-    const side = await layout(id);
+    // 一覧は中身を読み終えると伸び、板も一緒に高くなる。別々に測ると間で伸びて食い違うので、同じ瞬間に測る。
+    const [settings, rows, side] = await page.evaluate((ids) => {
+      return ids.map((i) => {
+        const r = document.getElementById(i)!.getBoundingClientRect();
+        return { x: r.x, y: r.y, w: r.width, h: r.height };
+      });
+    }, ["settings", "settings-body", id]);
     expect(side.x).toBeGreaterThanOrEqual(rows.x + rows.w - 1);
     expect(side.x + side.w).toBeLessThanOrEqual(settings.x + settings.w + 1);
     expect(side.y).toBeGreaterThanOrEqual(settings.y - 1);
@@ -1635,6 +1639,43 @@ describe("ログイン中の端末", () => {
   });
 });
 
+describe("ホーム画面のアプリ", () => {
+  it("画面は display: standalone とアイコンの manifest を読み、ログインの記録が無ければログイン用の URL を貼ってログインできる", async () => {
+    // 画面が読む manifest（ログインしていない別の記録からも取れる）
+    const href = await page.locator('link[rel="manifest"]').getAttribute("href");
+    expect(href).toBe("/manifest.webmanifest");
+    expect(await page.locator('link[rel="apple-touch-icon"]').getAttribute("href")).toBe("/icons/icon-180.png");
+
+    // ブラウザとログインの記録が分かれたホーム画面のアプリ（Cookie の無い別の記録）
+    const app = await browser.newContext({ viewport: { width: 400, height: 760 } });
+    try {
+      const p = await app.newPage();
+      const manifest = await (await p.request.get(`${base}${href}`)).json();
+      expect(manifest.display).toBe("standalone");
+      expect(manifest.start_url).toBe("/");
+      for (const icon of manifest.icons as { src: string }[]) {
+        const r = await p.request.get(`${base}${icon.src}`);
+        expect(r.status()).toBe(200);
+        expect(r.headers()["content-type"]).toBe("image/png");
+      }
+
+      // start_url を開くと、ログイン用の URL を貼る欄が出る。貼って「次へ」→「ログイン」で端末が使える
+      expect((await p.goto(`${base}/`))?.status()).toBe(401);
+      expect(await p.locator('link[rel="manifest"]').getAttribute("href")).toBe("/manifest.webmanifest");
+      await p.locator("#paste #token").fill(loginURL());
+      await p.locator('#paste button[type="submit"]').click();
+      await p.locator('#login button[type="submit"]').click();
+      await p.waitForURL(`${base}/`);
+      await waitUntil("つながる", async () => (await p.locator(".term-row").count()) > 0 && (await p.locator("#status").isHidden()));
+      await p.locator("#line").fill("echo app$((4+5))");
+      await p.locator("#send").click();
+      await waitUntil("app9 が出る", () => paneText().includes("\napp9\n"));
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe("ブラウザの受け渡し", () => {
   it("tmux の中のプログラムが開こうとした URL を画面に知らせ、押すと新しいタブで開く", async () => {
     // tmux の中のプログラムは BROWSER（palmterm-open）でブラウザを開く
@@ -1707,6 +1748,84 @@ describe("palmterm notify", () => {
       expect(r.stderr).toContain("palmterm is not running");
     } finally {
       rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  it("renumber-windows が on で番号がずれても、帯を押すと打ったウィンドウに移る。打ったウィンドウが閉じられていれば、帯が消えるだけで移らない", async () => {
+    tmux("set-option", "-t", SESSION, "renumber-windows", "on");
+    try {
+      tmux("new-window", "-t", SESSION);
+      tmux("new-window", "-t", SESSION, "-n", "build");
+      tmux("set-option", "-w", "-t", `${SESSION}:2`, "automatic-rename", "off");
+      tmux("send-keys", "-t", `${SESSION}:2`, `${BINARY} notify ビルドが終わった`, "Enter");
+      const bar = page.locator("#notices .notifybar");
+      await waitUntil("帯が出る", async () => (await bar.count()) === 1);
+      expect(await bar.locator(".notifybar-window").textContent()).toBe("2:build");
+
+      // ウィンドウ 1 を閉じると build は 1 番になる。帯を押すと build（今は 1 番）に移る
+      tmux("kill-window", "-t", `${SESSION}:1`);
+      tmux("select-window", "-t", `${SESSION}:0`);
+      await page.locator("#notices .notifybar-body").click();
+      await waitUntil("build に移る", () => tmux("display-message", "-p", "-t", SESSION, "#{window_index}:#{window_name}") === "1:build");
+      expect(await bar.count()).toBe(0);
+
+      // build でもう一度打ってから build を閉じ、別のウィンドウを開いておく。帯を押しても移らず、帯が消えるだけ
+      tmux("send-keys", "-t", `${SESSION}:1`, `${BINARY} notify again`, "Enter");
+      await waitUntil("帯が出る", async () => (await bar.count()) === 1);
+      tmux("kill-window", "-t", `${SESSION}:1`);
+      tmux("new-window", "-t", SESSION, "-n", "other");
+      tmux("select-window", "-t", `${SESSION}:0`);
+      await page.locator("#notices .notifybar-body").click();
+      expect(await bar.count()).toBe(0);
+      await new Promise((r) => setTimeout(r, 500));
+      expect(tmux("display-message", "-p", "-t", SESSION, "#{window_index}")).toBe("0");
+      expect(await page.locator("#toast").isVisible()).toBe(false);
+    } finally {
+      tmux("set-option", "-u", "-t", SESSION, "renumber-windows");
+    }
+  });
+});
+
+describe("通知（Web Push）", () => {
+  it("設定画面の「通知」の行は、PC の Chromium（localhost）では「Turn on」を出す。iPhone の Safari のタブでは、ボタンの代わりにホーム画面から開くよう理由を出す", async () => {
+    await openSettings();
+    const row = page.locator("#settings .settings-row", { hasText: "Notifications" });
+    const btn = row.locator("button.settings-notify");
+    await waitUntil("ボタンが出る", async () => (await btn.isVisible()) && (await btn.textContent()) === "Turn on");
+    await page.locator("#settings-close").click();
+
+    const iphone = await browser.newContext({
+      viewport: { width: 390, height: 760 },
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+    });
+    try {
+      const p = await iphone.newPage();
+      await login(p);
+      await p.waitForFunction(() => document.querySelector(".term-row") !== null);
+      await openSettings(p);
+      const r = p.locator("#settings .settings-row", { hasText: "Notifications" });
+      await waitUntil("理由が出る", async () => ((await r.locator(".settings-notify-state").textContent()) ?? "").includes("Home Screen"));
+      expect(await r.locator("button.settings-notify").isHidden()).toBe(true);
+    } finally {
+      await iphone.close();
+    }
+  });
+
+  it("Service Worker はログインなしでも取れる。通知を押して開いた URL（?window=…&windowId=…）なら、そのウィンドウに切り替えて URL から消す", async () => {
+    const sw = await fetch(`${base}/sw.js`);
+    expect(sw.status).toBe(200);
+    expect(await sw.text()).toContain("notificationclick");
+
+    tmux("new-window", "-t", SESSION, "-n", "build");
+    const id = tmux("display-message", "-p", "-t", `${SESSION}:1`, "#{window_id}");
+    tmux("select-window", "-t", `${SESSION}:0`);
+    try {
+      await page.goto(`${base}/?window=1&windowId=${encodeURIComponent(id)}`);
+      await waitUntil("ウィンドウ 1 に移る", () => tmux("display-message", "-p", "-t", SESSION, "#{window_index}") === "1");
+      expect(new URL(page.url()).search).toBe("");
+    } finally {
+      tmux("kill-window", "-t", `${SESSION}:1`);
+      await openPage();
     }
   });
 });

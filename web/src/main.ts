@@ -22,6 +22,7 @@ import { setupSettings } from "./settings";
 import { setupSheets } from "./sheets";
 import { setupThemes } from "./themelist";
 import { setupNotices } from "./notices";
+import { setupPush, windowFromURL } from "./push";
 import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
 
@@ -193,6 +194,7 @@ conn.onOpen = () => {
   // つなぎ直すと tmux が画面を描き直すので、前の状態を一度消しておく。
   term.write("\x1bc");
   tmuxPanel.refresh();
+  push.reportPresence(); // サーバーが再起動していると、見えていることを忘れている
 };
 // tmux の中のプログラムが開こうとした URL（palmterm-open 経由）。ブラウザは押されていないのに新しいタブを
 // 開くことを許さないので、知らせを出して、押したら開く。
@@ -480,6 +482,10 @@ const themes = setupThemes({
   choose: (name) => changeAppearance({ theme: name }),
 });
 
+// 通知（Web Push）。見えている・隠れたをサーバーに知らせ（見えている端末には帯だけが届く）、Service Worker を入れる。
+const push = setupPush();
+push.start();
+
 // 設定画面（tmux パネルの「設定」で開く）。フォント・テーマ・端末の一覧はこの上に開く。
 const settings = setupSettings({
   fontSize: { get: () => fontSize, change: (delta) => setFontSize(fontSize + delta) },
@@ -488,6 +494,7 @@ const settings = setupSettings({
   openDevices: () => openDevices(),
   openFonts: () => fonts.open(),
   openThemes: () => themes.open(),
+  notifications: push,
   version: serverConfig.version,
 });
 
@@ -502,7 +509,18 @@ const tmuxPanel = setupTmuxPanel({
   bind: bindKeyButton,
 });
 // palmterm notify の知らせ。押すとそのウィンドウに切り替える。
-const notices = setupNotices($("notices"), (index) => tmuxPanel.selectWindow(index));
+const notices = setupNotices($("notices"), (index, id) => tmuxPanel.selectWindow(index, id));
+// 通知を押したときも、打ったウィンドウに切り替える。開いていた画面には Service Worker から知らせが来て、
+// 開いていなければ ?window=1&windowId=@3 を付けて開かれる（読んだら URL から消す）。
+navigator.serviceWorker?.addEventListener("message", (e) => {
+  const d = e.data as { type?: string; window?: number; windowId?: string } | null;
+  if (d?.type === "palmterm-select-window" && typeof d.window === "number") tmuxPanel.selectWindow(d.window, d.windowId);
+});
+const openedWindow = windowFromURL(location.search);
+if (openedWindow) {
+  history.replaceState(null, "", location.pathname);
+  tmuxPanel.selectWindow(openedWindow.index, openedWindow.id);
+}
 // 端末に触れたらパネルを閉じる。
 termEl.addEventListener("pointerdown", () => tmuxPanel.close());
 onTap(termEl, (x, y) => {

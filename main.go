@@ -30,6 +30,7 @@ type server struct {
 	logins     *loginTokens // 使い捨てのログイン用トークン
 	loginBases []string     // ログイン用の URL の頭（http://127.0.0.1:7681、LAN の https://…）
 	devices    *deviceStore // ログインした端末
+	push       *pusher      // 通知（Web Push）。鍵を用意できなければ nil で、通知は送らない
 	session    string       // つなぐ tmux のセッション
 	origins    []string
 	uploadDir  string
@@ -111,6 +112,7 @@ func main() {
 		log.Fatal(err)
 	}
 	s.devices = newDeviceStore(filepath.Join(confDir, "palmterm", "devices.json"), key)
+	s.setupPush(filepath.Join(confDir, "palmterm"))
 	if s.uploadDir == "" {
 		cache, err := os.UserCacheDir()
 		if err != nil {
@@ -216,9 +218,21 @@ func (s *server) routes() http.Handler {
 	mux.Handle("GET /api/devices", s.requireAuth(http.HandlerFunc(s.handleDevices)))
 	mux.Handle("POST /api/devices/revoke", s.requireAuth(http.HandlerFunc(s.handleRevokeDevice)))
 	mux.Handle("POST /api/devices/rename", s.requireAuth(http.HandlerFunc(s.handleRenameDevice)))
+	mux.Handle("GET /api/push", s.requireAuth(http.HandlerFunc(s.handlePushState)))
+	mux.Handle("POST /api/push/subscribe", s.requireAuth(http.HandlerFunc(s.handlePushSubscribe)))
+	mux.Handle("POST /api/push/unsubscribe", s.requireAuth(http.HandlerFunc(s.handlePushUnsubscribe)))
+	mux.Handle("POST /api/push/presence", s.requireAuth(http.HandlerFunc(s.handlePushPresence)))
 	mux.Handle("POST /api/upload", s.requireAuth(http.HandlerFunc(s.handleUpload)))
 	mux.Handle("GET /api/upload/{name}", s.requireAuth(http.HandlerFunc(s.handleUploadFile)))
-	mux.Handle("GET /", s.requireAuth(cacheAssets(http.FileServerFS(dist))))
+	// ホーム画面に追加するときの manifest とアイコンは、ログインしていなくても返す。ブラウザは Cookie を付けずに
+	// 取りに来ることがあり、ホーム画面のアプリはブラウザとログインの記録が分かれていることがあるため。中身に秘密は無い。
+	files := http.FileServerFS(dist)
+	mux.Handle("GET /manifest.webmanifest", files)
+	mux.Handle("GET /icons/", files)
+	// 通知を受ける Service Worker。ホーム画面のアプリが Cookie なしで取りに来ても登録できるよう、これも
+	// ログインなしで返す（中身は通知を出して画面を開くだけ）。版を変えたらすぐ入れ替わるよう、キャッシュさせない。
+	mux.Handle("GET /sw.js", noCache(files))
+	mux.Handle("GET /", s.requireAuth(cacheAssets(files)))
 	return mux
 }
 
@@ -253,6 +267,13 @@ func loadOrCreateToken() (string, error) {
 		return "", err
 	}
 	return t, nil
+}
+
+func noCache(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // /assets/ のファイル名には中身のハッシュが入っているので、長くキャッシュさせる（フォントが大きい）。

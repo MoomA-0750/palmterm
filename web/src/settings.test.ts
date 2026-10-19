@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from "vitest";
 import { setLang } from "./i18n";
+import type { PushState, PushStatus } from "./push";
 import { type SettingsOptions, setupSettings } from "./settings";
 
 function makeSettings(over: Partial<SettingsOptions> = {}) {
@@ -32,12 +33,26 @@ function list(id: string): HTMLElement {
 
 const rowOf = (el: Element | null | undefined) => el?.closest(".settings-row");
 
+/** 通知の代わり。enable・disable で状態が変わり、呼ばれた順を覚える。 */
+function notifications(initial: PushState, onEnable: PushStatus = { state: "on" }) {
+  let current: PushStatus = { state: initial };
+  const calls: string[] = [];
+  return {
+    calls,
+    state: async () => current,
+    enable: async () => (calls.push("enable"), (current = onEnable)),
+    disable: async () => (calls.push("disable"), (current = { state: "off" })),
+  };
+}
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
 beforeEach(() => document.body.replaceChildren());
 
 describe("設定画面の並び", () => {
-  it("文字サイズ・フォント・テーマ・言語・キーバー・ログイン中の端末・版が並ぶ", () => {
+  it("文字サイズ・フォント・テーマ・言語・キーバー・通知・ログイン中の端末・版が並ぶ", () => {
     setLang("ja");
-    expect(makeSettings({ version: "v1" }).labels()).toEqual(["文字", "フォント", "テーマ", "言語", "キーバー", "ログイン中の端末", "版"]);
+    expect(makeSettings({ version: "v1", notifications: notifications("off") }).labels()).toEqual(["文字", "フォント", "テーマ", "言語", "キーバー", "通知", "ログイン中の端末", "版"]);
   });
 
   it("開くと出て、閉じるボタンで消える", () => {
@@ -195,5 +210,70 @@ describe("設定画面の言語の行", () => {
     btns[1].click(); // 今の言語は選び直さない
     btns[0].click();
     expect(chosen).toEqual(["en"]);
+  });
+});
+
+describe("設定画面の通知の行", () => {
+  const notifyRow = (s: { el: HTMLElement }) => ({
+    text: () => s.el.querySelector<HTMLElement>(".settings-notify-state")!,
+    button: () => s.el.querySelector<HTMLButtonElement>(".settings-notify")!,
+  });
+
+  it("切っていれば「オンにする」。押すと許可を求めて有効にし、「オン」と「切る」になる。「切る」で元に戻る", async () => {
+    setLang("ja");
+    const n = notifications("off");
+    const s = makeSettings({ notifications: n });
+    s.open();
+    await flush();
+    const r = notifyRow(s);
+    expect(r.button().hidden).toBe(false);
+    expect(r.button().textContent).toBe("オンにする");
+    expect(r.text().hidden).toBe(true);
+    r.button().click();
+    await flush();
+    expect(n.calls).toEqual(["enable"]);
+    expect(r.text().textContent).toBe("オン");
+    expect(r.button().textContent).toBe("切る");
+    r.button().click();
+    await flush();
+    expect(n.calls).toEqual(["enable", "disable"]);
+    expect(r.button().textContent).toBe("オンにする");
+  });
+
+  it("使えないときはボタンを出さず、理由を出す（iPhone・iPad でホーム画面から開いていない・許可されていない）", async () => {
+    setLang("ja");
+    for (const [state, want] of [
+      ["needsHomeScreen", "ホーム画面に追加した palmterm から開いたときだけ"],
+      ["denied", "通知が許可されていません"],
+      ["insecure", "HTTPS"],
+      ["unsupported", "対応していません"],
+    ] as const) {
+      document.body.replaceChildren();
+      const s = makeSettings({ notifications: notifications(state) });
+      s.open();
+      await flush();
+      expect(notifyRow(s).button().hidden).toBe(true);
+      expect(notifyRow(s).text().textContent).toContain(want);
+    }
+  });
+
+  it("許可を断られたら理由に変わり、失敗したらその理由とボタンを出す", async () => {
+    setLang("en");
+    const s = makeSettings({ notifications: notifications("off", { state: "denied" }) });
+    s.open();
+    await flush();
+    notifyRow(s).button().click();
+    await flush();
+    expect(notifyRow(s).button().hidden).toBe(true);
+    expect(notifyRow(s).text().textContent).toContain("blocked");
+
+    document.body.replaceChildren();
+    const f = makeSettings({ notifications: notifications("off", { state: "error", error: "boom" }) });
+    f.open();
+    await flush();
+    notifyRow(f).button().click();
+    await flush();
+    expect(notifyRow(f).text().textContent).toBe("Could not change notifications (boom)");
+    expect(notifyRow(f).button().textContent).toBe("Turn on");
   });
 });
