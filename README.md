@@ -113,7 +113,16 @@ for working with TUIs such as vim, lazygit and Claude Code.
 - Run `palmterm notify "build finished"` inside tmux, and every connected palmterm page shows a bar at the top
   with that text and the number and name of the window it was run in. The bar stays until you tap × or the
   bar itself; tapping the bar switches to that window. Without text it says "Done" (終わりました in Japanese).
-- If palmterm is not running or no page is connected, it says so on stderr but still exits with 0, so it never
+- To be told even when the page is closed, open the tmux panel's **Settings** on that device, tap **Turn on** in
+  **Notifications**, and allow notifications. From then on, when palmterm is not on screen on that device (you
+  switched to another app or turned the screen off), the message arrives as an OS notification (Web Push).
+  Tapping it opens palmterm and switches to the window it was run in. Devices showing the page get only the bar.
+  - Works only over HTTPS (e.g. `tailscale serve`) or on localhost. On iPhone and iPad it works only in palmterm
+    opened from the Home Screen (iOS 16.4 or later). Otherwise the Notifications row says why
+  - **Turn off**, revoking the device in **Devices**, or `palmterm logout-all` stops notifications to that device
+  - The signing key is kept in `~/.config/palmterm/vapid.pem` (if you delete it, a new one is made and each
+    device has to turn notifications on again)
+- If palmterm is not running, or neither a bar nor a notification reached any device, it says so on stderr but still exits with 0, so it never
   stops `make; palmterm notify` or a Claude Code hook. To be told when Claude Code stops, add something like
   `"Stop": [{"hooks": [{"type": "command", "command": "palmterm notify Claude Code stopped"}]}]` to `hooks` in
   `~/.claude/settings.json`.

@@ -18,6 +18,7 @@ import (
 )
 
 // palmterm notify：開いている palmterm の画面すべてに、知らせの帯を出させる（ビルドやタスクの終わりなど）。
+// 通知を有効にした端末で画面を閉じていれば、OS の通知（Web Push、push.go）で届ける。
 // tmux の中で打つと、打ったウィンドウの番号と名前も添える（帯を押すとそのウィンドウに切り替わる）。
 // 切り替えはウィンドウの ID（@N）で指すので、ウィンドウを閉じて番号がずれても打ったウィンドウに移る。
 // サーバーは実行時のフォルダに notify.sock を置き、このコマンドはそこに1行の JSON を渡す。
@@ -72,7 +73,8 @@ func cleanNotifyText(s string) string {
 	return strings.TrimSpace(b.String())
 }
 
-// 知らせをつながっているすべての画面に届け、届いた画面の数を返す。文が空なら、画面が自分の言語で
+// 知らせをつながっているすべての画面に帯で届け、通知（Web Push）を有効にしている端末のうち、帯が届いて
+// 画面も見えている端末を除いたものにはプッシュで送る。届いた帯とプッシュの数を返す。文が空なら、画面が自分の言語で
 // 「終わりました」を出す。ほかのセッションのウィンドウは、押しても切り替えられないので添えない。
 func (s *server) relayNotify(ctx context.Context, req notifyRequest) int {
 	msg := map[string]any{"type": "notify", "text": cleanNotifyText(req.Text)}
@@ -85,16 +87,20 @@ func (s *server) relayNotify(ctx context.Context, req notifyRequest) int {
 	}
 	b, _ := json.Marshal(msg)
 	n := 0
+	shown := map[string]bool{}
 	for _, tc := range s.clients.all() {
 		if tc.send(ctx, b) == nil {
 			n++
+			if s.push != nil && s.push.showing(tc.device) {
+				shown[tc.device] = true
+			}
 		}
 	}
-	return n
+	return n + s.pushNotify(ctx, newPushPayload(msg), shown)
 }
 
 // palmterm notify からの知らせを受けるソケット（本人だけがつなげる）。1行に1つの JSON を受け、
-// 届けた画面の数を "ok <数>"、画面が無ければ "none"、読めなければ "bad" で返す。
+// 届けた帯とプッシュの数を "ok <数>"、どこにも届かなければ "none"、読めなければ "bad" で返す。
 func (s *server) serveNotifySocket(path string) error {
 	os.Remove(path) // 前に動いていたときの残り
 	ln, err := net.Listen("unix", path)
@@ -129,7 +135,8 @@ func (s *server) handleNotifyConn(conn net.Conn) {
 		fmt.Fprintln(conn, "bad")
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	// プッシュの受け口の応答も待つ（接続の時間切れ 5 秒より前に答える）。
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 	if n := s.relayNotify(ctx, req); n > 0 {
 		fmt.Fprintf(conn, "ok %d\n", n)
@@ -193,7 +200,7 @@ func runNotify(errOut io.Writer, args []string) int {
 	switch {
 	case strings.HasPrefix(reply, "ok "):
 	case reply == "none":
-		fmt.Fprintln(errOut, "palmterm notify: no palmterm page is open, so the notification was not shown.")
+		fmt.Fprintln(errOut, "palmterm notify: no palmterm page is open and no device has notifications turned on, so the notification was not shown.")
 	default:
 		fmt.Fprintf(errOut, "palmterm notify: palmterm did not show the notification (reply: %q).\n", reply)
 	}

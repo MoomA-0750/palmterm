@@ -37,7 +37,9 @@ type device struct {
 	Label    string    `json:"label,omitempty"` // 本人が付けた名前（空なら Name で見分ける）
 	Created  time.Time `json:"created"`
 	LastSeen time.Time `json:"lastSeen"`
-	saved    time.Time // LastSeen を最後にファイルに書いた時刻
+	// 通知（Web Push）の宛先。nil なら通知を送らない。記録と一緒に消えるので、取り消すと届かなくなる
+	Push  *pushSubscription `json:"push,omitempty"`
+	saved time.Time         // LastSeen を最後にファイルに書いた時刻
 }
 
 type deviceFile struct {
@@ -185,6 +187,58 @@ func (d *deviceStore) rename(id, label string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// id の端末の通知の宛先を sub にする（nil なら消す）。端末が無ければ false。
+func (d *deviceStore) setPush(id string, sub *pushSubscription) (bool, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, dev := range d.devices {
+		if dev.ID == id {
+			dev.Push = sub
+			return true, d.saveLocked()
+		}
+	}
+	return false, nil
+}
+
+// id の端末の通知の宛先が endpoint のままなら消す（受け口が「もう無い」と返したとき）。
+func (d *deviceStore) dropPush(id, endpoint string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, dev := range d.devices {
+		if dev.ID == id && dev.Push != nil && dev.Push.Endpoint == endpoint {
+			dev.Push = nil
+			return d.saveLocked()
+		}
+	}
+	return nil
+}
+
+// id の端末の通知の宛先（無ければ nil）。
+func (d *deviceStore) pushOf(id string) *pushSubscription {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, dev := range d.devices {
+		if dev.ID == id && dev.Push != nil {
+			sub := *dev.Push
+			return &sub
+		}
+	}
+	return nil
+}
+
+// 通知を有効にしている端末の ID と宛先。
+func (d *deviceStore) pushTargets() map[string]pushSubscription {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	out := map[string]pushSubscription{}
+	for _, dev := range d.devices {
+		if dev.Push != nil {
+			out[dev.ID] = *dev.Push
+		}
+	}
+	return out
 }
 
 // 新しく使った順の一覧（コピー）。

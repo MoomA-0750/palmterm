@@ -482,7 +482,7 @@ describe("tmux のタブとパネル", () => {
 
     tmux("kill-pane", "-t", SESSION);
   });
-  it("tmux パネルに残るのは分割・ペイン・コピーモード・Ctrl+B・設定だけ。「設定」で設定画面が出て、文字サイズ・フォント・テーマ・言語・キーバー・ログイン中の端末・版が並ぶ。一覧を開いて閉じると設定画面に戻り、設定画面を閉じると端末に戻る", async () => {
+  it("tmux パネルに残るのは分割・ペイン・コピーモード・Ctrl+B・設定だけ。「設定」で設定画面が出て、文字サイズ・フォント・テーマ・言語・キーバー・通知・ログイン中の端末・版が並ぶ。一覧を開いて閉じると設定画面に戻り、設定画面を閉じると端末に戻る", async () => {
     await page.locator("#tmux-btn").click();
     const rows = page.locator("#tmuxpanel .tmux-row");
     expect(await rows.locator(".tmux-label").allTextContents()).toEqual(["Split", "Pane", "Other"]);
@@ -494,9 +494,9 @@ describe("tmux のタブとパネル", () => {
     expect(await page.locator("#tmuxpanel").isHidden()).toBe(true);
     await page.locator("#settings").waitFor({ state: "visible" });
     const labels = await page.locator("#settings .settings-label").allTextContents();
-    expect(labels.slice(0, 6)).toEqual(["Text", "Fonts", "Theme", "Language", "Key bar", "Devices"]);
+    expect(labels.slice(0, 7)).toEqual(["Text", "Fonts", "Theme", "Language", "Key bar", "Notifications", "Devices"]);
     // 版（サーバーはいつも版を返す。make の外で作れば dev）
-    expect(labels.slice(6)).toEqual(["Version"]);
+    expect(labels.slice(7)).toEqual(["Version"]);
     expect(await page.locator("#settings .settings-version").textContent()).toMatch(/^palmterm \S+/);
 
     // 上に重なって見えているもの（端末の画面の真ん中）
@@ -1778,6 +1778,50 @@ describe("palmterm notify", () => {
       expect(await page.locator("#toast").isVisible()).toBe(false);
     } finally {
       tmux("set-option", "-u", "-t", SESSION, "renumber-windows");
+    }
+  });
+});
+
+describe("通知（Web Push）", () => {
+  it("設定画面の「通知」の行は、PC の Chromium（localhost）では「Turn on」を出す。iPhone の Safari のタブでは、ボタンの代わりにホーム画面から開くよう理由を出す", async () => {
+    await openSettings();
+    const row = page.locator("#settings .settings-row", { hasText: "Notifications" });
+    const btn = row.locator("button.settings-notify");
+    await waitUntil("ボタンが出る", async () => (await btn.isVisible()) && (await btn.textContent()) === "Turn on");
+    await page.locator("#settings-close").click();
+
+    const iphone = await browser.newContext({
+      viewport: { width: 390, height: 760 },
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+    });
+    try {
+      const p = await iphone.newPage();
+      await login(p);
+      await p.waitForFunction(() => document.querySelector(".term-row") !== null);
+      await openSettings(p);
+      const r = p.locator("#settings .settings-row", { hasText: "Notifications" });
+      await waitUntil("理由が出る", async () => ((await r.locator(".settings-notify-state").textContent()) ?? "").includes("Home Screen"));
+      expect(await r.locator("button.settings-notify").isHidden()).toBe(true);
+    } finally {
+      await iphone.close();
+    }
+  });
+
+  it("Service Worker はログインなしでも取れる。通知を押して開いた URL（?window=…&windowId=…）なら、そのウィンドウに切り替えて URL から消す", async () => {
+    const sw = await fetch(`${base}/sw.js`);
+    expect(sw.status).toBe(200);
+    expect(await sw.text()).toContain("notificationclick");
+
+    tmux("new-window", "-t", SESSION, "-n", "build");
+    const id = tmux("display-message", "-p", "-t", `${SESSION}:1`, "#{window_id}");
+    tmux("select-window", "-t", `${SESSION}:0`);
+    try {
+      await page.goto(`${base}/?window=1&windowId=${encodeURIComponent(id)}`);
+      await waitUntil("ウィンドウ 1 に移る", () => tmux("display-message", "-p", "-t", SESSION, "#{window_index}") === "1");
+      expect(new URL(page.url()).search).toBe("");
+    } finally {
+      tmux("kill-window", "-t", `${SESSION}:1`);
+      await openPage();
     }
   });
 });

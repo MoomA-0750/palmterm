@@ -1,6 +1,6 @@
 ---
 id: 0029
-status: doing        # todo / doing / blocked / done
+status: done         # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - "notify*.go"
   - "push*.go"
@@ -15,7 +15,7 @@ scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions
   - "web/index.html"
   - "web/e2e/**"
   - "README*.md"
-spec: SPEC.md「〇〇」
+spec: SPEC.md「画面を閉じている端末への通知（Web Push）」
 created: 2026-10-19
 after: [0028]
 ---
@@ -37,10 +37,28 @@ after: [0028]
 （実行役が書く。本人は `task-loop answer` で答える）
 
 ## メモ
-（実行役が書く。試してだめだったこと）
+- 「画面がつながっている端末」を WebSocket がつながっているかだけで決めると、iPhone で別のアプリに切り替えた・画面を消した直後は WebSocket が残っていて書き込めてしまい、プッシュが止まる。そこで画面から見えている・隠れたを `POST /api/push/presence` で知らせる形にした（terminal.go は scope の外なので WebSocket の制御メッセージにはしなかった）
+- e2e の「通知」の行のテストは、読み込み中の行に前の文字（Turn on）が残っていて、ボタンが隠れたまま通ることがあった。見えていることも待つようにした
+- 1回だけ、通しのテスト「大きい画面の板 … 設定画面は2列で…」が落ちた。単独でも、続けて2回の通しでも通ったので、時間の揺れとみている
 
 ## 結果
-（実行役が書く。何をしたか／どう確かめたか／本人が見るべき点）
+### したこと
+- サーバー（push.go）: Web Push の暗号化（RFC 8291 aes128gcm）と VAPID 署名（RFC 8292 ES256）を標準ライブラリだけで実装。鍵は `~/.config/palmterm/vapid.pem`（0600、無ければ作る）。API は `GET /api/push`（公開鍵と有効か）・`POST /api/push/subscribe`・`POST /api/push/unsubscribe`・`POST /api/push/presence`。宛先は devices.json のその端末のところに持つので、取り消し・logout-all で一緒に消える。受け口が 404/410 を返した宛先は消す
+- palmterm notify（notify.go）: 帯は今までどおり全画面に送り、加えて「帯が届いて画面も見えている」端末以外の、通知を有効にした端末にプッシュする。帯もプッシュもどこにも届かないときだけ標準エラーに `no palmterm page is open and no device has notifications turned on, …` を出す（終了コード 0）
+- 画面: 設定画面に「通知」の行（キーバーとログイン中の端末の間）。「オンにする」で許可を求めて宛先を作る／「オン」「切る」／使えないときは理由（iPhone・iPad でホーム画面から開いていない、HTTPS でない、未対応、許可されていない）。Service Worker（web/public/sw.js、`/sw.js` はログインなしで返す）が通知を出し、押すと開いている palmterm を前に出してウィンドウを切り替えさせるか、`/?window=1&windowId=@3` で開く。画面は見えている・隠れたをサーバーに知らせる（見えている間は1分ごと、サーバーは3分で忘れる）
+- 通知の題は `1:build`（ウィンドウが無ければ `palmterm`）、本文は文（空なら設定の言語の「終わりました」、500 文字で切る）
+- SPEC.md に「画面を閉じている端末への通知（Web Push）」の節、README（英・日）に使い方、docs/decisions.md に判断を書いた
+
+### 確かめたこと
+- `make test` が通る（Go・画面の単体テスト 165 件・通しのテスト 45 件）
+- Go: `TestPushEncryptsAndSigns`（テスト用の TLS の受け口が端末の秘密鍵で復号し、VAPID の署名をサーバーの公開鍵で確かめる）、`TestNotifyPushesOnlyToDevicesNotShowing`（見えている端末には帯だけ、隠れた・つながっていない・古い「見えている」ならプッシュ）、`TestNotifyPushStopsWhenTurnedOffOrLoggedOut`（切る・取り消す・logout-all で届かなくなり、どこにも届かなければ標準エラーに出る）、`TestPushDropsGoneSubscriptions`、`TestPushSubscribeValidates`、`TestVAPIDKeyIsKept`
+- 画面: 「設定画面の通知の行」「通知を使えるか」「通知を押して開いたときのウィンドウ」、通しのテストで PC の Chromium では「Turn on」が出ること、iPhone の UA では理由が出ること、`?window=…&windowId=…` で開くとそのウィンドウに移って URL から消えること
+
+### 本人が見るべき点
+- **実機では確かめていない**（プッシュの受け口が要るので、テストの環境では本物の Apple・Google の受け口に送れない）。`make install` して palmterm を再起動し、HTTPS（tailscale serve など）でホーム画面に追加した palmterm から、SPEC.md の各項目の「実機での確かめ方」を試してほしい。特に iPhone/iPad で (1) 許可を求められるか (2) 画面を消したときに通知が届くか (3) 通知を押してウィンドウが切り替わるか
+- 「画面がつながっている」の決め方を「帯が届いて、かつ画面が見えていると知らせてきている」にした（WebSocket だけだと iPhone で画面を消した直後もつながって見えるため）。隠れた画面にも帯は送るので、戻ると帯と通知センターの通知が両方残る
+- VAPID の `sub` はリポジトリの URL（`https://github.com/MoomA-0750/palmterm`）にした。Apple に断られる（通知が来ず、journal に「受け口の応答 403」などが出る）ようなら見直す
+- `web/public` を変えたので、make する前に `touch web/index.html` が要る（Makefile は scope の外で、web/public を依存に入れていない。課題 0028 と同じ事情）
 
 ## レビュー
 （task-loop が Codex の指摘を書き足す）

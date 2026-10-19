@@ -115,9 +115,9 @@
 
 ## 設定画面
 
-- （確定）tmux ボタンのパネルの「設定」で、設定画面を開く（画面の大きさによる出し方は「板の出し方」の節）。上から「文字」（文字サイズ）・「フォント」・「テーマ」・「言語」・「キーバー」・「ログイン中の端末」・「版」の行が並ぶ。上の帯の「閉じる」で閉じると端末に戻る
+- （確定）tmux ボタンのパネルの「設定」で、設定画面を開く（画面の大きさによる出し方は「板の出し方」の節）。上から「文字」（文字サイズ）・「フォント」・「テーマ」・「言語」・「キーバー」・「通知」・「ログイン中の端末」・「版」の行が並ぶ。上の帯の「閉じる」で閉じると端末に戻る
   - 確かめ方: 単体テスト「設定画面の並び」（web/src/settings.test.ts）、通しのテスト「tmux パネルに残るのは分割・ペイン・コピーモード・Ctrl+B・設定だけ。「設定」で設定画面が出て、…設定画面を閉じると端末に戻る」（web/e2e/app.test.ts）
-  - 実機での確かめ方: スマホで tmux パネル →「設定」→ 設定画面が出て7つの行が並ぶ。「閉じる」で端末に戻る
+  - 実機での確かめ方: スマホで tmux パネル →「設定」→ 設定画面が出て8つの行が並ぶ。「閉じる」で端末に戻る
 - （確定）「文字」の行の小さく・大きくで端末の文字サイズを変える。押しても設定画面は閉じず、今の大きさ（`13px` など）を出す。開くたびに今の大きさを取り直す（ピンチで変えたものも映る）。文字サイズはこのブラウザに覚える
   - 確かめ方: 単体テスト「設定画面の文字サイズ」（web/src/settings.test.ts）、通しのテスト「パネルで分割し、端末をタップしたペインに移り、設定画面で文字サイズを変える」（web/e2e/app.test.ts。設定画面を閉じると端末の文字の大きさが変わっている）
 - （確定）テーマ・言語・キーバーの行の動きは、それぞれ「画面でテーマとフォントを選ぶ」「画面で言語を選ぶ」「キーバー」の節のとおり（テーマと言語は設定ファイルに書き戻し、キーバーはこのブラウザに覚える）
@@ -184,9 +184,29 @@
   - 確かめ方: 自動テスト `TestNotifyWindowAfterRenumber`（notify_test.go）、単体テスト「palmterm notify の帯」（web/src/notices.test.ts）、通しのテスト「palmterm notify」（web/e2e/app.test.ts）
 - （確定）文を省いて `palmterm notify` だけを打つと、画面の言語で「終わりました」（英語なら「Done」）の帯が出る
   - 確かめ方: 単体テスト「palmterm notify の帯」（web/src/notices.test.ts）、通しのテスト「palmterm notify」（web/e2e/app.test.ts）
-- （確定）palmterm の画面が1つもつながっていない（`no palmterm page is open`）・palmterm が動いていない（`palmterm is not running`）ときは、標準エラーにそう出して終了コード 0 で終わる。Claude Code のフックや `make; palmterm notify` を止めないため。届いたときは何も出さない
-  - 確かめ方: 自動テスト `TestNotifyWithoutPagesOrServer`（notify_test.go）、通しのテスト「palmterm notify」（web/e2e/app.test.ts。動いていないとき）
+- （確定）帯もプッシュ（下の「通知」）もどの端末にも届かない（`no palmterm page is open and no device has notifications turned on`）・palmterm が動いていない（`palmterm is not running`）ときは、標準エラーにそう出して終了コード 0 で終わる。Claude Code のフックや `make; palmterm notify` を止めないため。帯かプッシュのどちらかが1つでも届いたときは何も出さない（プッシュは受け口が 2xx を返したら届いたとみなす）
+  - 確かめ方: 自動テスト `TestNotifyWithoutPagesOrServer`（notify_test.go）、`TestNotifyPushesOnlyToDevicesNotShowing`・`TestNotifyPushStopsWhenTurnedOffOrLoggedOut`・`TestPushDropsGoneSubscriptions`（push_test.go）、通しのテスト「palmterm notify」（web/e2e/app.test.ts。動いていないとき）
   - 実機での確かめ方: `make install` して palmterm を再起動し、スマホでつないだまま tmux のウィンドウで `palmterm notify ビルドが終わった` → スマホの画面の上に `番号:名前` と文の帯が出て、15 秒たっても消えない。押すとそのウィンドウに移る
+
+### 画面を閉じている端末への通知（Web Push）
+
+- （確定）設定画面に「通知」の行がある。切っていれば「オンにする」を出し、押すと通知の許可を求め、許すとその端末で通知が有効になって「オン」と「切る」を出す。断れば理由（端末の設定で許可するよう）を出す。iPhone・iPad では、ホーム画面に追加した palmterm から開いたときだけ有効にでき、Safari のタブなどでは「オンにする」の代わりに「ホーム画面に追加した palmterm から開いたときだけ使えます」と出す。HTTPS でも localhost でもない・ブラウザが対応していない・許可されていないときも、ボタンの代わりに理由を出す。開くたびに今の様子を取り直す
+  - 有効にすると、ブラウザのプッシュの宛先（PushSubscription）を作り、`POST /api/push/subscribe` でサーバーに渡す。サーバーはそれをログインした端末の記録（devices.json）の、その端末のところに持つ。サーバーの鍵は `GET /api/push` で受け取る。前の宛先があれば作り直す
+  - 確かめ方: 単体テスト「設定画面の通知の行」（web/src/settings.test.ts）、「通知を使えるか」（web/src/push.test.ts）、通しのテスト「設定画面の「通知」の行は…」（web/e2e/app.test.ts）、自動テスト `TestPushSubscribeValidates`（push_test.go）
+  - 実機での確かめ方: HTTPS（`tailscale serve` など）で開き、ホーム画面に追加した palmterm で tmux パネル →「設定」→「通知」の「オンにする」→ 許可を求められ、許すと「オン」「切る」になる。Safari のタブで開くと、ボタンの代わりにホーム画面から開くよう理由が出る
+- （確定）通知を有効にした端末で palmterm を閉じている（別のアプリに切り替えた・画面を消した）とき、tmux で `palmterm notify ビルドが終わった` を打つと、その端末に題 `1:build`・本文 `ビルドが終わった` の OS の通知が届く。ウィンドウが無ければ題は `palmterm`、文を省けば本文は設定の言語の「終わりました」。本文は 500 文字で切る（プッシュで送れる中身は 4KB まで）
+  - 送り方: 中身を端末の鍵で暗号化し（RFC 8291 の aes128gcm）、サーバーの鍵で署名した VAPID（RFC 8292、ES256、aud は受け口のオリジン、期限 12 時間）を添えて宛先に POST する（TTL 24 時間、Urgency high）。サーバーの鍵は `~/.config/palmterm/vapid.pem`（0600。無ければ作る。用意できなければ通知だけ使わない）。受け口が 404・410（もう無い）を返した宛先は消す
+  - 確かめ方: 自動テスト `TestPushEncryptsAndSigns`（テスト用の受け口が端末の鍵で復号し、VAPID の署名をサーバーの公開鍵で確かめる）、`TestVAPIDKeyIsKept`（push_test.go）
+  - 実機での確かめ方: 上で通知を有効にした端末で palmterm を閉じ、PC の tmux のウィンドウ build（1 番）で `palmterm notify "ビルドが終わった"` → 端末に「1:build」「ビルドが終わった」の通知が届く
+- （確定）帯が届いて画面も見えている端末にはプッシュを送らず、帯だけを出す。画面は見えている・隠れたを `POST /api/push/presence`（画面ごとのランダムな ID と visible）で知らせる（読み込んだとき・見え方が変わったとき・つなぎ直したとき・見えている間は1分ごと）。サーバーは見えていると知らせてきてから3分の間、その画面を見えているとみなす。同じ端末のどれかの画面が見えていて、その端末に帯が届いたときだけ、プッシュを止める（画面がつながっていなければ、見えていてもプッシュする）。隠れた画面にも帯は送る（戻ったときに見える）
+  - 確かめ方: 自動テスト `TestNotifyPushesOnlyToDevicesNotShowing`（push_test.go）
+  - 実機での確かめ方: 通知を有効にした端末で palmterm を開いたまま `palmterm notify x` → 帯だけが出て、OS の通知は来ない
+- （確定）通知を押すと palmterm が開き、打ったウィンドウに切り替わる。palmterm の画面が開いていれば（裏にあっても）それを前に出してウィンドウを切り替えさせ、無ければ `/?window=1&windowId=@3` を開く。画面はそれを読んで切り替え、URL から消す。切り替えは帯を押したときと同じ（ID で指し、閉じられていれば移らない）。通知を受けて出すのは Service Worker（`/sw.js`。ログインなしで返し、キャッシュさせない）
+  - 確かめ方: 単体テスト「通知を押して開いたときのウィンドウ」（web/src/push.test.ts）、通しのテスト「Service Worker はログインなしでも取れる。通知を押して開いた URL…」（web/e2e/app.test.ts）
+  - 実機での確かめ方: 届いた通知を押す → palmterm が開き、build のウィンドウに切り替わっている（palmterm を終了させてから押したときも）
+- （確定）設定画面で「切る」を押す（サーバーの宛先とブラウザの宛先を消す）、「ログイン中の端末」で取り消す、`palmterm logout-all` のどれかをすると、その端末には届かなくなる（宛先は端末の記録と一緒に消える）
+  - 確かめ方: 自動テスト `TestNotifyPushStopsWhenTurnedOffOrLoggedOut`（push_test.go）、単体テスト「設定画面の通知の行」（web/src/settings.test.ts）
+- （仮）`vapid.pem` を消して作り直すと、前の宛先には送れなくなる（受け口が断る）。設定画面の「通知」は、ブラウザの宛先の鍵がサーバーの鍵と違えば切れているとみなして「オンにする」を出す
 
 ## 見た目とフォント
 

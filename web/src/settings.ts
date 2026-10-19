@@ -1,10 +1,11 @@
-// 設定画面（tmux パネルの「設定」で開く）。文字サイズ・フォント・テーマ・言語・キーバー・ログイン中の端末・版を並べる。
+// 設定画面（tmux パネルの「設定」で開く）。文字サイズ・フォント・テーマ・言語・キーバー・通知・ログイン中の端末・版を並べる。
 // index.html には置かず、ここで作って body に足す。小さい画面では、フォント・テーマ・端末の一覧はこの画面の上に開き、
 // 閉じるとこの画面に戻る。板を浮かせる大きい画面では2列にし、左に設定の行、右にどちらかの一覧を出す
 // （一覧の要素を右の列に移す。小さい画面に戻ると body に戻して隠す）。
 
-import { type Lang, LANG_NAMES, t } from "./i18n";
+import { type Lang, LANG_NAMES, type MessageKey, t } from "./i18n";
 import { icon, type IconName } from "./icons";
+import type { PushState, PushStatus } from "./push";
 import { FLOAT_QUERY } from "./sheets";
 
 export interface SettingsOptions {
@@ -20,6 +21,8 @@ export interface SettingsOptions {
   openFonts: () => void;
   /** テーマの一覧（id が themes の要素）を開く（そこでテーマを選ぶ）。 */
   openThemes: () => void;
+  /** 通知（Web Push）。省けば「通知」の行を出さない。 */
+  notifications?: { state: () => Promise<PushStatus>; enable: () => Promise<PushStatus>; disable: () => Promise<PushStatus> };
   /** サーバーの版（`palmterm -version` と同じ）。分からなければ空で、その行を出さない。 */
   version?: string;
 }
@@ -121,6 +124,44 @@ export function setupSettings(opts: SettingsOptions) {
     keybarBtn.setAttribute("aria-label", keybarBtn.title);
   };
 
+  // 通知。使えないときはボタンの代わりに理由を出す。
+  const notifyText = document.createElement("span");
+  notifyText.className = "settings-notify-state";
+  const notifyBtn = makeBtn("", "", () => {
+    const n = opts.notifications;
+    if (!n) return;
+    const on = notifyBtn.dataset.state === "on";
+    notifyBtn.disabled = true;
+    // 許可を求めるのは押したその場で（enable の最初で）呼ぶ。
+    (on ? n.disable() : n.enable()).then(showNotify);
+  }, "settings-notify");
+  const NOTIFY_REASON: Partial<Record<PushState, MessageKey>> = {
+    needsHomeScreen: "notifyNeedsHomeScreen",
+    insecure: "notifyInsecure",
+    unsupported: "notifyUnsupported",
+    denied: "notifyDenied",
+  };
+  function showNotify(status: PushStatus) {
+    const { state } = status;
+    const reason = NOTIFY_REASON[state];
+    notifyText.textContent =
+      state === "on" ? t("notifyOn") : state === "error" ? t("notifyError", { error: status.error ?? "" }) : reason ? t(reason) : "";
+    notifyText.hidden = notifyText.textContent === "";
+    notifyBtn.hidden = reason !== undefined;
+    notifyBtn.disabled = false;
+    notifyBtn.dataset.state = state;
+    notifyBtn.textContent = t(state === "on" ? "notifyDisable" : "notifyEnable");
+    notifyBtn.title = t(state === "on" ? "notifyDisableTitle" : "notifyEnableTitle");
+    notifyBtn.setAttribute("aria-label", notifyBtn.title);
+  }
+  function refreshNotify() {
+    if (!opts.notifications) return;
+    notifyText.textContent = "…";
+    notifyText.hidden = false;
+    notifyBtn.hidden = true;
+    opts.notifications.state().then(showNotify);
+  }
+
   // フォント・テーマ・端末の一覧。小さい画面ではこの画面の上に開き、2列のときは右の列に出す。
   const openList = { devices: () => opts.openDevices(), fonts: () => opts.openFonts(), themes: () => opts.openThemes() };
   const sideBtns = {
@@ -169,8 +210,9 @@ export function setupSettings(opts: SettingsOptions) {
     row(t("rowTheme"), sideBtns.themes),
     row(t("rowLanguage"), ...langBtns),
     row(t("rowKeybar"), keybarBtn),
-    row(t("devices"), sideBtns.devices),
   );
+  if (opts.notifications) body.append(row(t("rowNotify"), notifyText, notifyBtn));
+  body.append(row(t("devices"), sideBtns.devices));
   if (opts.version) {
     const v = document.createElement("span");
     v.className = "settings-version";
@@ -183,6 +225,7 @@ export function setupSettings(opts: SettingsOptions) {
     showSize(); // ピンチで変わっていることがある
     showLanguage();
     showKeybarState();
+    refreshNotify(); // ブラウザの設定で許可を変えていることがある
   }
   refresh();
 
