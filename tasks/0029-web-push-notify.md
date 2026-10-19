@@ -86,4 +86,6 @@ make: *** [Makefile:28: test] Error 1
 - `web/public` を変えたので、make する前に `touch web/index.html` が要る（Makefile は scope の外で、web/public を依存に入れていない。課題 0028 と同じ事情）
 
 ## レビュー
-（task-loop が Codex の指摘を書き足す）
+Codex（2026-10-19、faf24b1..caaf248）:
+
+指摘なし
