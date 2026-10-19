@@ -1,6 +1,6 @@
 ---
 id: 0029
-status: blocked         # todo / doing / blocked / done
+status: todo         # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - "notify*.go"
   - "push*.go"
@@ -54,6 +54,7 @@ after: [0028]
 make: *** [Makefile:28: test] Error 1
 ```
   - 実行役の出力: ~/.local/share/task-loop/logs/palmterm/0029-20261019-125308.log
+- 本人の答え（2026-10-19 16:46）: 通しのテスト「大きい画面の板 … 設定画面は2列で…」が落ちるのは、通知の行が読み込み後に「…」からボタン・理由に入れ替わって設定画面の高さが変わり、浮いている板が測っている途中で動くためと思われる。行の高さが入れ替えで変わらないようにする（テストを緩めるのではなく）。直したら make test を2回通して確かめる
 
 ## メモ
 - 「画面がつながっている端末」を WebSocket がつながっているかだけで決めると、iPhone で別のアプリに切り替えた・画面を消した直後は WebSocket が残っていて書き込めてしまい、プッシュが止まる。そこで画面から見えている・隠れたを `POST /api/push/presence` で知らせる形にした（terminal.go は scope の外なので WebSocket の制御メッセージにはしなかった）
