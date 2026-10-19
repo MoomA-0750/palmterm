@@ -282,5 +282,8 @@ export function setupTmuxPanel(opts: TmuxPanelOptions) {
 
   opts.bind(button, () => (panel.hidden ? open() : close()), false);
 
-  return { close, refresh, outputSeen, selectPaneAt };
+  /** ウィンドウに切り替える（palmterm notify の帯を押したとき）。 */
+  const selectWindow = (index: number) => run("select-window", index);
+
+  return { close, refresh, outputSeen, selectPaneAt, selectWindow };
 }

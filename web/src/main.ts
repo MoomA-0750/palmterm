@@ -21,6 +21,7 @@ import { chooseAppearance, type AppearanceChange } from "./appearance";
 import { setupSettings } from "./settings";
 import { setupSheets } from "./sheets";
 import { setupThemes } from "./themelist";
+import { setupNotices } from "./notices";
 import { setupTmuxPanel } from "./tmuxpanel";
 import { setupTouch } from "./touch";
 
@@ -203,6 +204,10 @@ let pendingLink = "";
 conn.onNotice = (msg) => {
   if (msg.type === "clipboard") {
     clipboardChanged();
+    return;
+  }
+  if (msg.type === "notify") {
+    notices.show(msg);
     return;
   }
   if (msg.type !== "open" || !msg.url || !/^https?:\/\//.test(msg.url)) return;
@@ -496,6 +501,8 @@ const tmuxPanel = setupTmuxPanel({
   openSettings: () => settings.open(),
   bind: bindKeyButton,
 });
+// palmterm notify の知らせ。押すとそのウィンドウに切り替える。
+const notices = setupNotices($("notices"), (index) => tmuxPanel.selectWindow(index));
 // 端末に触れたらパネルを閉じる。
 termEl.addEventListener("pointerdown", () => tmuxPanel.close());
 onTap(termEl, (x, y) => {

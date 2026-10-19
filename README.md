@@ -108,6 +108,16 @@ for working with TUIs such as vim, lazygit and Claude Code.
   opens in the PC's browser as before. Only http and https links are passed. Turn this off with
   `-relay-browser=false`.
 
+### Notifying your phone when something finishes
+
+- Run `palmterm notify "build finished"` inside tmux, and every connected palmterm page shows a bar at the top
+  with that text and the number and name of the window it was run in. The bar stays until you tap × or the
+  bar itself; tapping the bar switches to that window. Without text it says "Done" (終わりました in Japanese).
+- If palmterm is not running or no page is connected, it says so on stderr but still exits with 0, so it never
+  stops `make; palmterm notify` or a Claude Code hook. To be told when Claude Code stops, add something like
+  `"Stop": [{"hooks": [{"type": "command", "command": "palmterm notify Claude Code stopped"}]}]` to `hooks` in
+  `~/.claude/settings.json`.
+
 ### Other
 
 - If the connection drops, the tmux session stays; reconnecting shows where you left off.
@@ -179,7 +189,8 @@ palmterm url                                   # login URLs and a QR code to sca
 
 `palmterm url [-no-qr]` prints new one-time login URLs and a QR code; `palmterm logout-all` logs out every device of the
 running palmterm and closes their open connections (e.g. after losing a phone); `palmterm open URL` hands a URL to the palmterm page
-(see [Opening links on your phone](#opening-links-on-your-phone)).
+(see [Opening links on your phone](#opening-links-on-your-phone)); `palmterm notify [text]` shows a notification bar on the
+palmterm pages (see [Notifying your phone when something finishes](#notifying-your-phone-when-something-finishes)).
 
 | Flag | Default | |
 |---|---|---|

@@ -86,6 +86,54 @@ body {
   background: var(--accent);
 }
 
+/* palmterm notify の知らせ（押すとそのウィンドウに切り替える。× か押すまで残す）。 */
+.notifybar {
+  display: flex;
+  align-items: stretch;
+  background: var(--accent-dim);
+  border-bottom: 2px solid var(--accent);
+  font-size: 13px;
+}
+
+.notifybar-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 0;
+  font: inherit;
+}
+
+.notifybar-window {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
+.notifybar-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.notifybar-close {
+  flex: none;
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  background: none;
+  border: none;
+}
+
 #status {
   background: #6b3a00;
   font-size: 13px;

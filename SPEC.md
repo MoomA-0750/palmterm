@@ -162,6 +162,19 @@
 - （仮）palmterm の画面がつながっていなければ、今までどおり PC のブラウザで開く
 - （仮）渡すのは http と https のリンクだけ。`-relay-browser=false` で使わない
 
+## 終わったことを知らせる（`palmterm notify`）
+
+- （確定）tmux の中で `palmterm notify 文` を打つと、つながっているすべての palmterm の画面の上に、その文と、打ったウィンドウの番号・名前（`1:build`）の帯が出る。引数が複数なら空白でつなぐ。改行・タブは空白に、ほかの制御文字は除き、1000 文字で切る。帯は × か押すまで残る（コピーの帯のように時間では消えない）。新しいものを上に積み、5つまで出す
+  - サーバーとのやり取りは、実行時のフォルダの `notify.sock`（0600）で行う。ウィンドウは `TMUX_PANE` のペインから tmux に訊く。tmux の外や、palmterm がつないでいないセッションで打ったときは、ウィンドウを添えない（帯は文だけ）
+  - 確かめ方: 自動テスト `TestNotifyReachesEveryPageWithTheWindow`、`TestNotifyWithoutWindow`、`TestCleanNotifyText`（notify_test.go）、単体テスト「palmterm notify の帯」（web/src/notices.test.ts）、通しのテスト「palmterm notify」（web/e2e/app.test.ts）
+- （確定）ウィンドウの付いた帯を押すと、そのウィンドウに切り替わって帯が消える（ほかの画面の帯は残る）。ウィンドウの無い帯は押すと消えるだけ
+  - 確かめ方: 単体テスト「palmterm notify の帯」（web/src/notices.test.ts）、通しのテスト「palmterm notify」（web/e2e/app.test.ts）
+- （確定）文を省いて `palmterm notify` だけを打つと、画面の言語で「終わりました」（英語なら「Done」）の帯が出る
+  - 確かめ方: 単体テスト「palmterm notify の帯」（web/src/notices.test.ts）、通しのテスト「palmterm notify」（web/e2e/app.test.ts）
+- （確定）palmterm の画面が1つもつながっていない（`no palmterm page is open`）・palmterm が動いていない（`palmterm is not running`）ときは、標準エラーにそう出して終了コード 0 で終わる。Claude Code のフックや `make; palmterm notify` を止めないため。届いたときは何も出さない
+  - 確かめ方: 自動テスト `TestNotifyWithoutPagesOrServer`（notify_test.go）、通しのテスト「palmterm notify」（web/e2e/app.test.ts。動いていないとき）
+  - 実機での確かめ方: `make install` して palmterm を再起動し、スマホでつないだまま tmux のウィンドウで `palmterm notify ビルドが終わった` → スマホの画面の上に `番号:名前` と文の帯が出て、15 秒たっても消えない。押すとそのウィンドウに移る
+
 ## 見た目とフォント
 
 - （仮）JetBrains Mono と Nerd Font のアイコンを palmterm が配るので、スマホでもアイコンが出る。端末のフォントは設定ファイルの `[font]` で変えられる（「設定ファイル」の節）

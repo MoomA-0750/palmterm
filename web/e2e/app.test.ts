@@ -3,7 +3,7 @@
 // palmterm は、このテストだけの tmux サーバー（TMUX_TMPDIR を分ける、シェルは /bin/sh）と
 // 一時ディレクトリの設定ファイル・アップロード先で動かすので、ふだんの環境には触れない。
 
-import { type ChildProcess, execFileSync, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -1658,6 +1658,58 @@ describe("ブラウザの受け渡し", () => {
   });
 });
 
+
+describe("palmterm notify", () => {
+  it("tmux の中で打つと、つながっているすべての画面に文とウィンドウの帯が出て、押すとそのウィンドウに移る。× でも消える。文を省くと設定の言語の「終わりました」。palmterm が動いていなくても 0 で終わる", async () => {
+    const other = await browser.newContext({ viewport: { width: 400, height: 760 } });
+    try {
+      const otherPage = await other.newPage();
+      await login(otherPage);
+      await otherPage.waitForFunction(() => document.querySelector(".term-row") !== null);
+      await waitUntil("2つの画面がつながる", () => tmux("list-clients").split("\n").length === 2);
+
+      // ウィンドウ 1（build）で打ち、画面はウィンドウ 0 に戻しておく
+      tmux("new-window", "-t", SESSION, "-n", "build");
+      tmux("set-option", "-w", "-t", `${SESSION}:1`, "automatic-rename", "off");
+      tmux("send-keys", "-t", `${SESSION}:1`, `${BINARY} notify ビルドが終わった`, "Enter");
+      for (const p of [page, otherPage]) {
+        const bar = p.locator("#notices .notifybar");
+        await waitUntil("帯が出る", async () => (await bar.count()) === 1);
+        expect(await bar.locator(".notifybar-window").textContent()).toBe("1:build");
+        expect(await bar.locator(".notifybar-text").textContent()).toBe("ビルドが終わった");
+      }
+      tmux("select-window", "-t", `${SESSION}:0`);
+
+      // 帯を押すとウィンドウ 1 に切り替わって消える（ほかの画面の帯はそのまま）
+      await page.locator("#notices .notifybar-body").click();
+      await waitUntil("ウィンドウ 1 に移る", () => tmux("display-message", "-p", "-t", SESSION, "#{window_index}") === "1");
+      expect(await page.locator("#notices .notifybar").count()).toBe(0);
+      expect(await otherPage.locator("#notices .notifybar").count()).toBe(1);
+      await otherPage.locator("#notices .notifybar-close").click();
+      expect(await otherPage.locator("#notices .notifybar").count()).toBe(0);
+    } finally {
+      await other.close();
+    }
+
+    // 文を省くと「終わりました」（英語の設定なら Done）
+    tmux("send-keys", "-t", SESSION, `${BINARY} notify`, "Enter");
+    await waitUntil("Done の帯が出る", async () => (await page.locator("#notices .notifybar-text").textContent().catch(() => "")) === "Done");
+    writeFileSync(configPath, `language = "ja"\n`);
+    await openPage();
+    tmux("send-keys", "-t", SESSION, `${BINARY} notify`, "Enter");
+    await waitUntil("「終わりました」の帯が出る", async () => (await page.locator("#notices .notifybar-text").textContent().catch(() => "")) === "終わりました");
+
+    // palmterm が動いていない（ソケットが無い）ときは、標準エラーにそう出して 0 で終わる
+    const empty = mkdtempSync("/tmp/pt-e2e-none-");
+    try {
+      const r = spawnSync(BINARY, ["notify", "x"], { env: { ...env, XDG_RUNTIME_DIR: empty }, encoding: "utf8" });
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain("palmterm is not running");
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("palmterm のクリップボード", () => {
   it("tmux の中のプログラムがコピーした文字を知らせ、押すとスマホのクリップボードに入れる。一覧からも使える", async () => {
