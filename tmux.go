@@ -55,9 +55,10 @@ func (s *server) handleTmuxAction(w http.ResponseWriter, r *http.Request) {
 	session := s.session
 	var req struct {
 		Action string `json:"action"`
-		Window int    `json:"window"` // select-window・kill-window・rename-window のとき
-		Name   string `json:"name"`   // rename-window のとき
-		Col    int    `json:"col"`    // select-pane-at のとき（端末の画面での位置、0 から）
+		Window int    `json:"window"`   // select-window・kill-window・rename-window のとき
+		Name   string `json:"name"`     // rename-window のとき
+		ID     string `json:"windowId"` // select-window-id のとき（ウィンドウの ID、@N）
+		Col    int    `json:"col"`      // select-pane-at のとき（端末の画面での位置、0 から）
 		Row    int    `json:"row"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
@@ -72,6 +73,17 @@ func (s *server) handleTmuxAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if args == nil { // ペインの境目や、すでに選ばれているペイン
+			s.handleWindows(w, r)
+			return
+		}
+	} else if req.Action == "select-window-id" {
+		// palmterm notify の帯から。番号がずれても打ったウィンドウに移る。閉じられていれば何もしない（ほかのウィンドウに移らない）
+		var err error
+		if args, err = selectWindowIDArgs(session, req.ID); err != nil {
+			http.Error(w, tr("tmux のウィンドウを取れませんでした: ", "Could not list the tmux windows: ")+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if args == nil {
 			s.handleWindows(w, r)
 			return
 		}
@@ -123,6 +135,23 @@ func tmuxActionArgs(session, action string, window int) []string {
 		return []string{"copy-mode", "-t", session}
 	}
 	return nil
+}
+
+// ID（@N）のウィンドウに切り替える。そのウィンドウがセッションに無ければ（閉じられた・ID でない）nil を返す。
+func selectWindowIDArgs(session, id string) ([]string, error) {
+	if !isWindowID(id) {
+		return nil, nil
+	}
+	out, err := exec.Command("tmux", "list-windows", "-t", session, "-F", "#{window_id}").Output()
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+		if l == id {
+			return []string{"select-window", "-t", id}, nil
+		}
+	}
+	return nil, nil
 }
 
 const maxWindowNameRunes = 64

@@ -9,14 +9,14 @@ describe("palmterm notify の帯", () => {
     const box = document.createElement("div");
     const select = vi.fn();
     const notices = setupNotices(box, select);
-    notices.show({ text: "ビルドが終わった", window: 2, windowName: "build" });
+    notices.show({ text: "ビルドが終わった", window: 2, windowName: "build", windowId: "@7" });
     notices.show({ text: "" });
     const bars = [...box.querySelectorAll(".notifybar")];
     expect(bars.map((b) => b.textContent)).toEqual(["終わりました", "2:buildビルドが終わった"]);
     expect(bars[1].querySelector(".notifybar-window")?.textContent).toBe("2:build");
 
     (bars[1].querySelector(".notifybar-body") as HTMLButtonElement).click();
-    expect(select).toHaveBeenCalledWith(2);
+    expect(select).toHaveBeenCalledWith(2, "@7");
     expect(box.childElementCount).toBe(1);
 
     // ウィンドウの無い帯は押しても切り替えない

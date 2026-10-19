@@ -64,7 +64,7 @@ func TestNotifyReachesEveryPageWithTheWindow(t *testing.T) {
 	}
 	for _, r := range []*notifyRecorder{&phone, &pc} {
 		m := r.last(t)
-		if m["type"] != "notify" || m["text"] != "ビルドが 終わった" || m["window"] != float64(1) || m["windowName"] != "build" {
+		if m["type"] != "notify" || m["text"] != "ビルドが 終わった" || m["window"] != float64(1) || m["windowName"] != "build" || !isWindowID(m["windowId"].(string)) {
 			t.Fatalf("知らせ: %v", m)
 		}
 	}
@@ -74,6 +74,65 @@ func TestNotifyReachesEveryPageWithTheWindow(t *testing.T) {
 	}
 	if m := phone.last(t); m["text"] != "" || m["window"] != float64(1) {
 		t.Fatalf("文を省いたときの知らせ: %v", m)
+	}
+}
+
+// 英数字2万文字の文でも届き、帯には 1000 文字に切った文が出る（切らずに送ると受け口の1行の長さを超えて捨てられる）。
+func TestNotifyLongText(t *testing.T) {
+	isolateTmux(t, "t1")
+	isolateRuntimeDir(t)
+	s := newTestServer(t)
+	s.setupNotifySocket()
+	var phone notifyRecorder
+	s.clients.add(phone.client())
+	t.Setenv("TMUX_PANE", "")
+
+	var errOut bytes.Buffer
+	if code := runNotify(&errOut, []string{strings.Repeat("a1", 10000)}); code != 0 || errOut.Len() != 0 {
+		t.Fatalf("code=%d stderr=%q", code, errOut.String())
+	}
+	if m := phone.last(t); m["text"] != strings.Repeat("a1", maxNotifyRunes/2) {
+		t.Fatalf("文の長さ: %d", len(m["text"].(string)))
+	}
+}
+
+// renumber-windows が on で、打ったウィンドウより前のウィンドウを閉じて番号がずれても、帯から打ったウィンドウに移る。
+// 打ったウィンドウが閉じられていれば、ほかのウィンドウには移らない。
+func TestNotifyWindowAfterRenumber(t *testing.T) {
+	isolateTmux(t, "t1")
+	isolateRuntimeDir(t)
+	s := newTestServer(t)
+	s.setupNotifySocket()
+	runTmux(t, "set-option", "-t", "t1", "renumber-windows", "on")
+	runTmux(t, "new-window", "-t", "t1")
+	runTmux(t, "new-window", "-t", "t1", "-n", "build")
+	insideTmux(t, runTmux(t, "display-message", "-p", "-t", "t1:2", "#{pane_id}"))
+	var phone notifyRecorder
+	s.clients.add(phone.client())
+
+	var errOut bytes.Buffer
+	runNotify(&errOut, []string{"done"})
+	m := phone.last(t)
+	id, _ := m["windowId"].(string)
+	if m["window"] != float64(2) || !isWindowID(id) {
+		t.Fatalf("知らせ: %v", m)
+	}
+
+	runTmux(t, "kill-window", "-t", "t1:1")
+	runTmux(t, "select-window", "-t", "t1:0")
+	body := `{"action":"select-window-id","windowId":"` + id + `"}`
+	if w := activeWindow(windowsOf(t, tmuxAction(t, s, body))); w.Index != 1 || w.Name != "build" {
+		t.Fatalf("打ったウィンドウ（今は 1 番）に移るはず: %+v", w)
+	}
+
+	runTmux(t, "kill-window", "-t", "t1:1")
+	runTmux(t, "new-window", "-t", "t1")
+	runTmux(t, "select-window", "-t", "t1:0")
+	if w := activeWindow(windowsOf(t, tmuxAction(t, s, body))); w.Index != 0 {
+		t.Fatalf("閉じたウィンドウの帯では移らないはず: %+v", w)
+	}
+	if w := activeWindow(windowsOf(t, tmuxAction(t, s, `{"action":"select-window-id","windowId":"1"}`))); w.Index != 0 {
+		t.Fatalf("ID でないものでは移らないはず: %+v", w)
 	}
 }
 
@@ -90,14 +149,14 @@ func TestNotifyWithoutWindow(t *testing.T) {
 	t.Setenv("TMUX_PANE", "")
 	var errOut bytes.Buffer
 	runNotify(&errOut, []string{"outside"})
-	if m := phone.last(t); m["text"] != "outside" || m["window"] != nil || m["windowName"] != nil {
+	if m := phone.last(t); m["text"] != "outside" || m["window"] != nil || m["windowName"] != nil || m["windowId"] != nil {
 		t.Fatalf("tmux の外: %v", m)
 	}
 
 	runTmux(t, "new-session", "-d", "-s", "other")
 	insideTmux(t, runTmux(t, "display-message", "-p", "-t", "other", "#{pane_id}"))
 	runNotify(&errOut, []string{"other"})
-	if m := phone.last(t); m["text"] != "other" || m["window"] != nil {
+	if m := phone.last(t); m["text"] != "other" || m["window"] != nil || m["windowId"] != nil {
 		t.Fatalf("ほかのセッション: %v", m)
 	}
 }

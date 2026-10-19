@@ -1,5 +1,6 @@
 // palmterm notify の知らせの帯。端末の上に新しい順に積み、× か帯を押すまで残す（コピーの帯のように消えない）。
 // tmux の中で打った知らせには打ったウィンドウの番号と名前を添え、帯を押すとそのウィンドウに切り替える。
+// 切り替えはウィンドウの ID（@N）で指す（ほかのウィンドウを閉じて番号がずれても、打ったウィンドウに移る）。
 
 import { t } from "./i18n";
 import { icon } from "./icons";
@@ -8,12 +9,15 @@ export interface NotifyMessage {
   text?: string;
   window?: number;
   windowName?: string;
+  /** tmux のウィンドウの ID（@N）。番号は打ったときのもので、あとでずれることがある。 */
+  windowId?: string;
 }
 
 /** 一度に出しておく帯の数（これより古いものは消す）。 */
 const MAX_NOTICES = 5;
 
-export function setupNotices(container: HTMLElement, selectWindow: (index: number) => void) {
+/** selectWindow は ID（無ければ番号）のウィンドウに切り替える。 */
+export function setupNotices(container: HTMLElement, selectWindow: (index: number, id?: string) => void) {
   function show(msg: NotifyMessage) {
     const bar = document.createElement("div");
     bar.className = "notifybar";
@@ -35,7 +39,7 @@ export function setupNotices(container: HTMLElement, selectWindow: (index: numbe
     body.append(text);
     body.addEventListener("click", () => {
       bar.remove();
-      if (hasWindow) selectWindow(msg.window!);
+      if (hasWindow) selectWindow(msg.window!, msg.windowId);
     });
     const close = document.createElement("button");
     close.type = "button";

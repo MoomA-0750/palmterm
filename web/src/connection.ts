@@ -12,8 +12,8 @@ export class Connection {
 
   onOutput: (data: Uint8Array) => void = () => {};
   /** サーバーからの知らせ（テキストのフレーム。{type: "open", url}：ブラウザで開く URL、{type: "clipboard"}：tmux でコピーされた、
-   *  {type: "notify", text, window?, windowName?}：palmterm notify の知らせ）。 */
-  onNotice: (msg: { type: string; url?: string; text?: string; window?: number; windowName?: string }) => void = () => {};
+   *  {type: "notify", text, window?, windowName?, windowId?}：palmterm notify の知らせ）。 */
+  onNotice: (msg: { type: string; url?: string; text?: string; window?: number; windowName?: string; windowId?: string }) => void = () => {};
   onOpen: () => void = () => {};
   onStatus: (status: ConnectionStatus) => void = () => {};
   /** ログインが取り消された（つなぎ直しても通らない）。 */

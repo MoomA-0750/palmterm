@@ -1709,6 +1709,40 @@ describe("palmterm notify", () => {
       rmSync(empty, { recursive: true, force: true });
     }
   });
+
+  it("renumber-windows が on で番号がずれても、帯を押すと打ったウィンドウに移る。打ったウィンドウが閉じられていれば、帯が消えるだけで移らない", async () => {
+    tmux("set-option", "-t", SESSION, "renumber-windows", "on");
+    try {
+      tmux("new-window", "-t", SESSION);
+      tmux("new-window", "-t", SESSION, "-n", "build");
+      tmux("set-option", "-w", "-t", `${SESSION}:2`, "automatic-rename", "off");
+      tmux("send-keys", "-t", `${SESSION}:2`, `${BINARY} notify ビルドが終わった`, "Enter");
+      const bar = page.locator("#notices .notifybar");
+      await waitUntil("帯が出る", async () => (await bar.count()) === 1);
+      expect(await bar.locator(".notifybar-window").textContent()).toBe("2:build");
+
+      // ウィンドウ 1 を閉じると build は 1 番になる。帯を押すと build（今は 1 番）に移る
+      tmux("kill-window", "-t", `${SESSION}:1`);
+      tmux("select-window", "-t", `${SESSION}:0`);
+      await page.locator("#notices .notifybar-body").click();
+      await waitUntil("build に移る", () => tmux("display-message", "-p", "-t", SESSION, "#{window_index}:#{window_name}") === "1:build");
+      expect(await bar.count()).toBe(0);
+
+      // build でもう一度打ってから build を閉じ、別のウィンドウを開いておく。帯を押しても移らず、帯が消えるだけ
+      tmux("send-keys", "-t", `${SESSION}:1`, `${BINARY} notify again`, "Enter");
+      await waitUntil("帯が出る", async () => (await bar.count()) === 1);
+      tmux("kill-window", "-t", `${SESSION}:1`);
+      tmux("new-window", "-t", SESSION, "-n", "other");
+      tmux("select-window", "-t", `${SESSION}:0`);
+      await page.locator("#notices .notifybar-body").click();
+      expect(await bar.count()).toBe(0);
+      await new Promise((r) => setTimeout(r, 500));
+      expect(tmux("display-message", "-p", "-t", SESSION, "#{window_index}")).toBe("0");
+      expect(await page.locator("#toast").isVisible()).toBe(false);
+    } finally {
+      tmux("set-option", "-u", "-t", SESSION, "renumber-windows");
+    }
+  });
 });
 
 describe("palmterm のクリップボード", () => {

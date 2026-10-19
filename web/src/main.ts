@@ -502,7 +502,7 @@ const tmuxPanel = setupTmuxPanel({
   bind: bindKeyButton,
 });
 // palmterm notify の知らせ。押すとそのウィンドウに切り替える。
-const notices = setupNotices($("notices"), (index) => tmuxPanel.selectWindow(index));
+const notices = setupNotices($("notices"), (index, id) => tmuxPanel.selectWindow(index, id));
 // 端末に触れたらパネルを閉じる。
 termEl.addEventListener("pointerdown", () => tmuxPanel.close());
 onTap(termEl, (x, y) => {

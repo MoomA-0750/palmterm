@@ -164,11 +164,12 @@
 
 ## 終わったことを知らせる（`palmterm notify`）
 
-- （確定）tmux の中で `palmterm notify 文` を打つと、つながっているすべての palmterm の画面の上に、その文と、打ったウィンドウの番号・名前（`1:build`）の帯が出る。引数が複数なら空白でつなぐ。改行・タブは空白に、ほかの制御文字は除き、1000 文字で切る。帯は × か押すまで残る（コピーの帯のように時間では消えない）。新しいものを上に積み、5つまで出す
-  - サーバーとのやり取りは、実行時のフォルダの `notify.sock`（0600）で行う。ウィンドウは `TMUX_PANE` のペインから tmux に訊く。tmux の外や、palmterm がつないでいないセッションで打ったときは、ウィンドウを添えない（帯は文だけ）
-  - 確かめ方: 自動テスト `TestNotifyReachesEveryPageWithTheWindow`、`TestNotifyWithoutWindow`、`TestCleanNotifyText`（notify_test.go）、単体テスト「palmterm notify の帯」（web/src/notices.test.ts）、通しのテスト「palmterm notify」（web/e2e/app.test.ts）
+- （確定）tmux の中で `palmterm notify 文` を打つと、つながっているすべての palmterm の画面の上に、その文と、打ったウィンドウの番号・名前（`1:build`）の帯が出る。引数が複数なら空白でつなぐ。改行・タブは空白に、ほかの制御文字は除き、1000 文字で切る（2万文字のような長い文でも、切った文の帯が出る）。帯は × か押すまで残る（コピーの帯のように時間では消えない）。新しいものを上に積み、5つまで出す
+  - サーバーとのやり取りは、実行時のフォルダの `notify.sock`（0600）で、1行の JSON を 16KB まで受ける。文は `palmterm notify` の側で切ってから送る。ウィンドウ（番号・名前・ID `@N`）は `TMUX_PANE` のペインから tmux に訊く。tmux の外や、palmterm がつないでいないセッションで打ったときは、ウィンドウを添えない（帯は文だけ）
+  - 確かめ方: 自動テスト `TestNotifyReachesEveryPageWithTheWindow`、`TestNotifyWithoutWindow`、`TestNotifyLongText`、`TestCleanNotifyText`（notify_test.go）、単体テスト「palmterm notify の帯」（web/src/notices.test.ts）、通しのテスト「palmterm notify」（web/e2e/app.test.ts）
 - （確定）ウィンドウの付いた帯を押すと、そのウィンドウに切り替わって帯が消える（ほかの画面の帯は残る）。ウィンドウの無い帯は押すと消えるだけ
-  - 確かめ方: 単体テスト「palmterm notify の帯」（web/src/notices.test.ts）、通しのテスト「palmterm notify」（web/e2e/app.test.ts）
+  - ウィンドウは ID（`@N`）で指す。`renumber-windows` が on でほかのウィンドウを閉じて番号がずれても、打ったウィンドウに移る（帯に出す番号は打ったときのまま）。打ったウィンドウが閉じられていれば、ほかのウィンドウには移らず、帯が消えるだけ（知らせも出さない）
+  - 確かめ方: 自動テスト `TestNotifyWindowAfterRenumber`（notify_test.go）、単体テスト「palmterm notify の帯」（web/src/notices.test.ts）、通しのテスト「palmterm notify」（web/e2e/app.test.ts）
 - （確定）文を省いて `palmterm notify` だけを打つと、画面の言語で「終わりました」（英語なら「Done」）の帯が出る
   - 確かめ方: 単体テスト「palmterm notify の帯」（web/src/notices.test.ts）、通しのテスト「palmterm notify」（web/e2e/app.test.ts）
 - （確定）palmterm の画面が1つもつながっていない（`no palmterm page is open`）・palmterm が動いていない（`palmterm is not running`）ときは、標準エラーにそう出して終了コード 0 で終わる。Claude Code のフックや `make; palmterm notify` を止めないため。届いたときは何も出さない
