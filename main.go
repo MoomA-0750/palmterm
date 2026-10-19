@@ -58,6 +58,10 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "url" {
 		os.Exit(runURL(os.Stdout, os.Args[2:]))
 	}
+	// palmterm notify：開いている palmterm の画面すべてに知らせの帯を出させる。
+	if len(os.Args) > 1 && os.Args[1] == notifyCommand {
+		os.Exit(runNotify(os.Stderr, os.Args[2:]))
+	}
 	// palmterm logout-all：動いている palmterm の全端末のログインを取り消す。
 	if len(os.Args) > 1 && os.Args[1] == logoutAllCommand {
 		os.Exit(runLogoutAll(os.Stdout, os.Stderr, os.Args[2:]))
@@ -119,6 +123,7 @@ func main() {
 	}
 
 	s.setupControlSocket()
+	s.setupNotifySocket()
 	if *relayBrowser {
 		s.setupBrowserRelay()
 	}

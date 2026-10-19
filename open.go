@@ -84,6 +84,17 @@ func (c *clientSet) touch(tc *termClient) {
 	tc.lastInput = time.Now()
 }
 
+// つながっているすべての画面（palmterm notify の知らせを届ける先）。
+func (c *clientSet) all() []*termClient {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	list := make([]*termClient, 0, len(c.clients))
+	for tc := range c.clients {
+		list = append(list, tc)
+	}
+	return list
+}
+
 // 最後に入力があった画面。つながっている画面がなければ nil。
 func (c *clientSet) latest() *termClient {
 	c.mu.Lock()

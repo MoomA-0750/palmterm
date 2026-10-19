@@ -104,6 +104,16 @@ Ctrl や Alt の入力、カーソル移動、スクロールを使いやすく�
   リンクは最後に使っていた palmterm の画面に届き、画面がつながっていなければ今までどおり PC のブラウザで開く。
   渡すのは http と https のリンクだけ。使わないときは `-relay-browser=false`。
 
+### 終わったことをスマホに知らせる
+
+- tmux の中で `palmterm notify "ビルドが終わった"` と打つと、つながっているすべての palmterm の画面の上に、その文と
+  打ったウィンドウの番号・名前の帯が出る。帯は × か押すまで残り、押すとそのウィンドウに切り替わる。
+  文を省くと「終わりました」（英語の設定なら Done）。
+- palmterm が動いていない・画面がつながっていないときは、標準エラーにそう出すが、終了コードは 0。
+  `make; palmterm notify` や Claude Code のフックに書いても止めない。Claude Code が手を止めたときに知らせるには、
+  `~/.claude/settings.json` の `hooks` に `"Stop": [{"hooks": [{"type": "command", "command": "palmterm notify Claude Code が止まりました"}]}]`
+  のように書く。
+
 ### その他
 
 - 切断されても tmux のセッションは残り、つなぎ直すと続きから表示される。
@@ -174,7 +184,8 @@ palmterm url                                   # ログイン用の URL と、�
 
 `palmterm url [-no-qr]` は新しい使い捨てのログイン用の URL と QR コードを出す。`palmterm logout-all` は動いている palmterm の
 全端末のログインを取り消し、開いている接続も切る（端末をなくしたときなど）。`palmterm open URL` は URL を palmterm の画面に渡す
-（[リンクをスマホで開く](#リンクをスマホで開く)）。
+（[リンクをスマホで開く](#リンクをスマホで開く)）。`palmterm notify [文]` は palmterm の画面に知らせの帯を出す
+（[終わったことをスマホに知らせる](#終わったことをスマホに知らせる)）。
 
 | オプション | 既定 | |
 |---|---|---|
