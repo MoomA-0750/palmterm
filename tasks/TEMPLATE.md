@@ -3,6 +3,7 @@ id: 0000
 status: todo        # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - web/src/**
+after: []           # 先に done になっていてほしい課題の id（例: [0003, 0005]）。それまで run は後回しにする
 spec: SPEC.md「〇〇」
 created: 2026-10-15
 ---
