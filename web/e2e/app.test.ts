@@ -1298,7 +1298,7 @@ describe("大きい画面の板", () => {
     for (const other of ["devices", "fonts", "themes"].filter((o) => o !== id)) {
       expect(await page.locator(`#${other}`).isHidden()).toBe(true);
     }
-    // 一覧は中身を読み終えると伸び、板も一緒に高くなる。別々に測ると間で伸びて食い違うので、同じ瞬間に測る。
+    // 板と一覧は同じ瞬間に測る（読み込み中に一覧の中身が変わっても食い違わないように）。
     const [settings, rows, side] = await page.evaluate((ids) => {
       return ids.map((i) => {
         const r = document.getElementById(i)!.getBoundingClientRect();
@@ -1378,6 +1378,58 @@ describe("大きい画面の板", () => {
       await clickBackdrop();
       expect(await page.locator("#copymode").isHidden()).toBe(true);
       expect(await page.locator("#copy-text").textContent()).toBe(""); // 閉じるボタンと同じ片付け
+    } finally {
+      await page.setViewportSize({ width: 400, height: 760 });
+    }
+  });
+
+  it("2列の設定画面は、右の一覧を読み込み終えても切り替えても、板の位置と高さが変わらない（収まらない分は一覧の中でスクロールする）", async () => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    try {
+      const rect = () =>
+        page.evaluate(() => {
+          const r = document.getElementById("settings")!.getBoundingClientRect();
+          return { x: r.x, y: r.y, w: r.width, h: r.height };
+        });
+      /** 右の一覧の中身の欄が板からはみ出さず、収まらない分はその中でスクロールするか。 */
+      const expectScrollsInside = (listId: string) =>
+        page.evaluate((listId) => {
+          const s = document.getElementById("settings")!.getBoundingClientRect();
+          const list = document.getElementById(listId)!;
+          const r = list.getBoundingClientRect();
+          return {
+            inside: r.bottom <= s.bottom + 1 && r.top >= s.top - 1,
+            scrolls: list.scrollHeight <= list.clientHeight + 1 || ["auto", "scroll"].includes(getComputedStyle(list).overflowY),
+          };
+        }, listId);
+
+      await openSettings();
+      await expectSide("devices");
+      await waitUntil("端末の一覧が出る", async () => (await page.locator("#settings .device.current").count()) === 1);
+      const first = await rect();
+      expect(first.h).toBeCloseTo(768 * 0.8, 0);
+      expect(await expectScrollsInside("device-list")).toEqual({ inside: true, scrolls: true });
+
+      await page.locator("#settings .settings-fonts").click();
+      await expectSide("fonts");
+      expect(await rect()).toEqual(first); // 読み込み前
+      await waitUntil(
+        "フォントの一覧を読み終える",
+        async () => (await page.locator("#font-list li").count()) > 0 && !((await page.locator("#font-list").textContent()) ?? "").includes("Loading"),
+      );
+      expect(await rect()).toEqual(first); // 読み込み後
+      expect(await expectScrollsInside("font-list")).toEqual({ inside: true, scrolls: true });
+
+      await page.locator("#settings .settings-themes").click();
+      await expectSide("themes");
+      await waitUntil("テーマの一覧が出る", async () => (await page.locator("#themes .theme-item").count()) > 0);
+      expect(await rect()).toEqual(first);
+      expect(await expectScrollsInside("theme-list")).toEqual({ inside: true, scrolls: true });
+
+      await page.locator("#settings .settings-devices").click();
+      await expectSide("devices");
+      expect(await rect()).toEqual(first);
+      await page.keyboard.press("Escape");
     } finally {
       await page.setViewportSize({ width: 400, height: 760 });
     }

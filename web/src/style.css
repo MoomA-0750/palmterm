@@ -594,11 +594,14 @@ button:active {
   }
 }
 
-/* 大きい画面の設定画面は2列にする。左に設定の行、右に「ログイン中の端末」・フォント・テーマの一覧（settings.ts が移す）。 */
+/* 大きい画面の設定画面は2列にする。左に設定の行、右に「ログイン中の端末」・フォント・テーマの一覧（settings.ts が移す）。
+   高さは画面の8割に決める。中身に合わせると、右の一覧を読み終えたときや切り替えたときに板が伸び縮みするため。
+   収まらない分は左の行・右の一覧の中でスクロールする。 */
 @media (min-width: 700px) and (min-height: 600px) {
   #settings.two-columns {
     flex-direction: row;
     width: min(900px, 90vw);
+    height: calc(var(--app-h) * 0.8);
   }
 
   #settings.two-columns #settings-main {
