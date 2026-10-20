@@ -1,6 +1,6 @@
 ---
 id: 0031
-status: done         # todo / doing / blocked / done
+status: blocked         # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - "web/src/**"
   - "web/e2e/**"
@@ -18,7 +18,18 @@ created: 2026-10-19
 - [x] 上を通しのテストで確かめ、make test が通る
 
 ## 本人に訊くこと
-（実行役が書く。本人は `task-loop answer` で答える）
+- task-loop の検査で止めた（2026-10-20 10:58）:
+  - テスト（make test）が通らない:
+```
+cd web && npm run build
+
+> build
+> tsc --noEmit && vite build
+
+node: symbol lookup error: /lib64/libnode.so.127: undefined symbol: _ZN2v88internal37SLOW_OBJECT_WITH_NULL_PROTOTYPE_MAP_0EPNS0_8compiler18CodeAssemblerStateE
+make: *** [Makefile:12: palmterm] Error 127
+```
+  - 実行役の出力: ~/.local/share/task-loop/logs/palmterm/0031-20261020-105524.log
 
 ## メモ
 - 板の高さを左の行の高さに合わせて JS で決める案は、文字サイズや言語で左の高さが変わるたびに測り直す手間が増えるので見送り、2列のときは画面の8割に固定した（docs/decisions.md）
