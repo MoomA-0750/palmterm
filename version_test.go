@@ -84,11 +84,11 @@ func TestMakefileEmbedsGitDescribe(t *testing.T) {
 	}
 }
 
-// commit を進めて make すると、作り直して新しい git describe の値が入る（make -B は要らない）。
-// 版もファイルも変わっていなければ go build をやり直さない。
-// 一時的な git リポジトリに本物の Makefile と小さな main.go を置き、実際に make して確かめる。
-// 画面のビルドは偽の npm で済ませる。
-func TestMakeRebuildsOnlyWhenVersionChanges(t *testing.T) {
+// 一時的な git リポジトリに本物の Makefile と小さな main.go・画面のファイルを置き、1回 commit する。
+// 画面のビルドは偽の npm で済ませる。返すのは、そこでコマンドを動かす run と、
+// make の出力から go build・画面のビルド（npm run build）をしたかを見る built・builtWeb。
+func newMakeRepo(t *testing.T) (dir string, run func(name string, args ...string) string, built, builtWeb func(makeOut string) bool) {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("実行ファイルを作るので -short では飛ばす")
 	}
@@ -101,7 +101,7 @@ func TestMakeRebuildsOnlyWhenVersionChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := t.TempDir()
+	dir = t.TempDir()
 	bin := t.TempDir()
 	write := func(path, content string, mode os.FileMode) {
 		t.Helper()
@@ -133,6 +133,7 @@ func main() {
 	write("web/package.json", "{}\n", 0o644)
 	write("web/index.html", "<html></html>\n", 0o644)
 	write("web/src/main.ts", "\n", 0o644)
+	write("web/public/sw.js", "// sw\n", 0o644)
 	write(".gitignore", "/palmterm\n/.version\n/web/node_modules/\n", 0o644)
 	// web/node_modules は package.json より新しくして、npm install を走らせない。
 	if err := os.MkdirAll(filepath.Join(dir, "web/node_modules"), 0o755); err != nil {
@@ -152,7 +153,7 @@ func main() {
 		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com",
 		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.com",
 	)
-	run := func(name string, args ...string) string {
+	run = func(name string, args ...string) string {
 		t.Helper()
 		cmd := exec.Command(name, args...)
 		cmd.Dir = dir
@@ -163,21 +164,30 @@ func main() {
 		}
 		return string(out)
 	}
-	built := func(makeOut string) bool {
+	ran := func(makeOut, prefix string) bool {
 		for _, line := range strings.Split(makeOut, "\n") {
-			if strings.HasPrefix(line, "go build") {
+			if strings.HasPrefix(line, prefix) {
 				return true
 			}
 		}
 		return false
 	}
-	describe := func() string {
-		return strings.TrimSpace(run("git", "describe", "--tags", "--always", "--dirty"))
-	}
+	built = func(makeOut string) bool { return ran(makeOut, "go build") }
+	builtWeb = func(makeOut string) bool { return ran(makeOut, "cd web && npm run build") }
 
 	run("git", "init", "-q")
 	run("git", "add", ".")
 	run("git", "commit", "-q", "-m", "first")
+	return dir, run, built, builtWeb
+}
+
+// commit を進めて make すると、作り直して新しい git describe の値が入る（make -B は要らない）。
+// 版もファイルも変わっていなければ go build をやり直さない。
+func TestMakeRebuildsOnlyWhenVersionChanges(t *testing.T) {
+	_, run, built, _ := newMakeRepo(t)
+	describe := func() string {
+		return strings.TrimSpace(run("git", "describe", "--tags", "--always", "--dirty"))
+	}
 
 	// 1回目は作る。
 	if out := run("make", "palmterm"); !built(out) {
@@ -219,5 +229,30 @@ func main() {
 	}
 	if out := run("make", "palmterm"); built(out) {
 		t.Errorf("タグ名に ' などがあると、変わっていないのに go build し直しました:\n%s", out)
+	}
+}
+
+// web/public のファイル（sw.js など）を変えて make すると、画面を作り直す（touch web/index.html は要らない）。
+// 何も変えずにもう一度 make すれば作り直さない。
+func TestMakeRebuildsWhenWebPublicChanges(t *testing.T) {
+	dir, run, built, builtWeb := newMakeRepo(t)
+	// ファイルを変えると git describe に -dirty が付き、版が変わったことでも作り直してしまう。
+	// web/public の変更だけで作り直すかを見るため、版は固定する。
+	mk := func() string { return run("make", "palmterm", "VERSION=test") }
+	if out := mk(); !builtWeb(out) || !built(out) {
+		t.Fatalf("最初の make で画面と実行ファイルを作っていません:\n%s", out)
+	}
+	if out := mk(); builtWeb(out) || built(out) {
+		t.Fatalf("何も変わっていないのに作り直しました:\n%s", out)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "web/public/sw.js"), []byte("// sw v2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out := mk(); !builtWeb(out) || !built(out) {
+		t.Fatalf("web/public/sw.js を変えた後の make で作り直していません:\n%s", out)
+	}
+	if out := mk(); builtWeb(out) || built(out) {
+		t.Errorf("作り直した直後の make で、また作り直しました:\n%s", out)
 	}
 }

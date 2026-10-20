@@ -52,6 +52,19 @@ function makeBtn(label: Label, title: string, fire: () => void, cls = ""): HTMLB
   return b;
 }
 
+/** オン・オフを切り替えるスイッチ（role="switch"）。名前は title のまま変えず、今の状態は aria-checked で示す。 */
+function makeSwitch(title: string, fire: () => void, cls: string): HTMLButtonElement {
+  const b = makeBtn("", title, fire, `settings-switch ${cls}`);
+  b.setAttribute("role", "switch");
+  b.setAttribute("aria-checked", "false");
+  const knob = document.createElement("span");
+  knob.className = "settings-switch-knob";
+  b.append(knob);
+  return b;
+}
+
+const setChecked = (b: HTMLButtonElement, on: boolean) => b.setAttribute("aria-checked", String(on));
+
 function row(label: string, ...children: HTMLElement[]): HTMLElement {
   const r = document.createElement("div");
   r.className = "settings-row";
@@ -112,25 +125,21 @@ export function setupSettings(opts: SettingsOptions) {
     for (const b of langBtns) b.classList.toggle("on", b.dataset.lang === current);
   };
 
-  // キーバーを隠す・出す。
-  const keybarBtn = makeBtn("", "", () => {
+  // キーバーを出す・隠す。出していればオン。
+  const keybarBtn = makeSwitch(t("keybarSwitchTitle"), () => {
     opts.keybar.set(!opts.keybar.shown());
     showKeybarState();
   }, "settings-keybar");
-  const showKeybarState = () => {
-    const shown = opts.keybar.shown();
-    keybarBtn.textContent = t(shown ? "keybarHide" : "keybarShow");
-    keybarBtn.title = t(shown ? "keybarHideTitle" : "keybarShowTitle");
-    keybarBtn.setAttribute("aria-label", keybarBtn.title);
-  };
+  const showKeybarState = () => setChecked(keybarBtn, opts.keybar.shown());
 
-  // 通知。使えないときはボタンの代わりに理由を出す。
+  // 通知。使えないときはスイッチを押せない形で切った位置に出し、理由を添える。
   const notifyText = document.createElement("span");
   notifyText.className = "settings-notify-state";
-  const notifyBtn = makeBtn("", "", () => {
+  const notifyBtn = makeSwitch(t("notifySwitchTitle"), () => {
     const n = opts.notifications;
-    if (!n) return;
+    if (!n || notifyBtn.disabled) return;
     const on = notifyBtn.dataset.state === "on";
+    // 許可を待つ間・登録する間は押せない。
     notifyBtn.disabled = true;
     // 許可を求めるのは押したその場で（enable の最初で）呼ぶ。
     (on ? n.disable() : n.enable()).then(showNotify);
@@ -144,21 +153,16 @@ export function setupSettings(opts: SettingsOptions) {
   function showNotify(status: PushStatus) {
     const { state } = status;
     const reason = NOTIFY_REASON[state];
-    notifyText.textContent =
-      state === "on" ? t("notifyOn") : state === "error" ? t("notifyError", { error: status.error ?? "" }) : reason ? t(reason) : "";
+    notifyText.textContent = state === "error" ? t("notifyError", { error: status.error ?? "" }) : reason ? t(reason) : "";
     notifyText.hidden = notifyText.textContent === "";
-    notifyBtn.hidden = reason !== undefined;
-    notifyBtn.disabled = false;
+    notifyBtn.disabled = reason !== undefined;
     notifyBtn.dataset.state = state;
-    notifyBtn.textContent = t(state === "on" ? "notifyDisable" : "notifyEnable");
-    notifyBtn.title = t(state === "on" ? "notifyDisableTitle" : "notifyEnableTitle");
-    notifyBtn.setAttribute("aria-label", notifyBtn.title);
+    setChecked(notifyBtn, state === "on");
   }
   function refreshNotify() {
     if (!opts.notifications) return;
-    notifyText.textContent = "…";
-    notifyText.hidden = false;
-    notifyBtn.hidden = true;
+    notifyText.hidden = true;
+    notifyBtn.disabled = true; // 今の様子が分かるまでは押せない
     opts.notifications.state().then(showNotify);
   }
 
@@ -211,7 +215,7 @@ export function setupSettings(opts: SettingsOptions) {
     row(t("rowLanguage"), ...langBtns),
     row(t("rowKeybar"), keybarBtn),
   );
-  if (opts.notifications) body.append(row(t("rowNotify"), notifyText, notifyBtn));
+  if (opts.notifications) body.append(row(t("rowNotify"), notifyBtn, notifyText));
   body.append(row(t("devices"), sideBtns.devices));
   if (opts.version) {
     const v = document.createElement("span");

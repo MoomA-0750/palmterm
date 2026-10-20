@@ -539,15 +539,17 @@ describe("tmux のタブとパネル", () => {
     expect(await topAt()).toBe("term");
   });
 
-  it("設定画面でキーバーを隠すと端末が広がり、読み込み直しても隠れたまま。別のブラウザでは出たまま。もう一度押すと出る", async () => {
+  it("設定画面でキーバーのスイッチを切ると端末が広がり、読み込み直しても隠れたまま。別のブラウザでは出たまま。もう一度押すと出る", async () => {
     const termHeight = async () => (await page.locator("#term").boundingBox())!.height;
     const shownHeight = await termHeight();
     const keyrowHeight = (await page.locator("#keyrow").boundingBox())!.height;
 
     await openSettings();
-    await page.locator('#settings button[title="Hide the key bar"]').click();
+    const sw = page.locator('#settings button.settings-keybar[role="switch"]');
+    expect(await sw.getAttribute("aria-checked")).toBe("true");
+    await sw.click();
     expect(await page.locator("#keybar").isHidden()).toBe(true);
-    expect(await page.locator("#settings button.settings-keybar").textContent()).toBe("Show");
+    expect(await sw.getAttribute("aria-checked")).toBe("false");
     await page.locator("#settings-close").click();
     // タブ、tmux ボタン（タブバーの右端に移る）、入力バーは残る
     expect(await page.locator("#tabs").isVisible()).toBe(true);
@@ -571,7 +573,9 @@ describe("tmux のタブとパネル", () => {
     }
 
     await openSettings();
-    await page.locator('#settings button[title="Show the key bar"]').click();
+    expect(await sw.getAttribute("aria-checked")).toBe("false");
+    await sw.click();
+    expect(await sw.getAttribute("aria-checked")).toBe("true");
     await page.locator("#settings-close").click();
     expect(await page.locator("#keybar").isVisible()).toBe(true);
     expect(await page.locator("#keyrow #tmux-btn").isVisible()).toBe(true);
@@ -1298,7 +1302,7 @@ describe("大きい画面の板", () => {
     for (const other of ["devices", "fonts", "themes"].filter((o) => o !== id)) {
       expect(await page.locator(`#${other}`).isHidden()).toBe(true);
     }
-    // 一覧は中身を読み終えると伸び、板も一緒に高くなる。別々に測ると間で伸びて食い違うので、同じ瞬間に測る。
+    // 板と一覧は同じ瞬間に測る（読み込み中に一覧の中身が変わっても食い違わないように）。
     const [settings, rows, side] = await page.evaluate((ids) => {
       return ids.map((i) => {
         const r = document.getElementById(i)!.getBoundingClientRect();
@@ -1378,6 +1382,58 @@ describe("大きい画面の板", () => {
       await clickBackdrop();
       expect(await page.locator("#copymode").isHidden()).toBe(true);
       expect(await page.locator("#copy-text").textContent()).toBe(""); // 閉じるボタンと同じ片付け
+    } finally {
+      await page.setViewportSize({ width: 400, height: 760 });
+    }
+  });
+
+  it("2列の設定画面は、右の一覧を読み込み終えても切り替えても、板の位置と高さが変わらない（収まらない分は一覧の中でスクロールする）", async () => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    try {
+      const rect = () =>
+        page.evaluate(() => {
+          const r = document.getElementById("settings")!.getBoundingClientRect();
+          return { x: r.x, y: r.y, w: r.width, h: r.height };
+        });
+      /** 右の一覧の中身の欄が板からはみ出さず、収まらない分はその中でスクロールするか。 */
+      const expectScrollsInside = (listId: string) =>
+        page.evaluate((listId) => {
+          const s = document.getElementById("settings")!.getBoundingClientRect();
+          const list = document.getElementById(listId)!;
+          const r = list.getBoundingClientRect();
+          return {
+            inside: r.bottom <= s.bottom + 1 && r.top >= s.top - 1,
+            scrolls: list.scrollHeight <= list.clientHeight + 1 || ["auto", "scroll"].includes(getComputedStyle(list).overflowY),
+          };
+        }, listId);
+
+      await openSettings();
+      await expectSide("devices");
+      await waitUntil("端末の一覧が出る", async () => (await page.locator("#settings .device.current").count()) === 1);
+      const first = await rect();
+      expect(first.h).toBeCloseTo(768 * 0.8, 0);
+      expect(await expectScrollsInside("device-list")).toEqual({ inside: true, scrolls: true });
+
+      await page.locator("#settings .settings-fonts").click();
+      await expectSide("fonts");
+      expect(await rect()).toEqual(first); // 読み込み前
+      await waitUntil(
+        "フォントの一覧を読み終える",
+        async () => (await page.locator("#font-list li").count()) > 0 && !((await page.locator("#font-list").textContent()) ?? "").includes("Loading"),
+      );
+      expect(await rect()).toEqual(first); // 読み込み後
+      expect(await expectScrollsInside("font-list")).toEqual({ inside: true, scrolls: true });
+
+      await page.locator("#settings .settings-themes").click();
+      await expectSide("themes");
+      await waitUntil("テーマの一覧が出る", async () => (await page.locator("#themes .theme-item").count()) > 0);
+      expect(await rect()).toEqual(first);
+      expect(await expectScrollsInside("theme-list")).toEqual({ inside: true, scrolls: true });
+
+      await page.locator("#settings .settings-devices").click();
+      await expectSide("devices");
+      expect(await rect()).toEqual(first);
+      await page.keyboard.press("Escape");
     } finally {
       await page.setViewportSize({ width: 400, height: 760 });
     }
@@ -1787,11 +1843,13 @@ describe("palmterm notify", () => {
 });
 
 describe("通知（Web Push）", () => {
-  it("設定画面の「通知」の行は、PC の Chromium（localhost）では「Turn on」を出す。iPhone の Safari のタブでは、ボタンの代わりにホーム画面から開くよう理由を出す", async () => {
+  it("設定画面の「通知」の行は、PC の Chromium（localhost）では押せるスイッチを切の位置で出す。iPhone の Safari のタブでは、押せないスイッチにホーム画面から開くよう理由を添える", async () => {
     await openSettings();
     const row = page.locator("#settings .settings-row", { hasText: "Notifications" });
-    const btn = row.locator("button.settings-notify");
-    await waitUntil("ボタンが出る", async () => (await btn.isVisible()) && (await btn.textContent()) === "Turn on");
+    const sw = row.locator('button.settings-notify[role="switch"]');
+    await waitUntil("押せるスイッチが出る", async () => (await sw.isVisible()) && (await sw.isEnabled()));
+    expect(await sw.getAttribute("aria-checked")).toBe("false");
+    expect(await row.locator("button").count()).toBe(1);
     await page.locator("#settings-close").click();
 
     const iphone = await browser.newContext({
@@ -1805,7 +1863,10 @@ describe("通知（Web Push）", () => {
       await openSettings(p);
       const r = p.locator("#settings .settings-row", { hasText: "Notifications" });
       await waitUntil("理由が出る", async () => ((await r.locator(".settings-notify-state").textContent()) ?? "").includes("Home Screen"));
-      expect(await r.locator("button.settings-notify").isHidden()).toBe(true);
+      const isw = r.locator('button.settings-notify[role="switch"]');
+      expect(await isw.isVisible()).toBe(true);
+      expect(await isw.isDisabled()).toBe(true);
+      expect(await isw.getAttribute("aria-checked")).toBe("false");
     } finally {
       await iphone.close();
     }
@@ -1827,6 +1888,44 @@ describe("通知（Web Push）", () => {
       tmux("kill-window", "-t", `${SESSION}:1`);
       await openPage();
     }
+  });
+
+  it("通知の小さいアイコン（badge）は、透明な背景に形だけを白で描いた画像で、ログインなしでも取れる", async () => {
+    const sw = await (await fetch(`${base}/sw.js`)).text();
+    const src = /badge:\s*"([^"]+)"/.exec(sw)?.[1];
+    expect(src).toBe("/icons/badge-96.png");
+    const r = await fetch(`${base}${src}`);
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toBe("image/png");
+
+    // 画素を読む：隅は透明、不透明な所は白、形はほどほどの広さ（全面を塗った四角ではない）
+    const px = await page.evaluate(async (url) => {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const c = document.createElement("canvas");
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const ctx = c.getContext("2d")!;
+      ctx.drawImage(img, 0, 0);
+      const d = ctx.getImageData(0, 0, c.width, c.height).data;
+      let opaque = 0;
+      let notWhite = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 128) continue;
+        opaque++;
+        if (Math.min(d[i], d[i + 1], d[i + 2]) < 240) notWhite++;
+      }
+      const at = (x: number, y: number) => d[(y * c.width + x) * 4 + 3];
+      const w = c.width - 1;
+      return { width: c.width, height: c.height, total: c.width * c.height, opaque, notWhite, corners: [at(0, 0), at(w, 0), at(0, w), at(w, w)] };
+    }, `${base}${src}`);
+    expect(px.width).toBe(96);
+    expect(px.height).toBe(96);
+    expect(px.corners).toEqual([0, 0, 0, 0]);
+    expect(px.notWhite).toBe(0);
+    expect(px.opaque).toBeGreaterThan(px.total * 0.05);
+    expect(px.opaque).toBeLessThan(px.total * 0.5);
   });
 });
 

@@ -17,7 +17,8 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(title, {
       body: data.body || "",
       icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
+      // Android は badge の形（不透明な所）だけを白く描く。背景のある画像だと白い四角になるので、透明な背景に >_ だけを描いた画像
+      badge: "/icons/badge-96.png",
       // 同じウィンドウの知らせは前のものに重ねず並べる（tag を付けない）
       data: { window: data.window, windowId: data.windowId },
     }),

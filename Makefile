@@ -7,7 +7,8 @@ VERSION_Q = $(subst ','\'',$(VERSION))
 $(shell printf '%s\n' '$(VERSION_Q)' | cmp -s - .version || printf '%s\n' '$(VERSION_Q)' > .version)
 
 # 画面（web/dist）をビルドしてから、それを埋め込んだ Go の実行ファイルを作る。
-palmterm: .version web/node_modules $(shell find web/src -type f) web/index.html *.go
+# web/src・web/public（sw.js やアイコンなど、そのまま web/dist に写すもの）・web/index.html が変われば作り直す。
+palmterm: .version web/node_modules $(shell find web/src web/public -type f) web/index.html *.go
 	cd web && npm run build
 	go build -ldflags '-X main.version=$(VERSION_Q)' -o palmterm .
 

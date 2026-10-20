@@ -594,11 +594,14 @@ button:active {
   }
 }
 
-/* 大きい画面の設定画面は2列にする。左に設定の行、右に「ログイン中の端末」・フォント・テーマの一覧（settings.ts が移す）。 */
+/* 大きい画面の設定画面は2列にする。左に設定の行、右に「ログイン中の端末」・フォント・テーマの一覧（settings.ts が移す）。
+   高さは画面の8割に決める。中身に合わせると、右の一覧を読み終えたときや切り替えたときに板が伸び縮みするため。
+   収まらない分は左の行・右の一覧の中でスクロールする。 */
 @media (min-width: 700px) and (min-height: 600px) {
   #settings.two-columns {
     flex-direction: row;
     width: min(900px, 90vw);
+    height: calc(var(--app-h) * 0.8);
   }
 
   #settings.two-columns #settings-main {
@@ -719,14 +722,51 @@ button:active {
   color: var(--muted-fg);
 }
 
-/* 通知の行の「オン」や、使えない理由（長いので折り返す） */
+/* キーバー・通知の行のトグルスイッチ。押すと丸が右（オン）と左（切）を行き来する。 */
+#settings-body button.settings-switch {
+  position: relative;
+  justify-content: flex-start;
+  min-width: 0;
+  width: 52px;
+  height: 32px;
+  padding: 0;
+  border-radius: 16px;
+  background: var(--btn-bg);
+  box-shadow: inset 0 0 0 1px var(--input-border);
+  transition: background 0.15s;
+}
+#settings-body button.settings-switch[aria-checked="true"] {
+  background: var(--accent);
+  box-shadow: none;
+}
+.settings-switch-knob {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--btn-fg);
+  transition: transform 0.15s;
+}
+.settings-switch[aria-checked="true"] .settings-switch-knob {
+  background: var(--on-accent);
+  transform: translateX(20px);
+}
+/* 使えない・待っている間は薄くして押せない */
+#settings-body button.settings-switch:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 通知の行の使えない理由や失敗（長いので折り返す） */
 .settings-notify-state {
+  flex: 1 1 12em;
   font-size: 13px;
   color: var(--muted-fg);
   overflow-wrap: anywhere;
 }
-.settings-notify-state[hidden],
-#settings-body button.settings-notify[hidden] {
+.settings-notify-state[hidden] {
   display: none;
 }
 
