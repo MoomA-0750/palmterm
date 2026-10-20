@@ -1889,6 +1889,44 @@ describe("通知（Web Push）", () => {
       await openPage();
     }
   });
+
+  it("通知の小さいアイコン（badge）は、透明な背景に形だけを白で描いた画像で、ログインなしでも取れる", async () => {
+    const sw = await (await fetch(`${base}/sw.js`)).text();
+    const src = /badge:\s*"([^"]+)"/.exec(sw)?.[1];
+    expect(src).toBe("/icons/badge-96.png");
+    const r = await fetch(`${base}${src}`);
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toBe("image/png");
+
+    // 画素を読む：隅は透明、不透明な所は白、形はほどほどの広さ（全面を塗った四角ではない）
+    const px = await page.evaluate(async (url) => {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const c = document.createElement("canvas");
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const ctx = c.getContext("2d")!;
+      ctx.drawImage(img, 0, 0);
+      const d = ctx.getImageData(0, 0, c.width, c.height).data;
+      let opaque = 0;
+      let notWhite = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 128) continue;
+        opaque++;
+        if (Math.min(d[i], d[i + 1], d[i + 2]) < 240) notWhite++;
+      }
+      const at = (x: number, y: number) => d[(y * c.width + x) * 4 + 3];
+      const w = c.width - 1;
+      return { width: c.width, height: c.height, total: c.width * c.height, opaque, notWhite, corners: [at(0, 0), at(w, 0), at(0, w), at(w, w)] };
+    }, `${base}${src}`);
+    expect(px.width).toBe(96);
+    expect(px.height).toBe(96);
+    expect(px.corners).toEqual([0, 0, 0, 0]);
+    expect(px.notWhite).toBe(0);
+    expect(px.opaque).toBeGreaterThan(px.total * 0.05);
+    expect(px.opaque).toBeLessThan(px.total * 0.5);
+  });
 });
 
 describe("palmterm のクリップボード", () => {
