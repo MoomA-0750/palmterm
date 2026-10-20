@@ -1,6 +1,6 @@
 ---
 id: 0031
-status: todo        # todo / doing / blocked / done
+status: doing        # todo / doing / blocked / done
 scope:              # 触ってよい範囲（glob）。SPEC.md・docs/decisions.md・この課題ファイルは常に可
   - "web/src/**"
   - "web/e2e/**"
