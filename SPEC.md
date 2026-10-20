@@ -17,6 +17,9 @@
   - 実物での確かめ方: `language = "ja"` の設定ファイルを作り、`palmterm -config <そのファイル> -help` → 見出しが「<実行ファイル> の使い方:」で、各オプションの説明が日本語、既定値は「（既定: …）」で出る。`language = "en"` なら英語のまま
 - （確定）`palmterm -version` で `palmterm <版>` を1行出して終わる（終了コード 0。サーバーは起動しない）。版はビルド時に `-ldflags "-X main.version=..."` で埋め込み、`make` では `git describe --tags --always --dirty` の値を入れる。埋め込まなければ `dev`。commit を進めて `make` すれば新しい版で作り直す（`make -B` は要らない）。版もファイルも変わっていなければ作り直さない。タグ名に `'` `"` `$` などが入っていても同じように動く
   - 確かめ方: 自動テスト `TestVersionFlag`、`TestMakefileEmbedsGitDescribe`、`TestMakeRebuildsOnlyWhenVersionChanges`（version_test.go）
+- （確定）`make` は画面の元（`web/src`、`web/public` の `sw.js`・アイコン・manifest など、`web/index.html`）のどれかが変わっていれば画面を作り直して palmterm を作る（`touch web/index.html` は要らない）。何も変わっていなければ作り直さない
+  - 確かめ方: 自動テスト `TestMakeRebuildsWhenWebPublicChanges`（version_test.go）
+  - 実物での確かめ方: `make` のあと `web/public/sw.js` を書き換えて `make` → `npm run build` と `go build` が走る。もう一度 `make` → `'palmterm' is up to date.`
 - （確定）設定画面の一番下の「版」の行に、つないでいるサーバーの版を `palmterm -version` と同じ文字（`palmterm <版>`）で出す。版は `/api/config` の応答の `version` で受け取る。受け取れなければ行を出さない
   - 確かめ方: 自動テスト `TestConfigIncludesVersion`（auth_config_test.go）、「設定画面の版の行」（web/src/settings.test.ts）、通しのテスト「tmux パネルに残るのは分割・ペイン・コピーモード・Ctrl+B・設定だけ。…」（web/e2e/app.test.ts）
   - 実機での確かめ方: `make install` して palmterm を再起動し、スマホで画面を読み込み直す → tmux パネルの「設定」で開く設定画面の一番下に「版」の行があり、`palmterm -version` と同じ文字が出る
