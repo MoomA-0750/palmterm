@@ -539,15 +539,17 @@ describe("tmux のタブとパネル", () => {
     expect(await topAt()).toBe("term");
   });
 
-  it("設定画面でキーバーを隠すと端末が広がり、読み込み直しても隠れたまま。別のブラウザでは出たまま。もう一度押すと出る", async () => {
+  it("設定画面でキーバーのスイッチを切ると端末が広がり、読み込み直しても隠れたまま。別のブラウザでは出たまま。もう一度押すと出る", async () => {
     const termHeight = async () => (await page.locator("#term").boundingBox())!.height;
     const shownHeight = await termHeight();
     const keyrowHeight = (await page.locator("#keyrow").boundingBox())!.height;
 
     await openSettings();
-    await page.locator('#settings button[title="Hide the key bar"]').click();
+    const sw = page.locator('#settings button.settings-keybar[role="switch"]');
+    expect(await sw.getAttribute("aria-checked")).toBe("true");
+    await sw.click();
     expect(await page.locator("#keybar").isHidden()).toBe(true);
-    expect(await page.locator("#settings button.settings-keybar").textContent()).toBe("Show");
+    expect(await sw.getAttribute("aria-checked")).toBe("false");
     await page.locator("#settings-close").click();
     // タブ、tmux ボタン（タブバーの右端に移る）、入力バーは残る
     expect(await page.locator("#tabs").isVisible()).toBe(true);
@@ -571,7 +573,9 @@ describe("tmux のタブとパネル", () => {
     }
 
     await openSettings();
-    await page.locator('#settings button[title="Show the key bar"]').click();
+    expect(await sw.getAttribute("aria-checked")).toBe("false");
+    await sw.click();
+    expect(await sw.getAttribute("aria-checked")).toBe("true");
     await page.locator("#settings-close").click();
     expect(await page.locator("#keybar").isVisible()).toBe(true);
     expect(await page.locator("#keyrow #tmux-btn").isVisible()).toBe(true);
@@ -1839,11 +1843,13 @@ describe("palmterm notify", () => {
 });
 
 describe("通知（Web Push）", () => {
-  it("設定画面の「通知」の行は、PC の Chromium（localhost）では「Turn on」を出す。iPhone の Safari のタブでは、ボタンの代わりにホーム画面から開くよう理由を出す", async () => {
+  it("設定画面の「通知」の行は、PC の Chromium（localhost）では押せるスイッチを切の位置で出す。iPhone の Safari のタブでは、押せないスイッチにホーム画面から開くよう理由を添える", async () => {
     await openSettings();
     const row = page.locator("#settings .settings-row", { hasText: "Notifications" });
-    const btn = row.locator("button.settings-notify");
-    await waitUntil("ボタンが出る", async () => (await btn.isVisible()) && (await btn.textContent()) === "Turn on");
+    const sw = row.locator('button.settings-notify[role="switch"]');
+    await waitUntil("押せるスイッチが出る", async () => (await sw.isVisible()) && (await sw.isEnabled()));
+    expect(await sw.getAttribute("aria-checked")).toBe("false");
+    expect(await row.locator("button").count()).toBe(1);
     await page.locator("#settings-close").click();
 
     const iphone = await browser.newContext({
@@ -1857,7 +1863,10 @@ describe("通知（Web Push）", () => {
       await openSettings(p);
       const r = p.locator("#settings .settings-row", { hasText: "Notifications" });
       await waitUntil("理由が出る", async () => ((await r.locator(".settings-notify-state").textContent()) ?? "").includes("Home Screen"));
-      expect(await r.locator("button.settings-notify").isHidden()).toBe(true);
+      const isw = r.locator('button.settings-notify[role="switch"]');
+      expect(await isw.isVisible()).toBe(true);
+      expect(await isw.isDisabled()).toBe(true);
+      expect(await isw.getAttribute("aria-checked")).toBe("false");
     } finally {
       await iphone.close();
     }

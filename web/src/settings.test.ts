@@ -155,32 +155,35 @@ describe("設定画面の版の行", () => {
 });
 
 describe("設定画面のキーバーの行", () => {
-  const keybarButton = (el: HTMLElement) => el.querySelector<HTMLButtonElement>(".settings-keybar");
+  const keybarSwitch = (el: HTMLElement) => el.querySelector<HTMLButtonElement>(".settings-keybar");
 
-  it("押すたびにキーバーを隠す・出すを切り替え、文字もそれに合わせる。画面は閉じない", () => {
+  it("文字のボタンではなくトグルスイッチ1つ。出ていればオン、押すと隠れて切、もう一度押すと出てオン。画面は閉じない", () => {
     setLang("ja");
     let shown = true;
     const s = makeSettings({ keybar: { shown: () => shown, set: (v) => (shown = v) } });
     s.open();
-    const btn = keybarButton(s.el)!;
-    expect(rowOf(btn)?.querySelector(".settings-label")?.textContent).toBe("キーバー");
-    expect(btn.textContent).toBe("隠す");
-    btn.click();
+    const sw = keybarSwitch(s.el)!;
+    expect([...rowOf(sw)!.querySelectorAll("button")]).toEqual([sw]);
+    expect(rowOf(sw)?.querySelector(".settings-label")?.textContent).toBe("キーバー");
+    expect(sw.getAttribute("role")).toBe("switch");
+    expect(sw.textContent).toBe("");
+    expect(sw.getAttribute("aria-checked")).toBe("true");
+    sw.click();
     expect(shown).toBe(false);
-    expect(btn.textContent).toBe("出す");
-    btn.click();
+    expect(sw.getAttribute("aria-checked")).toBe("false");
+    sw.click();
     expect(shown).toBe(true);
-    expect(btn.textContent).toBe("隠す");
+    expect(sw.getAttribute("aria-checked")).toBe("true");
     expect(s.el.hidden).toBe(false);
   });
 
-  it("隠している間も、画面の言語で出す", () => {
+  it("隠している間は切の位置。名前は画面の言語で出す", () => {
     setLang("en");
-    const btn = keybarButton(makeSettings({ keybar: { shown: () => false, set: () => {} } }).el)!;
-    expect(btn.textContent).toBe("Show");
-    expect(btn.title).toBe("Show the key bar");
+    const sw = keybarSwitch(makeSettings({ keybar: { shown: () => false, set: () => {} } }).el)!;
+    expect(sw.getAttribute("aria-checked")).toBe("false");
+    expect(sw.getAttribute("aria-label")).toBe("Show the key bar");
     setLang("ja");
-    expect(keybarButton(makeSettings({ keybar: { shown: () => false, set: () => {} } }).el)!.textContent).toBe("出す");
+    expect(keybarSwitch(makeSettings().el)!.getAttribute("aria-label")).toBe("キーバーを出す");
   });
 });
 
@@ -216,31 +219,69 @@ describe("設定画面の言語の行", () => {
 describe("設定画面の通知の行", () => {
   const notifyRow = (s: { el: HTMLElement }) => ({
     text: () => s.el.querySelector<HTMLElement>(".settings-notify-state")!,
-    button: () => s.el.querySelector<HTMLButtonElement>(".settings-notify")!,
+    sw: () => s.el.querySelector<HTMLButtonElement>(".settings-notify")!,
+    checked: () => s.el.querySelector(".settings-notify")!.getAttribute("aria-checked"),
   });
 
-  it("切っていれば「オンにする」。押すと許可を求めて有効にし、「オン」と「切る」になる。「切る」で元に戻る", async () => {
+  it("文字のボタンではなくトグルスイッチ1つ。切なら押すと許可を求めてオンの位置に、オンなら押すと切の位置に戻る", async () => {
     setLang("ja");
     const n = notifications("off");
     const s = makeSettings({ notifications: n });
     s.open();
     await flush();
     const r = notifyRow(s);
-    expect(r.button().hidden).toBe(false);
-    expect(r.button().textContent).toBe("オンにする");
+    expect([...rowOf(r.sw())!.querySelectorAll("button")]).toEqual([r.sw()]);
+    expect(r.sw().getAttribute("role")).toBe("switch");
+    expect(r.sw().textContent).toBe("");
+    expect(r.sw().disabled).toBe(false);
+    expect(r.checked()).toBe("false");
     expect(r.text().hidden).toBe(true);
-    r.button().click();
+    r.sw().click();
     await flush();
     expect(n.calls).toEqual(["enable"]);
-    expect(r.text().textContent).toBe("オン");
-    expect(r.button().textContent).toBe("切る");
-    r.button().click();
+    expect(r.checked()).toBe("true");
+    expect(r.text().hidden).toBe(true);
+    r.sw().click();
     await flush();
     expect(n.calls).toEqual(["enable", "disable"]);
-    expect(r.button().textContent).toBe("オンにする");
+    expect(r.checked()).toBe("false");
   });
 
-  it("使えないときはボタンを出さず、理由を出す（iPhone・iPad でホーム画面から開いていない・許可されていない）", async () => {
+  it("許可を待つ間・登録する間は押せず、二重に呼ばない。済めば押せるようになる", async () => {
+    setLang("ja");
+    let finish: (v: PushStatus) => void = () => {};
+    let enables = 0;
+    const s = makeSettings({
+      notifications: {
+        state: async () => ({ state: "off" }),
+        enable: () => (enables++, new Promise<PushStatus>((r) => (finish = r))),
+        disable: async () => ({ state: "off" }),
+      },
+    });
+    s.open();
+    await flush();
+    const r = notifyRow(s);
+    r.sw().click();
+    expect(r.sw().disabled).toBe(true);
+    expect(r.checked()).toBe("false");
+    r.sw().click();
+    await flush();
+    expect(enables).toBe(1);
+    finish({ state: "on" });
+    await flush();
+    expect(r.sw().disabled).toBe(false);
+    expect(r.checked()).toBe("true");
+  });
+
+  it("今の様子が分かるまでは押せない", async () => {
+    setLang("ja");
+    const s = makeSettings({ notifications: { state: () => new Promise<PushStatus>(() => {}), enable: async () => ({ state: "on" }), disable: async () => ({ state: "off" }) } });
+    s.open();
+    await flush();
+    expect(notifyRow(s).sw().disabled).toBe(true);
+  });
+
+  it("使えないときはスイッチを押せない形で切の位置に出し、理由を添える（ホーム画面から開いていない・HTTPS でない・未対応・許可されていない）", async () => {
     setLang("ja");
     for (const [state, want] of [
       ["needsHomeScreen", "ホーム画面に追加した palmterm から開いたときだけ"],
@@ -252,28 +293,45 @@ describe("設定画面の通知の行", () => {
       const s = makeSettings({ notifications: notifications(state) });
       s.open();
       await flush();
-      expect(notifyRow(s).button().hidden).toBe(true);
-      expect(notifyRow(s).text().textContent).toContain(want);
+      const r = notifyRow(s);
+      expect(r.sw().hidden).toBe(false);
+      expect(r.sw().disabled).toBe(true);
+      expect(r.checked()).toBe("false");
+      expect(r.text().hidden).toBe(false);
+      expect(r.text().textContent).toContain(want);
     }
   });
 
-  it("許可を断られたら理由に変わり、失敗したらその理由とボタンを出す", async () => {
+  it("許可を断られたら切の位置で押せなくなり理由を出す。失敗したら切の位置に戻り、理由を出して押し直せる", async () => {
     setLang("en");
     const s = makeSettings({ notifications: notifications("off", { state: "denied" }) });
     s.open();
     await flush();
-    notifyRow(s).button().click();
+    notifyRow(s).sw().click();
     await flush();
-    expect(notifyRow(s).button().hidden).toBe(true);
+    expect(notifyRow(s).checked()).toBe("false");
+    expect(notifyRow(s).sw().disabled).toBe(true);
     expect(notifyRow(s).text().textContent).toContain("blocked");
 
     document.body.replaceChildren();
     const f = makeSettings({ notifications: notifications("off", { state: "error", error: "boom" }) });
     f.open();
     await flush();
-    notifyRow(f).button().click();
+    notifyRow(f).sw().click();
     await flush();
     expect(notifyRow(f).text().textContent).toBe("Could not change notifications (boom)");
-    expect(notifyRow(f).button().textContent).toBe("Turn on");
+    expect(notifyRow(f).checked()).toBe("false");
+    expect(notifyRow(f).sw().disabled).toBe(false);
+  });
+
+  it("許可を求めても決めなかった（閉じた）ら切の位置に戻る", async () => {
+    setLang("ja");
+    const s = makeSettings({ notifications: notifications("off", { state: "off" }) });
+    s.open();
+    await flush();
+    notifyRow(s).sw().click();
+    await flush();
+    expect(notifyRow(s).checked()).toBe("false");
+    expect(notifyRow(s).sw().disabled).toBe(false);
   });
 });
